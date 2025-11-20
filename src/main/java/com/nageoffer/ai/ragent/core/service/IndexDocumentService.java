@@ -48,41 +48,6 @@ public class IndexDocumentService {
     private final Gson gson = new Gson();
 
     /**
-     * 纯文本入库（比如你后台管理系统直接粘贴文本）
-     */
-    public DocumentIndexResult indexText(String title, String content, String documentId) {
-        if (!StringUtils.hasText(content)) {
-            throw new IllegalArgumentException("content 不能为空");
-        }
-
-        String docId = StringUtils.hasText(documentId)
-                ? documentId
-                : UUID.randomUUID().toString();
-
-        String joined = buildTextWithTitle(title, content);
-        List<String> chunks = splitIntoChunks(joined, DEFAULT_CHUNK_SIZE, DEFAULT_CHUNK_OVERLAP);
-
-        List<JsonObject> rows = buildRowsForChunks(
-                docId,
-                title,
-                "text",
-                null,
-                chunks
-        );
-
-        InsertReq req = InsertReq.builder()
-                .collectionName(collectionName)
-                .data(rows)
-                .build();
-
-        InsertResp resp = milvusClient.insert(req);
-        log.info("Indexed text document. documentId={}, chunks={}, insertCnt={}",
-                docId, chunks.size(), resp.getInsertCnt());
-
-        return new DocumentIndexResult(docId, title, "text", chunks.size());
-    }
-
-    /**
      * 文件入库：支持 PDF / Markdown / Doc / Docx
      */
     public DocumentIndexResult indexFile(MultipartFile file, String documentId) {

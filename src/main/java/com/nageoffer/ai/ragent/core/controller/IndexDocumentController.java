@@ -2,7 +2,6 @@ package com.nageoffer.ai.ragent.core.controller;
 
 import com.nageoffer.ai.ragent.core.dto.DocumentChunk;
 import com.nageoffer.ai.ragent.core.dto.DocumentIndexResult;
-import com.nageoffer.ai.ragent.core.dto.IndexTextRequest;
 import com.nageoffer.ai.ragent.core.service.IndexDocumentService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
@@ -17,18 +16,6 @@ import java.util.List;
 public class IndexDocumentController {
 
     private final IndexDocumentService indexDocumentService;
-
-    /**
-     * 纯文本入库
-     */
-    @PostMapping("/text")
-    public DocumentIndexResult indexText(@RequestBody IndexTextRequest request) {
-        return indexDocumentService.indexText(
-                request.getTitle(),
-                request.getContent(),
-                request.getDocumentId()
-        );
-    }
 
     /**
      * 文件入库：PDF / Markdown / Doc / Docx
