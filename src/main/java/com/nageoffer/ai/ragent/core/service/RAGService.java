@@ -6,6 +6,7 @@ import com.nageoffer.ai.ragent.core.dto.rag.RAGHit;
 import com.nageoffer.ai.ragent.core.service.rag.chat.LLMService;
 import com.nageoffer.ai.ragent.core.service.rag.chat.StreamCallback;
 import com.nageoffer.ai.ragent.core.service.rag.embedding.OllamaEmbeddingService;
+import com.nageoffer.ai.ragent.core.service.rag.rerank.RerankService;
 import io.milvus.v2.client.MilvusClientV2;
 import io.milvus.v2.service.vector.request.SearchReq;
 import io.milvus.v2.service.vector.request.data.BaseVector;
@@ -30,6 +31,7 @@ public class RAGService {
     private final MilvusClientV2 milvusClient;
     private final OllamaEmbeddingService embeddingService;
     private final LLMService llmService;
+    private final RerankService rerankService;
 
     @Value("${rag.collection-name}")
     private String collectionName;
@@ -62,9 +64,14 @@ public class RAGService {
 
         // ==================== 1. search ====================
         long tSearchStart = System.nanoTime();
-        List<RAGHit> hits = search(question, topK);
+        int finalTopK = topK;
+        int searchTopK = finalTopK * 3;
+
+        List<RAGHit> roughHits = search(question, searchTopK);
         long tSearchEnd = System.nanoTime();
         System.out.println("[Perf] search(question, topK) 耗时: " + ((tSearchEnd - tSearchStart) / 1_000_000.0) + " ms");
+
+        List<RAGHit> hits = rerankService.rerank(question, roughHits, finalTopK);
 
         // ==================== 2. 构建 context ====================
         long tContextStart = System.nanoTime();

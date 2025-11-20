@@ -29,3 +29,13 @@ ai:
       url: https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions
       api-key: sk-0e580b2e9e1f430f8948f55041f986e4
       model: qwen-plus-latest
+
+  rerank:
+    provider: bailian
+    ollama:
+      url: http://localhost:11434
+      model: dengcao/Qwen3-Reranker-8B:F16
+    bailian:
+      url: https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank
+      api-key: sk-0e580b2e9e1f430f8948f55041f986e4
+      model: qwen3-rerank
