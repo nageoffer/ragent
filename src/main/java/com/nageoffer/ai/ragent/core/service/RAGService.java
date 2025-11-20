@@ -1,9 +1,11 @@
 package com.nageoffer.ai.ragent.core.service;
 
 import com.nageoffer.ai.ragent.core.convention.ChatRequest;
-import com.nageoffer.ai.ragent.core.service.rag.embedding.OllamaEmbeddingService;
+import com.nageoffer.ai.ragent.core.dto.rag.RAGAnswer;
+import com.nageoffer.ai.ragent.core.dto.rag.RAGHit;
 import com.nageoffer.ai.ragent.core.service.rag.chat.LLMService;
 import com.nageoffer.ai.ragent.core.service.rag.chat.StreamCallback;
+import com.nageoffer.ai.ragent.core.service.rag.embedding.OllamaEmbeddingService;
 import io.milvus.v2.client.MilvusClientV2;
 import io.milvus.v2.service.vector.request.SearchReq;
 import io.milvus.v2.service.vector.request.data.BaseVector;
@@ -34,12 +36,12 @@ public class RAGService {
     @Value("${rag.metric-type}")
     private String metricType;
 
-    public RagAnswer answer(String question, int topK) {
-        List<RagHit> hits = search(question, topK);
+    public RAGAnswer answer(String question, int topK) {
+        List<RAGHit> hits = search(question, topK);
 
         // 拼接 RAG 上下文
         String context = hits.stream()
-                .map(h -> "- " + h.text())
+                .map(h -> "- " + h.getText())
                 .collect(Collectors.joining("\n"));
 
         String prompt =
@@ -52,7 +54,7 @@ public class RAGService {
 
         String answer = llmService.chat(prompt);
 
-        return new RagAnswer(question, hits, answer);
+        return new RAGAnswer(question, hits, answer);
     }
 
     public void streamAnswer(String question, int topK, StreamCallback callback) {
@@ -60,14 +62,14 @@ public class RAGService {
 
         // ==================== 1. search ====================
         long tSearchStart = System.nanoTime();
-        List<RagHit> hits = search(question, topK);
+        List<RAGHit> hits = search(question, topK);
         long tSearchEnd = System.nanoTime();
         System.out.println("[Perf] search(question, topK) 耗时: " + ((tSearchEnd - tSearchStart) / 1_000_000.0) + " ms");
 
         // ==================== 2. 构建 context ====================
         long tContextStart = System.nanoTime();
         String context = hits.stream()
-                .map(h -> "- " + h.text())
+                .map(h -> "- " + h.getText())
                 .collect(Collectors.joining("\n"));
         long tContextEnd = System.nanoTime();
         System.out.println("[Perf] context 构建耗时: " + ((tContextEnd - tContextStart) / 1_000_000.0) + " ms");
@@ -121,7 +123,7 @@ public class RAGService {
         System.out.println("================================");
     }
 
-    private List<RagHit> search(String query, int topK) {
+    private List<RAGHit> search(String query, int topK) {
         // ==================== 1. embed ====================
         long tEmbedStart = System.nanoTime();
         List<Float> emb = embeddingService.embed(query);
@@ -173,8 +175,8 @@ public class RAGService {
 
         // ==================== 7. RagHit 映射 ====================
         long tMapStart = System.nanoTime();
-        List<RagHit> list = results.get(0).stream()
-                .map(h -> new RagHit(
+        List<RAGHit> list = results.get(0).stream()
+                .map(h -> new RAGHit(
                         Objects.toString(h.getEntity().get("doc_id"), ""),
                         Objects.toString(h.getEntity().get("content"), ""),
                         h.getScore()
@@ -206,11 +208,5 @@ public class RAGService {
         float[] nv = new float[v.length];
         for (int i = 0; i < v.length; i++) nv[i] = (float) (v[i] / len);
         return nv;
-    }
-
-    public record RagHit(String id, String text, double score) {
-    }
-
-    public record RagAnswer(String question, List<RagHit> hits, String answer) {
     }
 }

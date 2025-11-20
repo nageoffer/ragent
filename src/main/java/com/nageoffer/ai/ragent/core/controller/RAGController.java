@@ -1,6 +1,7 @@
 package com.nageoffer.ai.ragent.core.controller;
 
 import com.nageoffer.ai.ragent.core.dto.QueryRequest;
+import com.nageoffer.ai.ragent.core.dto.rag.RAGAnswer;
 import com.nageoffer.ai.ragent.core.service.ConversationService;
 import com.nageoffer.ai.ragent.core.service.RAGService;
 import com.nageoffer.ai.ragent.core.service.rag.chat.StreamCallback;
@@ -25,14 +26,14 @@ import java.util.concurrent.Executors;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/ragent/rag")
-public class RagController {
+public class RAGController {
 
     private final RAGService ragService;
     private final ConversationService conversationService;
     private final Executor executor = Executors.newCachedThreadPool();
 
     @PostMapping("/query")
-    public RAGService.RagAnswer query(@RequestBody QueryRequest req) {
+    public RAGAnswer query(@RequestBody QueryRequest req) {
         int topK = (req.getTopK() == null || req.getTopK() <= 0) ? 3 : req.getTopK();
         return ragService.answer(req.getQuestion(), topK);
     }
