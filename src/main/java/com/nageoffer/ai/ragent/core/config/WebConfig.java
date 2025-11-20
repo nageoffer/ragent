@@ -1,4 +1,4 @@
-package com.nageoffer.ai.ragent.config;
+package com.nageoffer.ai.ragent.core.config;
 
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.converter.HttpMessageConverter;

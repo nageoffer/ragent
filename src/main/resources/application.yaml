@@ -1,1 +1,31 @@
-spring.application.name=ragent-core
+server:
+  port: 8080
+
+spring:
+  application:
+    name: ragent-core
+
+milvus:
+  uri: http://localhost:19530
+
+rag:
+  collection-name: rag_hnsw_cosine_test
+  dimension: 4096
+  metric-type: COSINE
+
+ai:
+  embedding:
+    provider: ollama
+    ollama:
+      url: http://localhost:11434
+      model: qwen3-embedding:8b-fp16
+
+  chat:
+    provider: bailian
+    ollama:
+      url: http://localhost:11434
+      model: qwen3:8b-fp16
+    bailian:
+      url: https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions
+      api-key: sk-0e580b2e9e1f430f8948f55041f986e4
+      model: qwen-plus-latest

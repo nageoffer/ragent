@@ -1,46 +1,35 @@
-package com.nageoffer.ai.ragent.controller;
+package com.nageoffer.ai.ragent.core.controller;
 
-import com.nageoffer.ai.ragent.dto.IndexRequest;
-import com.nageoffer.ai.ragent.dto.QueryRequest;
-import com.nageoffer.ai.ragent.service.ConversationService;
-import com.nageoffer.ai.ragent.service.RagService;
-import com.nageoffer.ai.ragent.service.StreamLLMService;
+import com.nageoffer.ai.ragent.core.dto.QueryRequest;
+import com.nageoffer.ai.ragent.core.service.ConversationService;
+import com.nageoffer.ai.ragent.core.service.RagService;
+import com.nageoffer.ai.ragent.core.service.llm.StreamCallback;
 import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.web.bind.annotation.*;
+import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.Set;
-import java.util.UUID;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 
 @RestController
-@RequestMapping("/api/rag")
+@RequiredArgsConstructor
+@RequestMapping("/api/ragent/rag")
 public class RagController {
 
     private final RagService ragService;
     private final ConversationService conversationService;
     private final Executor executor = Executors.newCachedThreadPool();
-
-    public RagController(RagService ragService, ConversationService conversationService) {
-        this.ragService = ragService;
-        this.conversationService = conversationService;
-    }
-
-    @GetMapping("/health")
-    public String health() {
-        return "RAG demo is up";
-    }
-
-    @PostMapping("/index")
-    public Object index(@RequestBody IndexRequest req) {
-        long id = ragService.indexDocument(req.getText());
-        return new Object() {
-            public final long docId = id;
-        };
-    }
 
     @PostMapping("/query")
     public RagService.RagAnswer query(@RequestBody QueryRequest req) {
@@ -48,19 +37,13 @@ public class RagController {
         return ragService.answer(req.getQuestion(), topK);
     }
 
-    @GetMapping(
-            value = "/stream",
-            produces = "text/event-stream;charset=UTF-8"
-    )
-    public SseEmitter stream(
-            @RequestParam String question,
-            @RequestParam(defaultValue = "3") Integer topK) {
-
+    @GetMapping(value = "/stream", produces = "text/event-stream;charset=UTF-8")
+    public SseEmitter stream(@RequestParam String question,
+                             @RequestParam(defaultValue = "3") Integer topK) {
         SseEmitter emitter = new SseEmitter(0L);
-
         executor.execute(() -> {
             try {
-                ragService.streamAnswer(question, topK, new StreamLLMService.ContentCallback() {
+                ragService.streamAnswer(question, topK, new StreamCallback() {
                     @Override
                     public void onContent(String chunk) {
                         try {
@@ -103,7 +86,7 @@ public class RagController {
         PrintWriter writer = response.getWriter();
 
         try {
-            ragService.streamAnswer(question, topK, new StreamLLMService.ContentCallback() {
+            ragService.streamAnswer(question, topK, new StreamCallback() {
                 @Override
                 public void onContent(String chunk) {
                     writer.write(chunk);
@@ -132,16 +115,15 @@ public class RagController {
     /**
      * 带会话记忆的流式问答（纯文本格式）
      */
-    @GetMapping(value = "/chat")
-    public void chat(
-            @RequestParam(required = false) String sessionId,
-            @RequestParam String question,
-            @RequestParam(defaultValue = "3") Integer topK,
-            HttpServletResponse response) throws IOException {
+    /*@GetMapping(value = "/chat")
+    public void chat(@RequestParam(required = false) String sessionId,
+                     @RequestParam String question,
+                     @RequestParam(defaultValue = "3") Integer topK,
+                     HttpServletResponse response) throws IOException {
 
         // 如果没有提供 sessionId，生成一个新的
-        String actualSessionId = (sessionId != null && !sessionId.isEmpty()) 
-                ? sessionId 
+        String actualSessionId = (sessionId != null && !sessionId.isEmpty())
+                ? sessionId
                 : UUID.randomUUID().toString();
 
         response.setContentType("text/plain;charset=UTF-8");
@@ -154,30 +136,30 @@ public class RagController {
         PrintWriter writer = response.getWriter();
 
         try {
-            ragService.streamAnswerWithMemory(actualSessionId, question, topK, 
-                new StreamLLMService.ContentCallback() {
-                    @Override
-                    public void onContent(String chunk) {
-                        writer.write(chunk);
-                        writer.flush();
-                    }
+            ragService.streamAnswerWithMemory(actualSessionId, question, topK,
+                    new StreamLLMService.ContentCallback() {
+                        @Override
+                        public void onContent(String chunk) {
+                            writer.write(chunk);
+                            writer.flush();
+                        }
 
-                    @Override
-                    public void onComplete() {
-                        writer.close();
-                    }
+                        @Override
+                        public void onComplete() {
+                            writer.close();
+                        }
 
-                    @Override
-                    public void onError(Throwable t) {
-                        t.printStackTrace();
-                        writer.close();
-                    }
-                });
+                        @Override
+                        public void onError(Throwable t) {
+                            t.printStackTrace();
+                            writer.close();
+                        }
+                    });
         } catch (Exception e) {
             e.printStackTrace();
             writer.close();
         }
-    }
+    }*/
 
     /**
      * 获取会话历史

@@ -1,111 +1,38 @@
-package com.nageoffer.ai.ragent.service;
+package com.nageoffer.ai.ragent.core.service;
 
-import com.google.gson.JsonArray;
-import com.google.gson.JsonObject;
+import com.nageoffer.ai.ragent.core.convention.ChatRequest;
+import com.nageoffer.ai.ragent.core.service.llm.OllamaEmbeddingService;
+import com.nageoffer.ai.ragent.core.service.llm.LLMService;
+import com.nageoffer.ai.ragent.core.service.llm.StreamCallback;
 import io.milvus.v2.client.MilvusClientV2;
-import io.milvus.v2.service.vector.request.InsertReq;
 import io.milvus.v2.service.vector.request.SearchReq;
 import io.milvus.v2.service.vector.request.data.BaseVector;
 import io.milvus.v2.service.vector.request.data.FloatVec;
 import io.milvus.v2.service.vector.response.SearchResp;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class RagService {
 
-    private final MilvusClientV2 client;
-    private final EmbeddingService embeddingService;
+    private final MilvusClientV2 milvusClient;
+    private final OllamaEmbeddingService embeddingService;
     private final LLMService llmService;
 
-    private final String collectionName;
-    private final String metricType;
-
-    private final AtomicLong localId = new AtomicLong(1);
-    private final StreamLLMService llmStreamService;
-    private final ConversationService conversationService;
-
-    public RagService(
-            @Qualifier("customMilvusClient") MilvusClientV2 client,
-            EmbeddingService embeddingService,
-            LLMService llmService,
-            StreamLLMService llmStreamService,
-            ConversationService conversationService,
-            @Value("${rag.collection-name}") String collectionName,
-            @Value("${rag.metric-type}") String metricType) {
-        this.client = client;
-        this.embeddingService = embeddingService;
-        this.llmStreamService = llmStreamService;
-        this.conversationService = conversationService;
-        this.llmService = llmService;
-        this.collectionName = collectionName;
-        this.metricType = metricType;
-    }
-
-    public long indexDocument(String text) {
-        long id = localId.getAndIncrement();
-        List<Float> embed = embeddingService.embed(text);
-
-        JsonObject obj = new JsonObject();
-        obj.addProperty("id", id);
-        obj.add("vector", floatListToJson(embed));
-        obj.addProperty("text", text);
-
-        InsertReq req = InsertReq.builder()
-                .collectionName(collectionName)
-                .data(Collections.singletonList(obj))
-                .build();
-
-        client.insert(req);
-
-        return id;
-    }
-
-    public List<RagHit> search(String query, int topK) {
-        List<Float> emb = embeddingService.embed(query);
-
-        float[] arr = new float[emb.size()];
-        for (int i = 0; i < emb.size(); i++) arr[i] = emb.get(i);
-
-        List<BaseVector> vectors = List.of(new FloatVec(arr));
-
-        Map<String, Object> params = new HashMap<>();
-        params.put("metric_type", metricType);
-        params.put("nprobe", 10);
-
-        SearchReq req = SearchReq.builder()
-                .collectionName(collectionName)
-                .annsField("vector")
-                .data(vectors)
-                .topK(topK)
-                .searchParams(params)
-                .outputFields(List.of("id", "text"))
-                .build();
-
-        SearchResp resp = client.search(req);
-        List<List<SearchResp.SearchResult>> results = resp.getSearchResults();
-
-        if (results == null || results.isEmpty()) return List.of();
-
-        return results.get(0).stream()
-                .map(h -> new RagHit(
-                        ((Number) h.getEntity().get("id")).longValue(),
-                        Objects.toString(h.getEntity().get("text"), ""),
-                        h.getScore()
-                ))
-                .collect(Collectors.toList());
-    }
+    @Value("${rag.collection-name}")
+    private String collectionName;
+    @Value("${rag.metric-type}")
+    private String metricType;
 
     public RagAnswer answer(String question, int topK) {
         List<RagHit> hits = search(question, topK);
@@ -128,79 +55,160 @@ public class RagService {
         return new RagAnswer(question, hits, answer);
     }
 
-    /**
-     * 带记忆功能的流式回答
-     */
-    public void streamAnswerWithMemory(String sessionId, String question, int topK, StreamLLMService.ContentCallback callback) {
+    public void streamAnswer(String question, int topK, StreamCallback callback) {
+        long tStart = System.nanoTime();
+
+        // ==================== 1. search ====================
+        long tSearchStart = System.nanoTime();
         List<RagHit> hits = search(question, topK);
+        long tSearchEnd = System.nanoTime();
+        System.out.println("[Perf] search(question, topK) 耗时: " + ((tSearchEnd - tSearchStart) / 1_000_000.0) + " ms");
 
-        // 构建 RAG 上下文
-        String ragContext = hits.stream()
-                .map(h -> "- " + h.text())
-                .collect(Collectors.joining("\n"));
-
-        // 使用 ConversationService 构建包含历史的完整上下文
-        String prompt = conversationService.buildContextWithHistory(sessionId, ragContext, question);
-
-        log.info("\nprompt {}", prompt);
-
-        // 保存用户问题到会话
-        conversationService.addMessage(sessionId, "user", question);
-
-        // 用于累积 AI 的完整回答
-        StringBuilder fullAnswer = new StringBuilder();
-
-        // 调用流式 LLM
-        llmStreamService.streamChat(prompt, new StreamLLMService.ContentCallback() {
-            @Override
-            public void onContent(String chunk) {
-                fullAnswer.append(chunk);
-                callback.onContent(chunk);
-            }
-
-            @Override
-            public void onComplete() {
-                // 保存 AI 回答到会话
-                conversationService.addMessage(sessionId, "assistant", fullAnswer.toString());
-                callback.onComplete();
-            }
-
-            @Override
-            public void onError(Throwable t) {
-                callback.onError(t);
-            }
-        });
-    }
-
-    /**
-     * 原有的无记忆流式回答（保持向后兼容）
-     */
-    public void streamAnswer(String question, int topK, StreamLLMService.ContentCallback callback) {
-
-        List<RagHit> hits = search(question, topK);
-
-        // 构建 RAG Prompt
+        // ==================== 2. 构建 context ====================
+        long tContextStart = System.nanoTime();
         String context = hits.stream()
                 .map(h -> "- " + h.text())
                 .collect(Collectors.joining("\n"));
+        long tContextEnd = System.nanoTime();
+        System.out.println("[Perf] context 构建耗时: " + ((tContextEnd - tContextStart) / 1_000_000.0) + " ms");
 
-        String prompt = "你是专业的企业内 RAG 问答助手。请遵守以下规则：\n\n" +
-                "  - 严格基于文档内容\n" +
-                "  - 不得长篇大论\n\n" +
-                "【文档内容】\n" + context + "\n\n" +
-                "【用户问题】\n" + question;
+        // ==================== 3. 拼接 Prompt ====================
+        long tPromptStart = System.nanoTime();
+        String prompt = """
+                你是专业的企业内 RAG 问答助手，请基于文档内容给出更完整、具备解释性的回答。
+                
+                请遵循以下规则：
+                - 回答必须严格基于【文档内容】
+                - 不得虚构信息
+                - 回答可以适当丰富，但不要过度扩展
+                - 建议采用分点说明、简要解释原因或背景
+                - 若文档中没有明确内容，请说明“文档未包含相关信息。”
+                
+                【文档内容】
+                %s
+                
+                【用户问题】
+                %s
+                """
+                .formatted(context, question);
+        long tPromptEnd = System.nanoTime();
+        System.out.println("[Perf] prompt 拼接耗时: " + ((tPromptEnd - tPromptStart) / 1_000_000.0) + " ms");
 
-        // 直接走流式大模型
-        llmStreamService.streamChat(prompt, callback);
+        // ==================== 4. 调用流式 LLM ====================
+        long tLlmStart = System.nanoTime();
+        ChatRequest chatRequest = ChatRequest.builder()
+                .prompt(prompt)
+                .thinking(false)
+                .temperature(0D)
+                .topP(0.7D)
+                .build();
+        llmService.streamChat(chatRequest, callback);
+        long tLlmEnd = System.nanoTime();
+        System.out.println("[Perf] llmStreamService.streamChat 调用耗时: " + ((tLlmEnd - tLlmStart) / 1_000_000.0) + " ms");
+
+        // ==================== 5. 全流程总耗时 ====================
+        long tEnd = System.nanoTime();
+        double total = (tEnd - tStart) / 1_000_000.0;
+
+        System.out.println("================================");
+        System.out.println("[Perf Summary - streamAnswer]");
+        System.out.println("  search:          " + ((tSearchEnd - tSearchStart) / 1_000_000.0) + " ms");
+        System.out.println("  build context:   " + ((tContextEnd - tContextStart) / 1_000_000.0) + " ms");
+        System.out.println("  build prompt:    " + ((tPromptEnd - tPromptStart) / 1_000_000.0) + " ms");
+        System.out.println("  llm call:        " + ((tLlmEnd - tLlmStart) / 1_000_000.0) + " ms");
+        System.out.println("--------------------------------");
+        System.out.println("  TOTAL:           " + total + " ms");
+        System.out.println("================================");
     }
 
-    private JsonArray floatListToJson(List<Float> list) {
-        JsonArray arr = new JsonArray();
-        list.forEach(arr::add);
-        return arr;
+    private List<RagHit> search(String query, int topK) {
+        // ==================== 1. embed ====================
+        long tEmbedStart = System.nanoTime();
+        List<Float> emb = embeddingService.embed(query);
+        long tEmbedEnd = System.nanoTime();
+        System.out.println("[Perf] embed 耗时: " + ((tEmbedEnd - tEmbedStart) / 1_000_000.0) + " ms");
+
+        // ==================== 2. float[] 转换 ====================
+        float[] arr = new float[emb.size()];
+        for (int i = 0; i < emb.size(); i++) arr[i] = emb.get(i);
+
+        // ==================== 3. normalize ====================
+        long tNormStart = System.nanoTime();
+        float[] norm = normalize(arr);
+        long tNormEnd = System.nanoTime();
+        System.out.println("[Perf] normalize 耗时: " + ((tNormEnd - tNormStart) / 1_000_000.0) + " ms");
+
+        // ==================== 4. 构造向量请求 ====================
+        List<BaseVector> vectors = List.of(new FloatVec(norm));
+
+        Map<String, Object> params = new HashMap<>();
+        params.put("metric_type", metricType);
+        params.put("ef", 128);
+
+        SearchReq req = SearchReq.builder()
+                .collectionName(collectionName)
+                .annsField("embedding")
+                .data(vectors)
+                .topK(topK)
+                .searchParams(params)
+                .outputFields(List.of("doc_id", "content", "metadata"))
+                .build();
+
+        // ==================== 5. Milvus search ====================
+        long tMilvusStart = System.nanoTime();
+        SearchResp resp = milvusClient.search(req);
+        long tMilvusEnd = System.nanoTime();
+        System.out.println("[Perf] Milvus search 耗时: " + ((tMilvusEnd - tMilvusStart) / 1_000_000.0) + " ms");
+
+        List<List<SearchResp.SearchResult>> results = resp.getSearchResults();
+        if (results == null || results.isEmpty()) return List.of();
+
+        // ==================== 6. 打印 doc_id ====================
+        System.out.println("====== Milvus Search Hits ======");
+        for (SearchResp.SearchResult r : results.get(0)) {
+            Object id = r.getEntity().get("doc_id");
+            System.out.println("doc_id = " + (id != null ? id : "null"));
+        }
+        System.out.println("================================\n");
+
+        // ==================== 7. RagHit 映射 ====================
+        long tMapStart = System.nanoTime();
+        List<RagHit> list = results.get(0).stream()
+                .map(h -> new RagHit(
+                        Objects.toString(h.getEntity().get("doc_id"), ""),
+                        Objects.toString(h.getEntity().get("content"), ""),
+                        h.getScore()
+                ))
+                .collect(Collectors.toList());
+        long tMapEnd = System.nanoTime();
+        System.out.println("[Perf] RagHit mapping 耗时: " + ((tMapEnd - tMapStart) / 1_000_000.0) + " ms\n");
+
+        // ==================== 8. 打印性能总览 ====================
+        double total = (tMapEnd - tEmbedStart) / 1_000_000.0;
+
+        System.out.println("================================");
+        System.out.println("[Perf Summary - search]");
+        System.out.println("  embed:          " + ((tEmbedEnd - tEmbedStart) / 1_000_000.0) + " ms");
+        System.out.println("  normalize:      " + ((tNormEnd - tNormStart) / 1_000_000.0) + " ms");
+        System.out.println("  milvus search:  " + ((tMilvusEnd - tMilvusStart) / 1_000_000.0) + " ms");
+        System.out.println("  mapping:        " + ((tMapEnd - tMapStart) / 1_000_000.0) + " ms");
+        System.out.println("--------------------------------");
+        System.out.println("  subtotal:       " + total + " ms");
+        System.out.println("================================\n");
+
+        return list;
     }
 
-    public record RagHit(long id, String text, double score) {
+    private static float[] normalize(float[] v) {
+        double sum = 0.0;
+        for (float x : v) sum += x * x;
+        double len = Math.sqrt(sum);
+        float[] nv = new float[v.length];
+        for (int i = 0; i < v.length; i++) nv[i] = (float) (v[i] / len);
+        return nv;
+    }
+
+    public record RagHit(String id, String text, double score) {
     }
 
     public record RagAnswer(String question, List<RagHit> hits, String answer) {

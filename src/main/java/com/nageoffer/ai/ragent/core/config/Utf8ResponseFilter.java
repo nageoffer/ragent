@@ -1,6 +1,10 @@
-package com.nageoffer.ai.ragent.config;
+package com.nageoffer.ai.ragent.core.config;
 
-import jakarta.servlet.*;
+import jakarta.servlet.Filter;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.ServletRequest;
+import jakarta.servlet.ServletResponse;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;

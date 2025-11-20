@@ -1,8 +1,11 @@
-package com.nageoffer.ai.ragent.service;
+package com.nageoffer.ai.ragent.core.service;
 
 import org.springframework.stereotype.Service;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -13,7 +16,7 @@ public class ConversationService {
 
     // 存储所有会话：sessionId -> 消息列表
     private final Map<String, List<Message>> sessions = new ConcurrentHashMap<>();
-    
+
     // 每个会话最多保留的历史消息数量
     private static final int MAX_HISTORY = 10;
 
@@ -23,13 +26,13 @@ public class ConversationService {
     public void addMessage(String sessionId, String role, String content) {
         sessions.computeIfAbsent(sessionId, k -> new ArrayList<>())
                 .add(new Message(role, content));
-        
+
         // 限制历史消息数量，避免 token 过多
         List<Message> messages = sessions.get(sessionId);
         if (messages.size() > MAX_HISTORY * 2) {
             // 保留最近的消息
             sessions.put(sessionId, new ArrayList<>(
-                messages.subList(messages.size() - MAX_HISTORY * 2, messages.size())
+                    messages.subList(messages.size() - MAX_HISTORY * 2, messages.size())
             ));
         }
     }
@@ -46,17 +49,17 @@ public class ConversationService {
      */
     public String buildContextWithHistory(String sessionId, String ragContext, String currentQuestion) {
         List<Message> history = getHistory(sessionId);
-        
+
         StringBuilder context = new StringBuilder();
         context.append("你是一个专业的知识库问答助手，请根据以下文档和对话历史回答用户问题。\n\n");
-        
+
         // 添加 RAG 检索到的文档片段
         if (ragContext != null && !ragContext.isEmpty()) {
             context.append("【检索到的文档片段】:\n")
-                   .append(ragContext)
-                   .append("\n\n");
+                    .append(ragContext)
+                    .append("\n\n");
         }
-        
+
         // 添加对话历史
         if (!history.isEmpty()) {
             context.append("【对话历史】:\n");
@@ -69,12 +72,12 @@ public class ConversationService {
             }
             context.append("\n");
         }
-        
+
         // 添加当前问题
         context.append("【当前问题】:\n")
-               .append(currentQuestion)
-               .append("\n\n请给出简洁、准确的回答：");
-        
+                .append(currentQuestion)
+                .append("\n\n请给出简洁、准确的回答：");
+
         return context.toString();
     }
 

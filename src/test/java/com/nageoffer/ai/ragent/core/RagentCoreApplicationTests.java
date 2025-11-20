@@ -1,4 +1,4 @@
-package com.nageoffer.ai.ragentcore;
+package com.nageoffer.ai.ragent.core;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;

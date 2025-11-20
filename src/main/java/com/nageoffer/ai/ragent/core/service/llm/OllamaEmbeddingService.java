@@ -2,7 +2,9 @@ package com.nageoffer.ai.ragent.core.service.llm;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
-import org.springframework.beans.factory.annotation.Value;
+import com.nageoffer.ai.ragent.core.config.EmbeddingProperties;
+import lombok.RequiredArgsConstructor;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -14,22 +16,21 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Service
-public class EmbeddingService {
+@RequiredArgsConstructor
+@ConditionalOnProperty(name = "ai.embedding.provider", havingValue = "ollama", matchIfMissing = true)
+public class OllamaEmbeddingService implements EmbeddingService {
 
     private final RestTemplate restTemplate = new RestTemplate();
     private final Gson gson = new Gson();
 
-    @Value("${ollama.embedding-model:qwen3-embedding:8b}")
-    private String embeddingModel;
-
-    @Value("${ollama.url:http://localhost:11434}")
-    private String ollamaUrl;
+    private final EmbeddingProperties embeddingProperties;
 
     public List<Float> embed(String text) {
-        String url = ollamaUrl + "/api/embed";
+        EmbeddingProperties.EmbeddingOllamaProperties properties = embeddingProperties.getOllama();
+        String url = properties.url() + "/api/embed";
 
         JsonObject body = new JsonObject();
-        body.addProperty("model", embeddingModel);
+        body.addProperty("model", properties.model());
         body.addProperty("input", text);
 
         HttpHeaders headers = new HttpHeaders();
@@ -56,5 +57,17 @@ public class EmbeddingService {
         first.forEach(v -> vector.add(v.getAsFloat()));
 
         return vector;
+    }
+
+    @Override
+    public List<List<Float>> embedBatch(List<String> texts) {
+        // TODO
+        return List.of();
+    }
+
+    @Override
+    public int dimension() {
+        // TODO
+        return 0;
     }
 }

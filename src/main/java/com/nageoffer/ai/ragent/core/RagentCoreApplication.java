@@ -1,4 +1,4 @@
-package com.nageoffer.ai.ragentcore;
+package com.nageoffer.ai.ragent.core;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -9,5 +9,4 @@ public class RagentCoreApplication {
     public static void main(String[] args) {
         SpringApplication.run(RagentCoreApplication.class, args);
     }
-
 }
