@@ -1,17 +1,13 @@
 package com.nageoffer.ai.ragent.core.controller;
 
-import com.nageoffer.ai.ragent.core.dto.QueryRequest;
-import com.nageoffer.ai.ragent.core.dto.rag.RAGAnswer;
 import com.nageoffer.ai.ragent.core.service.ConversationService;
-import com.nageoffer.ai.ragent.core.service.RAGService;
+import com.nageoffer.ai.ragent.core.service.impl.RAGServiceImpl;
 import com.nageoffer.ai.ragent.core.service.rag.chat.StreamCallback;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -28,14 +24,14 @@ import java.util.concurrent.Executors;
 @RequestMapping("/api/ragent/rag")
 public class RAGController {
 
-    private final RAGService ragService;
+    private final RAGServiceImpl ragService;
     private final ConversationService conversationService;
     private final Executor executor = Executors.newCachedThreadPool();
 
-    @PostMapping("/query")
-    public RAGAnswer query(@RequestBody QueryRequest req) {
-        int topK = (req.getTopK() == null || req.getTopK() <= 0) ? 3 : req.getTopK();
-        return ragService.answer(req.getQuestion(), topK);
+    @GetMapping("/chat")
+    public String chat(@RequestParam String question,
+                       @RequestParam(defaultValue = "3") Integer topK) {
+        return ragService.answer(question, topK);
     }
 
     @GetMapping(value = "/stream", produces = "text/event-stream;charset=UTF-8")
