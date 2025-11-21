@@ -16,8 +16,9 @@
 
     <properties>
         <java.version>17</java.version>
-        <milvus.sdk.version>2.6.6</milvus.sdk.version>
+        <milvus-sdk.version>2.6.6</milvus-sdk.version>
         <tika.version>3.2.3</tika.version>
+        <hutool-all.version>5.8.37</hutool-all.version>
     </properties>
 
     <dependencyManagement>
@@ -52,7 +53,7 @@
         <dependency>
             <groupId>io.milvus</groupId>
             <artifactId>milvus-sdk-java</artifactId>
-            <version>${milvus.sdk.version}</version>
+            <version>${milvus-sdk.version}</version>
         </dependency>
 
         <dependency>
@@ -75,6 +76,12 @@
         <dependency>
             <groupId>org.apache.tika</groupId>
             <artifactId>tika-core</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>cn.hutool</groupId>
+            <artifactId>hutool-all</artifactId>
+            <version>${hutool-all.version}</version>
         </dependency>
     </dependencies>
 
