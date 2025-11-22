@@ -3,24 +3,15 @@ package com.nageoffer.ai.ragent.core.service.impl;
 import com.nageoffer.ai.ragent.core.convention.ChatRequest;
 import com.nageoffer.ai.ragent.core.dto.rag.RAGHit;
 import com.nageoffer.ai.ragent.core.service.RAGService;
+import com.nageoffer.ai.ragent.core.service.RetrieverService;
 import com.nageoffer.ai.ragent.core.service.rag.chat.LLMService;
 import com.nageoffer.ai.ragent.core.service.rag.chat.StreamCallback;
-import com.nageoffer.ai.ragent.core.service.rag.embedding.OllamaEmbeddingService;
 import com.nageoffer.ai.ragent.core.service.rag.rerank.RerankService;
-import io.milvus.v2.client.MilvusClientV2;
-import io.milvus.v2.service.vector.request.SearchReq;
-import io.milvus.v2.service.vector.request.data.BaseVector;
-import io.milvus.v2.service.vector.request.data.FloatVec;
-import io.milvus.v2.service.vector.response.SearchResp;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -28,19 +19,13 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class RAGServiceImpl implements RAGService {
 
-    private final MilvusClientV2 milvusClient;
-    private final OllamaEmbeddingService embeddingService;
+    private final RetrieverService retrieverService;
     private final LLMService llmService;
     private final RerankService rerankService;
 
-    @Value("${rag.collection-name}")
-    private String collectionName;
-    @Value("${rag.metric-type}")
-    private String metricType;
-
     @Override
     public String answer(String question, int topK) {
-        List<RAGHit> hits = search(question, topK);
+        List<RAGHit> hits = retrieverService.retrieve(question, topK);
 
         // 如果没有检索到内容，直接 fallback
         if (hits == null || hits.isEmpty()) {
@@ -90,7 +75,7 @@ public class RAGServiceImpl implements RAGService {
         int finalTopK = topK;
         int searchTopK = finalTopK * 3;
 
-        List<RAGHit> roughHits = search(question, searchTopK);
+        List<RAGHit> roughHits = retrieverService.retrieve(question, searchTopK);
         long tSearchEnd = System.nanoTime();
         System.out.println("[Perf] search(question, topK) 耗时: " + ((tSearchEnd - tSearchStart) / 1_000_000.0) + " ms");
 
@@ -151,92 +136,5 @@ public class RAGServiceImpl implements RAGService {
         System.out.println("--------------------------------");
         System.out.println("  TOTAL:           " + total + " ms");
         System.out.println("================================");
-    }
-
-    private List<RAGHit> search(String query, int topK) {
-        // ==================== 1. embed ====================
-        long tEmbedStart = System.nanoTime();
-        List<Float> emb = embeddingService.embed(query);
-        long tEmbedEnd = System.nanoTime();
-        System.out.println("[Perf] embed 耗时: " + ((tEmbedEnd - tEmbedStart) / 1_000_000.0) + " ms");
-
-        // ==================== 2. float[] 转换 ====================
-        float[] arr = new float[emb.size()];
-        for (int i = 0; i < emb.size(); i++) arr[i] = emb.get(i);
-
-        // ==================== 3. normalize ====================
-        long tNormStart = System.nanoTime();
-        float[] norm = normalize(arr);
-        long tNormEnd = System.nanoTime();
-        System.out.println("[Perf] normalize 耗时: " + ((tNormEnd - tNormStart) / 1_000_000.0) + " ms");
-
-        // ==================== 4. 构造向量请求 ====================
-        List<BaseVector> vectors = List.of(new FloatVec(norm));
-
-        Map<String, Object> params = new HashMap<>();
-        params.put("metric_type", metricType);
-        params.put("ef", 128);
-
-        SearchReq req = SearchReq.builder()
-                .collectionName(collectionName)
-                .annsField("embedding")
-                .data(vectors)
-                .topK(topK)
-                .searchParams(params)
-                .outputFields(List.of("doc_id", "content", "metadata"))
-                .build();
-
-        // ==================== 5. Milvus search ====================
-        long tMilvusStart = System.nanoTime();
-        SearchResp resp = milvusClient.search(req);
-        long tMilvusEnd = System.nanoTime();
-        System.out.println("[Perf] Milvus search 耗时: " + ((tMilvusEnd - tMilvusStart) / 1_000_000.0) + " ms");
-
-        List<List<SearchResp.SearchResult>> results = resp.getSearchResults();
-        if (results == null || results.isEmpty()) return List.of();
-
-        // ==================== 6. 打印 doc_id ====================
-        System.out.println("====== Milvus Search Hits ======");
-        for (SearchResp.SearchResult r : results.get(0)) {
-            Object id = r.getEntity().get("doc_id");
-            System.out.println("doc_id = " + (id != null ? id : "null"));
-        }
-        System.out.println("================================\n");
-
-        // ==================== 7. RagHit 映射 ====================
-        long tMapStart = System.nanoTime();
-        List<RAGHit> list = results.get(0).stream()
-                .map(h -> new RAGHit(
-                        Objects.toString(h.getEntity().get("doc_id"), ""),
-                        Objects.toString(h.getEntity().get("content"), ""),
-                        h.getScore()
-                ))
-                .collect(Collectors.toList());
-        long tMapEnd = System.nanoTime();
-        System.out.println("[Perf] RagHit mapping 耗时: " + ((tMapEnd - tMapStart) / 1_000_000.0) + " ms\n");
-
-        // ==================== 8. 打印性能总览 ====================
-        double total = (tMapEnd - tEmbedStart) / 1_000_000.0;
-
-        System.out.println("================================");
-        System.out.println("[Perf Summary - search]");
-        System.out.println("  embed:          " + ((tEmbedEnd - tEmbedStart) / 1_000_000.0) + " ms");
-        System.out.println("  normalize:      " + ((tNormEnd - tNormStart) / 1_000_000.0) + " ms");
-        System.out.println("  milvus search:  " + ((tMilvusEnd - tMilvusStart) / 1_000_000.0) + " ms");
-        System.out.println("  mapping:        " + ((tMapEnd - tMapStart) / 1_000_000.0) + " ms");
-        System.out.println("--------------------------------");
-        System.out.println("  subtotal:       " + total + " ms");
-        System.out.println("================================\n");
-
-        return list;
-    }
-
-    private static float[] normalize(float[] v) {
-        double sum = 0.0;
-        for (float x : v) sum += x * x;
-        double len = Math.sqrt(sum);
-        float[] nv = new float[v.length];
-        for (int i = 0; i < v.length; i++) nv[i] = (float) (v[i] / len);
-        return nv;
     }
 }
