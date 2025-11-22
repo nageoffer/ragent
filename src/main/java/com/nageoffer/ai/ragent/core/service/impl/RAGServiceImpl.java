@@ -65,7 +65,6 @@ public class RAGServiceImpl implements RAGService {
         return llmService.chat(req);
     }
 
-
     @Override
     public void streamAnswer(String question, int topK, StreamCallback callback) {
         long tStart = System.nanoTime();
