@@ -1,6 +1,6 @@
 package com.nageoffer.ai.ragent.core.controller;
 
-import com.nageoffer.ai.ragent.core.service.RAGService;
+import com.nageoffer.ai.ragent.core.service.impl.SimpleRAGServiceImpl;
 import com.nageoffer.ai.ragent.core.service.rag.chat.StreamCallback;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -17,16 +17,16 @@ import java.util.concurrent.Executors;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping("/api/ragent/v2/rag")
-public class RAGController {
+@RequestMapping("/api/ragent/v1/rag")
+public class SimpleRAGController {
 
-    private final RAGService ragService;
+    private final SimpleRAGServiceImpl simpleRAGService;
     private final Executor executor = Executors.newCachedThreadPool();
 
     @GetMapping("/chat")
     public String chat(@RequestParam String question,
                        @RequestParam(defaultValue = "3") Integer topK) {
-        return ragService.answer(question, topK);
+        return simpleRAGService.answer(question, topK);
     }
 
     @GetMapping(value = "/stream", produces = "text/event-stream;charset=UTF-8")
@@ -35,7 +35,7 @@ public class RAGController {
         SseEmitter emitter = new SseEmitter(0L);
         executor.execute(() -> {
             try {
-                ragService.streamAnswer(question, topK, new StreamCallback() {
+                simpleRAGService.streamAnswer(question, topK, new StreamCallback() {
                     @Override
                     public void onContent(String chunk) {
                         try {
@@ -78,7 +78,7 @@ public class RAGController {
         PrintWriter writer = response.getWriter();
 
         try {
-            ragService.streamAnswer(question, topK, new StreamCallback() {
+            simpleRAGService.streamAnswer(question, topK, new StreamCallback() {
                 @Override
                 public void onContent(String chunk) {
                     writer.write(chunk);
