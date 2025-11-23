@@ -1,4 +1,4 @@
-package com.nageoffer.ai.ragent.core.rag;
+package com.nageoffer.ai.ragent.core.rag.intention;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
@@ -19,7 +19,7 @@ import java.util.stream.Collectors;
 @Slf4j
 @SpringBootTest
 @RequiredArgsConstructor(onConstructor = @__(@Autowired))
-public class IntentClassifierTests {
+public class SimpleIntentClassifierTests {
 
     private final LLMService llmService;
 
