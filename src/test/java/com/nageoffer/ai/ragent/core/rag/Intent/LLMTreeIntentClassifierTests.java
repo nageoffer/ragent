@@ -1,5 +1,8 @@
-package com.nageoffer.ai.ragent.core.rag.intention;
+package com.nageoffer.ai.ragent.core.rag.Intent;
 
+import com.nageoffer.ai.ragent.core.service.rag.intent.IntentNode;
+import com.nageoffer.ai.ragent.core.service.rag.intent.LLMTreeIntentClassifier;
+import com.nageoffer.ai.ragent.core.service.rag.intent.NodeScore;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Test;
@@ -59,7 +62,7 @@ public class LLMTreeIntentClassifierTests {
      * 场景 4：业务系统（OA），功能 + 安全
      * 示例：OA系统主要提供哪些功能？数据安全怎么做的？
      * 期望：高分主要落在 biz-oa-intro / biz-oa-security 上，
-     * 不要把 biz-ins-*（保险系统）拉进高分区间。
+     * 不要把 biz-ins-*（保险系统）拉进高分区间
      */
     @Test
     public void classifyBizSystemQuestion() {
@@ -71,8 +74,38 @@ public class LLMTreeIntentClassifierTests {
      * 场景 5：刻意搞一个“非常泛”的问题，看是否整体得分偏低
      */
     @Test
-    public void classifyGeneralQuestion() {
+    public void classifyUncorrelatedQuestion() {
         String question = "公司团建一般怎么安排？";
+        runCase(question);
+    }
+
+    /**
+     * 场景 6：刻意搞一个“泛”的问题，看是否能全部收集
+     */
+    @Test
+    public void classifyMultiQuestion() {
+        String question = "数据安全怎么做的？";
+        runCase(question);
+    }
+
+    /**
+     * 场景 7：刻意搞一个不相关的问题，看分类场景
+     */
+    @Test
+    public void classifyGeneralQuestion() {
+        String question = "阿里巴巴";
+        runCase(question);
+    }
+
+    /**
+     * 场景 8：咨询Chat场景
+     */
+    @Test
+    public void classifyHelloQuestion() {
+        // String question = "Hello";
+        // String question = "你是谁？";
+        // String question = "你是ChatGPT么？";
+        String question = "你底层用的什么模型？";
         runCase(question);
     }
 
@@ -130,4 +163,3 @@ public class LLMTreeIntentClassifierTests {
         return node.getFullPath() != null ? node.getFullPath() : node.getName();
     }
 }
-

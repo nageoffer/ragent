@@ -1,5 +1,6 @@
-package com.nageoffer.ai.ragent.core.rag.intention;
+package com.nageoffer.ai.ragent.core.rag.Intent;
 
+import com.nageoffer.ai.ragent.core.service.rag.intent.IntentNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Test;

@@ -1,4 +1,4 @@
-package com.nageoffer.ai.ragent.core.rag.intention;
+package com.nageoffer.ai.ragent.core.rag.Intent;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
