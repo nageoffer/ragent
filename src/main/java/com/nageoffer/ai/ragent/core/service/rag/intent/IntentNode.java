@@ -1,5 +1,7 @@
-package com.nageoffer.ai.ragent.core.rag.intention;
+package com.nageoffer.ai.ragent.core.service.rag.intent;
 
+import com.nageoffer.ai.ragent.core.enums.IntentKind;
+import com.nageoffer.ai.ragent.core.enums.IntentLevel;
 import lombok.Builder;
 import lombok.Data;
 
@@ -9,12 +11,6 @@ import java.util.List;
 @Data
 @Builder
 public class IntentNode {
-
-    public enum Level {
-        DOMAIN,      // 顶层：集团信息化 / 业务系统 / 中间件环境信息
-        CATEGORY,    // 第二层：人事 / 行政 / OA系统 / Redis ...
-        TOPIC        // 第三层：更具体的 Topic，如 系统介绍 / 数据安全 / 架构设计
-    }
 
     /**
      * 唯一标识，如：
@@ -35,7 +31,7 @@ public class IntentNode {
     /**
      * 所属层级：DOMAIN / CATEGORY / TOPIC
      */
-    private Level level;
+    private IntentLevel level;
 
     /**
      * 父节点 ID，根节点为 null
@@ -56,7 +52,9 @@ public class IntentNode {
 
     /**
      * 预计算好的嵌入向量
+     * 仅向量意图识别测试使用
      */
+    @Deprecated
     @Builder.Default
     private float[] embedding = null;
 
@@ -67,6 +65,17 @@ public class IntentNode {
     private String fullPath = "";
 
     /**
+     * 这类节点属于知识库还是系统交互
+     */
+    @Builder.Default
+    private IntentKind kind = IntentKind.KB;
+
+    /**
+     * 仅对 kind=KB 有意义，对 SYSTEM 节点可以为 null
+     */
+    private String collectionName;
+
+    /**
      * 是否为“最终节点”（叶子节点）：
      * - 叶子节点才挂知识库（Milvus Collection）
      * - 叶子节点才会参与意图匹配打分
@@ -74,8 +83,6 @@ public class IntentNode {
     public boolean isLeaf() {
         return children == null || children.isEmpty();
     }
-
-    private String collectionName;
 }
 
 

@@ -1,11 +1,11 @@
-package com.nageoffer.ai.ragent.core.rag.intention;
+package com.nageoffer.ai.ragent.core.service.rag.intent;
+
+import com.nageoffer.ai.ragent.core.enums.IntentKind;
 
 import java.util.ArrayList;
 import java.util.List;
 
-import static com.nageoffer.ai.ragent.core.rag.intention.IntentNode.Level.CATEGORY;
-import static com.nageoffer.ai.ragent.core.rag.intention.IntentNode.Level.DOMAIN;
-import static com.nageoffer.ai.ragent.core.rag.intention.IntentNode.Level.TOPIC;
+import static com.nageoffer.ai.ragent.core.enums.IntentLevel.*;
 
 public class IntentTreeFactory {
 
@@ -249,6 +249,51 @@ public class IntentTreeFactory {
 
         mw.setChildren(List.of(redis, rocketmq, xxlJob));
         roots.add(mw);
+
+        // ========== 4. 系统交互 / 助手说明 ==========
+        IntentNode sys = IntentNode.builder()
+                .id("sys")
+                .name("系统交互")
+                .level(DOMAIN)
+                .description("与助手本身相关的交互，如打招呼、自我介绍、使用说明等")
+                .kind(IntentKind.SYSTEM) // Domain 可以先标 SYSTEM，仅作语义提示
+                .build();
+
+        // 欢迎 / 问候
+        IntentNode welcome = IntentNode.builder()
+                .id("sys-welcome")
+                .name("欢迎与问候")
+                .level(CATEGORY) // 直接作为叶子
+                .parentId(sys.getId())
+                .description("用户与助手打招呼，如：你好、早上好、hi、在吗 等")
+                .examples(List.of(
+                        "你好",
+                        "hello",
+                        "早上好",
+                        "在吗",
+                        "嗨"
+                ))
+                .kind(IntentKind.SYSTEM)
+                .build();
+
+        // 关于助手
+        IntentNode aboutBot = IntentNode.builder()
+                .id("sys-about-bot")
+                .name("关于助手")
+                .level(CATEGORY)
+                .parentId(sys.getId())
+                .description("询问助手是做什么的、是谁、能做什么等")
+                .examples(List.of(
+                        "你是谁",
+                        "你是做什么的",
+                        "你能帮我做什么",
+                        "你是什么AI"
+                ))
+                .kind(IntentKind.SYSTEM)
+                .build();
+
+        sys.setChildren(List.of(welcome, aboutBot));
+        roots.add(sys);
 
         // 填充 fullPath
         fillFullPath(roots, null);

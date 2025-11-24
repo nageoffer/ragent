@@ -1,4 +1,4 @@
-package com.nageoffer.ai.ragent.core.rag.intention;
+package com.nageoffer.ai.ragent.core.service.rag.intent;
 
 import com.google.gson.*;
 import com.nageoffer.ai.ragent.core.service.rag.chat.LLMService;
