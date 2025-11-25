@@ -1,6 +1,10 @@
 package com.nageoffer.ai.ragent.core.service.rag.intent;
 
+import cn.hutool.core.bean.BeanUtil;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.google.gson.*;
+import com.nageoffer.ai.ragent.core.dao.entity.IntentNodeDO;
+import com.nageoffer.ai.ragent.core.dao.mapper.IntentNodeMapper;
 import com.nageoffer.ai.ragent.core.service.rag.chat.LLMService;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
@@ -22,6 +26,7 @@ import java.util.stream.Collectors;
 public class LLMTreeIntentClassifier {
 
     private final LLMService llmService;
+    private final IntentNodeMapper intentNodeMapper;
 
     /**
      * 整棵树所有节点（可选，用于调试）
@@ -38,14 +43,10 @@ public class LLMTreeIntentClassifier {
      */
     private Map<String, IntentNode> id2Node;
 
-    private final Gson gson = new GsonBuilder()
-            .disableHtmlEscaping()
-            .create();
-
     @PostConstruct
     public void init() {
         // 1. 构建 Tree
-        List<IntentNode> roots = IntentTreeFactory.buildIntentTree();
+        List<IntentNode> roots = loadIntentTreeFromDB();
         this.allNodes = flatten(roots);
 
         // 2. 提取叶子节点（最终分类）
@@ -165,7 +166,6 @@ public class LLMTreeIntentClassifier {
                 - 如果用户问题中明确提到了某个具体系统名称（例如：“OA系统”、“保险系统”），优先只在该系统对应的分类下进行选择。
                 - 例如：问题中只提到“OA系统”，不要选择“保险系统”的分类，即使它们都包含“数据安全”等相似词。
                 - 只有当问题非常明确是在比较多个系统时，才可以同时选择多个系统的分类。
-                - 不要仅因为关键词相似（例如都出现“数据安全”、“系统介绍”）就跨系统选择分类。
                 
                 【输出要求】
                 1. 只输出一个 JSON 数组，不要包含任何多余文字。
@@ -184,7 +184,7 @@ public class LLMTreeIntentClassifier {
                 【分类列表（仅叶子节点）】
                 """);
 
-        for (IntentNode node : leafNodes) {
+        for (IntentNode node : allNodes) {
             sb.append("- id=").append(node.getId()).append("\n");
             sb.append("  path=").append(node.getFullPath()).append("\n");
             sb.append("  description=").append(node.getDescription()).append("\n");
@@ -199,5 +199,82 @@ public class LLMTreeIntentClassifier {
         sb.append("\n【用户问题】\n").append(question).append("\n");
 
         return sb.toString();
+    }
+
+    private List<IntentNode> loadIntentTreeFromDB() {
+        // 1. 查出所有未删除节点（扁平结构）
+        List<IntentNodeDO> intentNodeDOList = intentNodeMapper.selectList(
+                Wrappers.lambdaQuery(IntentNodeDO.class)
+                        .eq(IntentNodeDO::getDeleted, 0)
+        );
+
+        if (intentNodeDOList.isEmpty()) {
+            return List.of();
+        }
+
+        // 2. DO -> IntentNode（第一遍：先把所有节点建出来，放到 map 里）
+        Map<String, IntentNode> id2Node = new HashMap<>();
+        for (IntentNodeDO each : intentNodeDOList) {
+            IntentNode node = BeanUtil.toBean(each, IntentNode.class);
+            // 这里重点：数据库中的 code 映射到 IntentNode 的 id/parentId
+            node.setId(each.getIntentCode());
+            node.setParentId(each.getParentCode());
+            // 确保 children 不为 null（避免后面 add NPE）
+            if (node.getChildren() == null) {
+                node.setChildren(new ArrayList<>());
+            }
+            id2Node.put(node.getId(), node);
+        }
+
+        // 3. 第二遍：根据 parentId 组装 parent -> children
+        List<IntentNode> roots = new ArrayList<>();
+        for (IntentNode node : id2Node.values()) {
+            String parentId = node.getParentId();
+            if (parentId == null || parentId.isBlank()) {
+                // 没有 parentId，当作根节点
+                roots.add(node);
+                continue;
+            }
+
+            IntentNode parent = id2Node.get(parentId);
+            if (parent == null) {
+                // 找不到父节点，兜底也当作根节点，避免节点丢失
+                roots.add(node);
+                continue;
+            }
+
+            // 追加到父节点的 children
+            if (parent.getChildren() == null) {
+                parent.setChildren(new ArrayList<>());
+            }
+            parent.getChildren().add(node);
+        }
+
+        // 4. 填充 fullPath（跟你原来的 fillFullPath 一样的逻辑）
+        fillFullPath(roots, null);
+
+        return roots;
+    }
+
+    /**
+     * 填充 fullPath 字段，效果类似：
+     * - 集团信息化
+     * - 集团信息化 > 人事
+     * - 业务系统 > OA系统 > 系统介绍
+     */
+    private void fillFullPath(List<IntentNode> nodes, IntentNode parent) {
+        if (nodes == null) return;
+
+        for (IntentNode node : nodes) {
+            if (parent == null) {
+                node.setFullPath(node.getName());
+            } else {
+                node.setFullPath(parent.getFullPath() + " > " + node.getName());
+            }
+
+            if (node.getChildren() != null && !node.getChildren().isEmpty()) {
+                fillFullPath(node.getChildren(), node);
+            }
+        }
     }
 }

@@ -93,7 +93,7 @@ public class LLMTreeIntentClassifierTests {
      */
     @Test
     public void classifyGeneralQuestion() {
-        String question = "阿里巴巴";
+        String question = "阿巴阿巴";
         runCase(question);
     }
 

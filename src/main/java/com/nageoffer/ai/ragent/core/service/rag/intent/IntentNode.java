@@ -76,6 +76,16 @@ public class IntentNode {
     private String collectionName;
 
     /**
+     * 短规则片段（可选）
+     */
+    private String promptSnippet;
+
+    /**
+     * 场景用的完整 Prompt 模板（可选）
+     */
+    private String promptTemplate;
+
+    /**
      * 是否为“最终节点”（叶子节点）：
      * - 叶子节点才挂知识库（Milvus Collection）
      * - 叶子节点才会参与意图匹配打分
