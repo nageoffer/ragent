@@ -1,6 +1,7 @@
 package com.nageoffer.ai.ragent.core.service.impl;
 
 import cn.hutool.core.collection.CollUtil;
+import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
 import com.nageoffer.ai.ragent.core.convention.ChatRequest;
 import com.nageoffer.ai.ragent.core.enums.IntentKind;
@@ -43,7 +44,7 @@ public class RAGServiceImpl implements RAGService {
     @Override
     public String answer(String question, int topK) {
         List<NodeScore> nodeScores = llmTreeIntentClassifier.classifyTargets(question);
-        log.info("\n意图识别:\n{}", JSONUtil.toJsonPrettyStr(nodeScores));
+        log.info("\n意图识别树如下所示:\n{}", JSONUtil.toJsonPrettyStr(nodeScores));
 
         if (nodeScores.size() == 1) {
             if (Objects.equals(nodeScores.get(0).getNode().getKind(), SYSTEM)) {
@@ -69,7 +70,6 @@ public class RAGServiceImpl implements RAGService {
                 .limit(MAX_INTENT_COUNT)
                 .toList();
 
-
         int finalTopK = topK;
         int searchTopK = finalTopK * 3;
 
@@ -82,6 +82,7 @@ public class RAGServiceImpl implements RAGService {
                     .build();
             List<RetrievedChunk> nodeRetrieveChunks = retrieverService.retrieve(request);
             nodeRetrieveChunks = rerankService.rerank(question, nodeRetrieveChunks, finalTopK);
+
             if (CollUtil.isNotEmpty(nodeRetrieveChunks)) {
                 retrievedChunks.addAll(nodeRetrieveChunks);
             }
@@ -97,8 +98,12 @@ public class RAGServiceImpl implements RAGService {
                 .map(h -> "- " + h.getText())
                 .collect(Collectors.joining("\n"));
 
-        String prompt = nodeScores.size() == 1
-                ? nodeScores.get(0).getNode().getPromptTemplate()
+        String prompt = ragIntentScores.size() == 1
+                ?
+                (StrUtil.isBlank(ragIntentScores.get(0).getNode().getPromptTemplate())
+                        ? RAG_DEFAULT_PROMPT
+                        : ragIntentScores.get(0).getNode().getPromptTemplate()
+                )
                 : RAG_DEFAULT_PROMPT;
         prompt = prompt.formatted(context, question);
 
