@@ -1,16 +1,21 @@
 package com.nageoffer.ai.ragent.core.service;
 
-import com.nageoffer.ai.ragent.core.dao.entity.KnowledgeDocumentDO;
-import com.nageoffer.ai.ragent.core.dto.kb.KnowledgeDocumentCreateReqDTO;
-import com.nageoffer.ai.ragent.core.dto.kb.KnowledgeDocumentUpdateReqDTO;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.nageoffer.ai.ragent.core.dto.kb.KnowledgeDocumentVO;
+import org.springframework.web.multipart.MultipartFile;
 
 public interface KnowledgeDocumentService {
 
-    Long create(KnowledgeDocumentCreateReqDTO req, String operator);
+    KnowledgeDocumentVO upload(String kbId, MultipartFile file);
 
-    void update(Long id, KnowledgeDocumentUpdateReqDTO req, String operator);
+    void startChunk(String kbId, String docId);
 
-    void delete(Long id, String operator);
+    void delete(String kbId, String docId, boolean purgeVectors);
 
-    KnowledgeDocumentDO getById(Long id);
+    KnowledgeDocumentVO get(String kbId, String docId);
+
+    IPage<KnowledgeDocumentVO> page(String kbId, Page<KnowledgeDocumentVO> page, String status, String keyword);
+
+    void enable(String kbId, String docId, boolean enabled);
 }
