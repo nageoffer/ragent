@@ -11,11 +11,12 @@ import com.nageoffer.ai.ragent.core.dao.mapper.KnowledgeBaseMapper;
 import com.nageoffer.ai.ragent.core.dao.mapper.KnowledgeDocumentMapper;
 import com.nageoffer.ai.ragent.core.dto.kb.KnowledgeDocumentVO;
 import com.nageoffer.ai.ragent.core.enums.DocumentStatus;
-import com.nageoffer.ai.ragent.core.service.ChunkService;
-import com.nageoffer.ai.ragent.core.service.DocumentTextExtractor;
 import com.nageoffer.ai.ragent.core.service.FileStorageService;
 import com.nageoffer.ai.ragent.core.service.KnowledgeDocumentService;
+import com.nageoffer.ai.ragent.core.service.rag.chunk.Chunk;
+import com.nageoffer.ai.ragent.core.service.rag.chunk.StructureAwareSemanticChunkService;
 import com.nageoffer.ai.ragent.core.service.rag.embedding.EmbeddingService;
+import com.nageoffer.ai.ragent.core.service.rag.extractor.DocumentTextExtractor;
 import com.nageoffer.ai.ragent.core.service.rag.vector.VectorStoreService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -35,7 +36,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
     private final KnowledgeBaseMapper kbMapper;
     private final KnowledgeDocumentMapper docMapper;
     private final DocumentTextExtractor textExtractor;
-    private final ChunkService chunkService;
+    private final StructureAwareSemanticChunkService chunkService;
     private final FileStorageService fileStorageService;
     private final EmbeddingService embeddingService;
     private final VectorStoreService vectorStoreService;
@@ -80,9 +81,9 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
             String text = textExtractor.extract(localPath, doc.getDocName());
 
             // 2) 分块
-            List<ChunkService.Chunk> chunks = chunkService.split(text);
+            List<Chunk> chunks = chunkService.split(text);
 
-            List<String> texts = chunks.stream().map(ChunkService.Chunk::content).toList();
+            List<String> texts = chunks.stream().map(Chunk::getContent).toList();
             float[][] vectors = new float[texts.size()][];
             for (int i = 0; i < texts.size(); i++) {
                 vectors[i] = toArray(embeddingService.embed(texts.get(i)));
