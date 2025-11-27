@@ -16,7 +16,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -34,11 +36,20 @@ public class RerankBaiLianService implements RerankService {
         if (candidates == null || candidates.isEmpty()) {
             return List.of();
         }
-        if (topN <= 0 || candidates.size() <= topN) {
-            return candidates;
+
+        List<RetrievedChunk> dedup = new ArrayList<>(candidates.size());
+        Set<String> seen = new HashSet<>();
+        for (RetrievedChunk rc : candidates) {
+            if (seen.add(rc.getId())) {
+                dedup.add(rc);
+            }
         }
 
-        return chat(query, candidates, topN);
+        if (topN <= 0 || dedup.size() <= topN) {
+            return dedup;
+        }
+
+        return chat(query, dedup, topN);
     }
 
     public List<RetrievedChunk> chat(String query, List<RetrievedChunk> candidates, int topN) {
