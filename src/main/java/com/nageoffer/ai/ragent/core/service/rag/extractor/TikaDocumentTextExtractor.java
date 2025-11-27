@@ -1,10 +1,7 @@
-package com.nageoffer.ai.ragent.core.service.impl;
+package com.nageoffer.ai.ragent.core.service.rag.extractor;
 
-import com.nageoffer.ai.ragent.core.service.DocumentTextExtractor;
 import lombok.SneakyThrows;
 import org.apache.tika.Tika;
-import org.apache.tika.metadata.Metadata;
-import org.apache.tika.metadata.TikaCoreProperties;
 import org.springframework.stereotype.Service;
 
 import java.nio.file.Files;

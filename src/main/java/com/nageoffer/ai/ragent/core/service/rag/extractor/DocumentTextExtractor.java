@@ -1,4 +1,4 @@
-package com.nageoffer.ai.ragent.core.service;
+package com.nageoffer.ai.ragent.core.service.rag.extractor;
 
 import java.nio.file.Path;
 
