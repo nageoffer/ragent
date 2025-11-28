@@ -55,5 +55,7 @@ public interface EmbeddingService {
      *
      * @return 向量维度（如 4096、768 等）
      */
-    int dimension();
+    default int dimension() {
+        return 0;
+    }
 }
