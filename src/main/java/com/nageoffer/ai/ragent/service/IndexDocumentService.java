@@ -6,7 +6,7 @@ import com.google.gson.JsonObject;
 import com.nageoffer.ai.ragent.config.RAGDefaultProperties;
 import com.nageoffer.ai.ragent.dto.DocumentChunk;
 import com.nageoffer.ai.ragent.dto.DocumentIndexResult;
-import com.nageoffer.ai.ragent.service.rag.embedding.EmbeddingService;
+import com.nageoffer.ai.ragent.rag.embedding.EmbeddingService;
 import io.milvus.v2.client.MilvusClientV2;
 import io.milvus.v2.service.vector.request.DeleteReq;
 import io.milvus.v2.service.vector.request.InsertReq;

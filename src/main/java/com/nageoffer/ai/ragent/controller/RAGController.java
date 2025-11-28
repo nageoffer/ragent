@@ -1,7 +1,7 @@
 package com.nageoffer.ai.ragent.controller;
 
 import com.nageoffer.ai.ragent.service.RAGService;
-import com.nageoffer.ai.ragent.service.rag.chat.StreamCallback;
+import com.nageoffer.ai.ragent.rag.chat.StreamCallback;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;

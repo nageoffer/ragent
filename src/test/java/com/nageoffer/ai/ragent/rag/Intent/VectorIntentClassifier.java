@@ -1,8 +1,8 @@
 package com.nageoffer.ai.ragent.rag.Intent;
 
-import com.nageoffer.ai.ragent.service.rag.embedding.EmbeddingService;
-import com.nageoffer.ai.ragent.service.rag.intent.IntentNode;
-import com.nageoffer.ai.ragent.service.rag.intent.IntentTreeFactory;
+import com.nageoffer.ai.ragent.rag.embedding.EmbeddingService;
+import com.nageoffer.ai.ragent.rag.intent.IntentNode;
+import com.nageoffer.ai.ragent.rag.intent.IntentTreeFactory;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

@@ -1,6 +1,6 @@
 package com.nageoffer.ai.ragent.service;
 
-import com.nageoffer.ai.ragent.service.rag.chat.StreamCallback;
+import com.nageoffer.ai.ragent.rag.chat.StreamCallback;
 
 /**
  * RAG（Retrieval-Augmented Generation）问答服务接口

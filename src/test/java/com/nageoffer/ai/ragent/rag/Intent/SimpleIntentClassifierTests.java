@@ -2,7 +2,7 @@ package com.nageoffer.ai.ragent.rag.Intent;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
-import com.nageoffer.ai.ragent.service.rag.chat.LLMService;
+import com.nageoffer.ai.ragent.rag.chat.LLMService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Test;

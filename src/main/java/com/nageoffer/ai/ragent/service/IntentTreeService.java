@@ -1,6 +1,5 @@
 package com.nageoffer.ai.ragent.service;
 
-
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.nageoffer.ai.ragent.dao.entity.IntentNodeDO;
 import com.nageoffer.ai.ragent.dto.kb.IntentNodeCreateReqDTO;

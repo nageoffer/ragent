@@ -1,7 +1,7 @@
 package com.nageoffer.ai.ragent.rag.rewrite;
 
 import com.nageoffer.ai.ragent.convention.ChatRequest;
-import com.nageoffer.ai.ragent.service.rag.chat.LLMService;
+import com.nageoffer.ai.ragent.rag.chat.LLMService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Assertions;

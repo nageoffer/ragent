@@ -1,12 +1,12 @@
 package com.nageoffer.ai.ragent.service.impl;
 
 import com.nageoffer.ai.ragent.convention.ChatRequest;
-import com.nageoffer.ai.ragent.service.rag.retrieve.RetrievedChunk;
-import com.nageoffer.ai.ragent.service.rag.retrieve.RetrieverService;
+import com.nageoffer.ai.ragent.rag.retrieve.RetrievedChunk;
+import com.nageoffer.ai.ragent.rag.retrieve.RetrieverService;
 import com.nageoffer.ai.ragent.service.SimpleRAGService;
-import com.nageoffer.ai.ragent.service.rag.chat.LLMService;
-import com.nageoffer.ai.ragent.service.rag.chat.StreamCallback;
-import com.nageoffer.ai.ragent.service.rag.rerank.RerankService;
+import com.nageoffer.ai.ragent.rag.chat.LLMService;
+import com.nageoffer.ai.ragent.rag.chat.StreamCallback;
+import com.nageoffer.ai.ragent.rag.rerank.RerankService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
