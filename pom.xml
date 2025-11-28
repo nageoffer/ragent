@@ -2,20 +2,16 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
-    <parent>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.5.7</version>
-        <relativePath/> <!-- lookup parent from repository -->
-    </parent>
     <groupId>com.nageoffer.ai</groupId>
-    <artifactId>ragent-core</artifactId>
+    <artifactId>ragent</artifactId>
     <version>0.0.1-SNAPSHOT</version>
+
     <name>ragent-core</name>
-    <description>ragent-core</description>
+    <description>RAG综合智能体 - 基于Spring Boot的智能文档处理与检索系统，集成向量数据库，拥有智能问答、知识库、会话记忆等功能</description>
 
     <properties>
         <java.version>17</java.version>
+        <spring-boot.version>3.5.7</spring-boot.version>
         <milvus-sdk.version>2.6.6</milvus-sdk.version>
         <tika.version>3.2.3</tika.version>
         <hutool-all.version>5.8.37</hutool-all.version>
@@ -24,6 +20,14 @@
 
     <dependencyManagement>
         <dependencies>
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-dependencies</artifactId>
+                <version>${spring-boot.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
             <dependency>
                 <groupId>org.apache.tika</groupId>
                 <artifactId>tika-bom</artifactId>
@@ -65,7 +69,6 @@
         <dependency>
             <groupId>com.google.code.gson</groupId>
             <artifactId>gson</artifactId>
-            <version>2.11.0</version>
         </dependency>
 
         <!-- 解析 PDF / DOC / DOCX / Markdown 等 -->
