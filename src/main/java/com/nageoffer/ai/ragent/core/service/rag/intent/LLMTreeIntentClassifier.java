@@ -1,6 +1,7 @@
 package com.nageoffer.ai.ragent.core.service.rag.intent;
 
 import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.google.gson.*;
 import com.nageoffer.ai.ragent.core.dao.entity.IntentNodeDO;
@@ -119,6 +120,16 @@ public class LLMTreeIntentClassifier {
 
             // 降序排序
             scores.sort(Comparator.comparingDouble(NodeScore::getScore).reversed());
+
+            log.info("意图识别树如下所示:\n{}",
+                    JSONUtil.toJsonPrettyStr(
+                            scores.stream().map(each -> {
+                                IntentNode node = each.getNode();
+                                node.setChildren(null);
+                                return each;
+                            }).collect(Collectors.toList())
+                    )
+            );
             return scores;
         } catch (Exception e) {
             log.warn("[LlmTreeIntentClassifier] parse LLM response error, raw={}", raw, e);
