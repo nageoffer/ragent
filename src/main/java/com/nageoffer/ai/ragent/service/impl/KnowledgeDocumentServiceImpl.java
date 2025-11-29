@@ -9,7 +9,7 @@ import com.nageoffer.ai.ragent.dao.entity.KnowledgeBaseDO;
 import com.nageoffer.ai.ragent.dao.entity.KnowledgeDocumentDO;
 import com.nageoffer.ai.ragent.dao.mapper.KnowledgeBaseMapper;
 import com.nageoffer.ai.ragent.dao.mapper.KnowledgeDocumentMapper;
-import com.nageoffer.ai.ragent.dto.kb.KnowledgeDocumentVO;
+import com.nageoffer.ai.ragent.controller.vo.KnowledgeDocumentVO;
 import com.nageoffer.ai.ragent.enums.DocumentStatus;
 import com.nageoffer.ai.ragent.service.FileStorageService;
 import com.nageoffer.ai.ragent.service.KnowledgeDocumentService;

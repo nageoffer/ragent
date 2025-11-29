@@ -5,8 +5,8 @@ import com.nageoffer.ai.ragent.dao.entity.KnowledgeBaseDO;
 import com.nageoffer.ai.ragent.dao.entity.KnowledgeDocumentDO;
 import com.nageoffer.ai.ragent.dao.mapper.KnowledgeBaseMapper;
 import com.nageoffer.ai.ragent.dao.mapper.KnowledgeDocumentMapper;
-import com.nageoffer.ai.ragent.dto.kb.KnowledgeBaseCreateReqDTO;
-import com.nageoffer.ai.ragent.dto.kb.KnowledgeBaseUpdateReqDTO;
+import com.nageoffer.ai.ragent.controller.request.KnowledgeBaseCreateRequest;
+import com.nageoffer.ai.ragent.controller.request.KnowledgeBaseUpdateRequest;
 import com.nageoffer.ai.ragent.framework.exception.ServiceException;
 import com.nageoffer.ai.ragent.service.KnowledgeBaseService;
 import com.nageoffer.ai.ragent.rag.vector.VectorSpaceId;
@@ -27,7 +27,7 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     private final VectorStoreAdmin vectorStoreAdmin;
 
     @Override
-    public String create(KnowledgeBaseCreateReqDTO requestParam) {
+    public String create(KnowledgeBaseCreateRequest requestParam) {
         // 名称重复校验
         String name = requestParam.getName().replaceAll("\\s+", "");
         Long count = knowledgeBaseMapper.selectCount(
@@ -61,7 +61,7 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     }
 
     @Override
-    public void update(KnowledgeBaseUpdateReqDTO requestParam) {
+    public void update(KnowledgeBaseUpdateRequest requestParam) {
         KnowledgeBaseDO kb = knowledgeBaseMapper.selectById(requestParam.getId());
         if (kb == null || kb.getDeleted() != null && kb.getDeleted() == 1) {
             throw new IllegalArgumentException("知识库不存在：" + requestParam.getId());

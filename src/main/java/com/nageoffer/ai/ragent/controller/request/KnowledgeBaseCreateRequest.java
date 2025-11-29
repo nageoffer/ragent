@@ -1,9 +1,9 @@
-package com.nageoffer.ai.ragent.dto.kb;
+package com.nageoffer.ai.ragent.controller.request;
 
 import lombok.Data;
 
 @Data
-public class KnowledgeBaseCreateReqDTO {
+public class KnowledgeBaseCreateRequest {
 
     /**
      * 知识库名称

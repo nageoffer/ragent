@@ -2,7 +2,7 @@ package com.nageoffer.ai.ragent.controller;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.nageoffer.ai.ragent.dto.kb.KnowledgeDocumentVO;
+import com.nageoffer.ai.ragent.controller.vo.KnowledgeDocumentVO;
 import com.nageoffer.ai.ragent.framework.convention.Result;
 import com.nageoffer.ai.ragent.framework.web.Results;
 import com.nageoffer.ai.ragent.service.KnowledgeDocumentService;

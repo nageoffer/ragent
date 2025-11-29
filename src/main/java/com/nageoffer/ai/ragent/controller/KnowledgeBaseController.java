@@ -1,6 +1,6 @@
 package com.nageoffer.ai.ragent.controller;
 
-import com.nageoffer.ai.ragent.dto.kb.KnowledgeBaseCreateReqDTO;
+import com.nageoffer.ai.ragent.controller.request.KnowledgeBaseCreateRequest;
 import com.nageoffer.ai.ragent.framework.convention.Result;
 import com.nageoffer.ai.ragent.framework.web.Results;
 import com.nageoffer.ai.ragent.service.KnowledgeBaseService;
@@ -16,7 +16,7 @@ public class KnowledgeBaseController {
     private final KnowledgeBaseService knowledgeBaseService;
 
     @PostMapping("/knowledge-base")
-    public Result<String> createKnowledgeBase(@RequestBody KnowledgeBaseCreateReqDTO requestParam) {
+    public Result<String> createKnowledgeBase(@RequestBody KnowledgeBaseCreateRequest requestParam) {
         return Results.success(knowledgeBaseService.create(requestParam));
     }
 }

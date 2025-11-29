@@ -1,14 +1,15 @@
 package com.nageoffer.ai.ragent.service.impl;
 
+import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.google.gson.Gson;
 import com.nageoffer.ai.ragent.dao.entity.IntentNodeDO;
 import com.nageoffer.ai.ragent.dao.mapper.IntentNodeMapper;
-import com.nageoffer.ai.ragent.dto.kb.IntentNodeCreateReqDTO;
-import com.nageoffer.ai.ragent.dto.kb.IntentNodeTreeRespDTO;
-import com.nageoffer.ai.ragent.dto.kb.IntentNodeUpdateReqDTO;
+import com.nageoffer.ai.ragent.controller.request.IntentNodeCreateRequest;
+import com.nageoffer.ai.ragent.controller.vo.IntentNodeTreeVO;
+import com.nageoffer.ai.ragent.controller.request.IntentNodeUpdateRequest;
 import com.nageoffer.ai.ragent.enums.IntentKind;
 import com.nageoffer.ai.ragent.enums.IntentLevel;
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
@@ -38,7 +39,7 @@ public class IntentTreeServiceImpl extends ServiceImpl<IntentNodeMapper, IntentN
     private static final Gson GSON = new Gson();
 
     @Override
-    public List<IntentNodeTreeRespDTO> getFullTree() {
+    public List<IntentNodeTreeVO> getFullTree() {
         List<IntentNodeDO> list = this.list(new LambdaQueryWrapper<IntentNodeDO>()
                 .eq(IntentNodeDO::getDeleted, 0)
                 .orderByAsc(IntentNodeDO::getSortOrder, IntentNodeDO::getId));
@@ -54,44 +55,31 @@ public class IntentTreeServiceImpl extends ServiceImpl<IntentNodeMapper, IntentN
         List<IntentNodeDO> roots = parentMap.getOrDefault("ROOT", Collections.emptyList());
 
         // 递归构建树
-        List<IntentNodeTreeRespDTO> tree = new ArrayList<>();
+        List<IntentNodeTreeVO> tree = new ArrayList<>();
         for (IntentNodeDO root : roots) {
             tree.add(buildTree(root, parentMap));
         }
         return tree;
     }
 
-    private IntentNodeTreeRespDTO buildTree(IntentNodeDO current,
-                                            Map<String, List<IntentNodeDO>> parentMap) {
-        IntentNodeTreeRespDTO vo = toVO(current);
+    private IntentNodeTreeVO buildTree(IntentNodeDO current,
+                                       Map<String, List<IntentNodeDO>> parentMap) {
+        IntentNodeTreeVO result = BeanUtil.toBean(current, IntentNodeTreeVO.class);
         List<IntentNodeDO> children = parentMap.getOrDefault(current.getIntentCode(), Collections.emptyList());
+
         if (!CollectionUtils.isEmpty(children)) {
-            List<IntentNodeTreeRespDTO> childVOs = children.stream()
+            List<IntentNodeTreeVO> childVOs = children.stream()
                     .map(child -> buildTree(child, parentMap))
                     .collect(Collectors.toList());
-            vo.setChildren(childVOs);
-        }
-        return vo;
-    }
 
-    private IntentNodeTreeRespDTO toVO(IntentNodeDO entity) {
-        IntentNodeTreeRespDTO vo = new IntentNodeTreeRespDTO();
-        vo.setId(entity.getId());
-        vo.setIntentCode(entity.getIntentCode());
-        vo.setName(entity.getName());
-        vo.setLevel(entity.getLevel());
-        vo.setParentCode(entity.getParentCode());
-        vo.setDescription(entity.getDescription());
-        vo.setExamples(entity.getExamples());
-        vo.setCollectionName(entity.getCollectionName());
-        vo.setKind(entity.getKind());
-        vo.setSortOrder(entity.getSortOrder());
-        vo.setEnabled(entity.getEnabled());
-        return vo;
+            result.setChildren(childVOs);
+        }
+
+        return result;
     }
 
     @Override
-    public String createNode(IntentNodeCreateReqDTO req) {
+    public String createNode(IntentNodeCreateRequest req) {
         // 简单重复校验：intentCode 不允许重复
         long count = this.count(new LambdaQueryWrapper<IntentNodeDO>()
                 .eq(IntentNodeDO::getIntentCode, req.getIntentCode())
@@ -131,7 +119,7 @@ public class IntentTreeServiceImpl extends ServiceImpl<IntentNodeMapper, IntentN
     }
 
     @Override
-    public void updateNode(Long id, IntentNodeUpdateReqDTO req) {
+    public void updateNode(Long id, IntentNodeUpdateRequest req) {
         IntentNodeDO node = this.getById(id);
         if (node == null || Objects.equals(node.getDeleted(), 1)) {
             throw new ServiceException("节点不存在或已删除: id=" + id);
@@ -187,7 +175,7 @@ public class IntentTreeServiceImpl extends ServiceImpl<IntentNodeMapper, IntentN
                 continue;
             }
 
-            IntentNodeCreateReqDTO dto = new IntentNodeCreateReqDTO();
+            IntentNodeCreateRequest dto = new IntentNodeCreateRequest();
             dto.setKbId(node.getKbId());
             dto.setIntentCode(node.getId());
             dto.setName(node.getName());

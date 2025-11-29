@@ -1,4 +1,4 @@
-package com.nageoffer.ai.ragent.dto.kb;
+package com.nageoffer.ai.ragent.controller.vo;
 
 import lombok.Data;
 

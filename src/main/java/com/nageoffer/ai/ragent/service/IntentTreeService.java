@@ -2,9 +2,9 @@ package com.nageoffer.ai.ragent.service;
 
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.nageoffer.ai.ragent.dao.entity.IntentNodeDO;
-import com.nageoffer.ai.ragent.dto.kb.IntentNodeCreateReqDTO;
-import com.nageoffer.ai.ragent.dto.kb.IntentNodeTreeRespDTO;
-import com.nageoffer.ai.ragent.dto.kb.IntentNodeUpdateReqDTO;
+import com.nageoffer.ai.ragent.controller.request.IntentNodeCreateRequest;
+import com.nageoffer.ai.ragent.controller.vo.IntentNodeTreeVO;
+import com.nageoffer.ai.ragent.controller.request.IntentNodeUpdateRequest;
 
 import java.util.List;
 
@@ -13,17 +13,17 @@ public interface IntentTreeService extends IService<IntentNodeDO> {
     /**
      * 查询整棵意图树（包含 RAG + SYSTEM）
      */
-    List<IntentNodeTreeRespDTO> getFullTree();
+    List<IntentNodeTreeVO> getFullTree();
 
     /**
      * 新增节点
      */
-    String createNode(IntentNodeCreateReqDTO requestParam);
+    String createNode(IntentNodeCreateRequest requestParam);
 
     /**
      * 更新节点
      */
-    void updateNode(Long id, IntentNodeUpdateReqDTO requestParam);
+    void updateNode(Long id, IntentNodeUpdateRequest requestParam);
 
     /**
      * 删除节点（逻辑删除）

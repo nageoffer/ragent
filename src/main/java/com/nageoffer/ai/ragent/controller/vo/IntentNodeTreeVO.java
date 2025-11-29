@@ -1,4 +1,4 @@
-package com.nageoffer.ai.ragent.dto.kb;
+package com.nageoffer.ai.ragent.controller.vo;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -11,7 +11,7 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class IntentNodeTreeRespDTO {
+public class IntentNodeTreeVO {
 
     private Long id;
     private String intentCode;
@@ -25,5 +25,5 @@ public class IntentNodeTreeRespDTO {
     private Integer sortOrder;
     private Integer enabled;
 
-    private List<IntentNodeTreeRespDTO> children;
+    private List<IntentNodeTreeVO> children;
 }

@@ -1,8 +1,8 @@
 package com.nageoffer.ai.ragent.controller;
 
-import com.nageoffer.ai.ragent.dto.kb.IntentNodeCreateReqDTO;
-import com.nageoffer.ai.ragent.dto.kb.IntentNodeTreeRespDTO;
-import com.nageoffer.ai.ragent.dto.kb.IntentNodeUpdateReqDTO;
+import com.nageoffer.ai.ragent.controller.request.IntentNodeCreateRequest;
+import com.nageoffer.ai.ragent.controller.vo.IntentNodeTreeVO;
+import com.nageoffer.ai.ragent.controller.request.IntentNodeUpdateRequest;
 import com.nageoffer.ai.ragent.framework.convention.Result;
 import com.nageoffer.ai.ragent.framework.web.Results;
 import com.nageoffer.ai.ragent.service.IntentTreeService;
@@ -24,17 +24,17 @@ public class IntentTreeController {
     private final IntentTreeService intentTreeService;
 
     @GetMapping("/intent-tree/trees")
-    public Result<List<IntentNodeTreeRespDTO>> tree() {
+    public Result<List<IntentNodeTreeVO>> tree() {
         return Results.success(intentTreeService.getFullTree());
     }
 
     @PostMapping("/intent-tree")
-    public Result<String> createNode(@RequestBody IntentNodeCreateReqDTO requestParam) {
+    public Result<String> createNode(@RequestBody IntentNodeCreateRequest requestParam) {
         return Results.success(intentTreeService.createNode(requestParam));
     }
 
     @PutMapping("/intent-tree/{id}")
-    public void updateNode(@PathVariable Long id, @RequestBody IntentNodeUpdateReqDTO requestParam) {
+    public void updateNode(@PathVariable Long id, @RequestBody IntentNodeUpdateRequest requestParam) {
         intentTreeService.updateNode(id, requestParam);
     }
 

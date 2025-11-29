@@ -2,7 +2,7 @@ package com.nageoffer.ai.ragent.kb;
 
 import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONUtil;
-import com.nageoffer.ai.ragent.dto.kb.IntentNodeTreeRespDTO;
+import com.nageoffer.ai.ragent.controller.vo.IntentNodeTreeVO;
 import com.nageoffer.ai.ragent.service.IntentTreeService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -28,7 +28,7 @@ public class IntentTreeServiceTests {
 
     @Test
     public void getFullTree() {
-        List<IntentNodeTreeRespDTO> roots = intentTreeService.getFullTree();
+        List<IntentNodeTreeVO> roots = intentTreeService.getFullTree();
         if (roots == null || roots.isEmpty()) {
             System.out.println("(意图树为空)");
             return;
@@ -42,7 +42,7 @@ public class IntentTreeServiceTests {
         StringBuilder sb = new StringBuilder();
 
         for (int i = 0; i < roots.size(); i++) {
-            IntentNodeTreeRespDTO root = roots.get(i);
+            IntentNodeTreeVO root = roots.get(i);
             if (i > 0) {
                 // 顶层节点之间空一行
                 sb.append("\n");
@@ -61,7 +61,7 @@ public class IntentTreeServiceTests {
      * - 下一行可选：缩进 + "  备注: xxx"
      * - 再下一行可选：缩进 + "  示例: 问题1 / 问题2"
      */
-    private void printNodeTree(IntentNodeTreeRespDTO node, int depth, StringBuilder sb) {
+    private void printNodeTree(IntentNodeTreeVO node, int depth, StringBuilder sb) {
         String indent = "  ".repeat(Math.max(depth, 0));
 
         // 1) 名称 + 层级标签
@@ -127,7 +127,7 @@ public class IntentTreeServiceTests {
     /**
      * sortOrder 从小到大；null 的放到最后
      */
-    private int compareBySortOrder(IntentNodeTreeRespDTO a, IntentNodeTreeRespDTO b) {
+    private int compareBySortOrder(IntentNodeTreeVO a, IntentNodeTreeVO b) {
         Integer sa = a.getSortOrder();
         Integer sb = b.getSortOrder();
         if (sa == null && sb == null) return 0;

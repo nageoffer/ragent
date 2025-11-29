@@ -2,7 +2,7 @@ package com.nageoffer.ai.ragent.service;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.nageoffer.ai.ragent.dto.kb.KnowledgeDocumentVO;
+import com.nageoffer.ai.ragent.controller.vo.KnowledgeDocumentVO;
 import org.springframework.web.multipart.MultipartFile;
 
 public interface KnowledgeDocumentService {
