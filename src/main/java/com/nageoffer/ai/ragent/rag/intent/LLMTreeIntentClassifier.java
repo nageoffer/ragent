@@ -15,6 +15,8 @@ import org.springframework.stereotype.Service;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import static com.nageoffer.ai.ragent.constant.RAGConstant.INTENT_CLASSIFIER_PROMPT;
+
 /**
  * 基于大模型（LLM）的 Tree 意图分类器：
  * - 使用 domain / category / topic 三层 Tree
@@ -158,42 +160,7 @@ public class LLMTreeIntentClassifier {
     private String buildPrompt(String question) {
         StringBuilder sb = new StringBuilder();
 
-        sb.append("""
-                你是一个企业内部知识库的【意图分类助手】。
-                
-                【任务说明】
-                1. 下面会给出若干“最终分类节点”（叶子节点），它们都挂接了各自的知识库/文档集合。
-                2. 每个节点包含：
-                   - id：唯一标识
-                   - path：在分类树中的完整路径（domain / category / topic）
-                   - description：该分类覆盖的知识范围
-                   - examples：该分类下典型的用户提问
-                3. 你的任务是：根据【用户问题】，判断它与哪些叶子分类最相关。
-                4. 允许一个问题对应多个分类。
-                5. 对每个你认为相关的分类，给出一个 0~1 之间的匹配分数 score，score 越高表示越相关。
-                6. 对明显无关的分类，不要返回。
-                
-                【特别重要的规则】
-                - 如果用户问题中明确提到了某个具体系统名称（例如：“OA系统”、“保险系统”），优先只在该系统对应的分类下进行选择。
-                - 例如：问题中只提到“OA系统”，不要选择“保险系统”的分类，即使它们都包含“数据安全”等相似词。
-                - 只有当问题非常明确是在比较多个系统时，才可以同时选择多个系统的分类。
-                
-                【输出要求】
-                1. 只输出一个 JSON 数组，不要包含任何多余文字。
-                2. 数组中的每个元素是一个对象，字段为：
-                   - id：字符串，对应下面列表中的某个 id（必须严格一致）
-                   - score：0 到 1 之间的小数
-                   - reason：简要中文说明为什么匹配
-                3. 如果你认为所有分类都不太匹配，可以返回空数组 []。
-                
-                示例输出：
-                [
-                  {"id": "biz-oa-intro", "score": 0.92, "reason": "问题询问OA系统整体功能"},
-                  {"id": "biz-oa-security", "score": 0.88, "reason": "问题同时关心OA系统的数据安全"}
-                ]
-                
-                【分类列表（仅叶子节点）】
-                """);
+        sb.append(INTENT_CLASSIFIER_PROMPT);
 
         for (IntentNode node : allNodes) {
             sb.append("- id=").append(node.getId()).append("\n");

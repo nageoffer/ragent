@@ -4,6 +4,7 @@ import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
 import com.nageoffer.ai.ragent.convention.ChatRequest;
 import com.nageoffer.ai.ragent.enums.IntentKind;
+import com.nageoffer.ai.ragent.rag.prompt.RAGPromptService;
 import com.nageoffer.ai.ragent.service.RAGService;
 import com.nageoffer.ai.ragent.rag.chat.LLMService;
 import com.nageoffer.ai.ragent.rag.chat.StreamCallback;
@@ -22,6 +23,7 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
@@ -41,25 +43,24 @@ public class RAGServiceImpl implements RAGService {
     private final RerankService rerankService;
     private final LLMTreeIntentClassifier llmTreeIntentClassifier;
     private final QueryRewriteService queryRewriteService;
+    private final RAGPromptService ragPromptService;
 
     @Override
     public String answer(String question, int topK) {
         String rewriteQuestion = queryRewriteService.rewrite(question);
         List<NodeScore> nodeScores = llmTreeIntentClassifier.classifyTargets(rewriteQuestion);
 
-        if (nodeScores.size() == 1) {
-            if (Objects.equals(nodeScores.get(0).getNode().getKind(), SYSTEM)) {
-                String prompt = CHAT_SYSTEM_PROMPT.formatted(rewriteQuestion);
+        if (nodeScores.size() == 1 && Objects.equals(nodeScores.get(0).getNode().getKind(), SYSTEM)) {
+            String prompt = CHAT_SYSTEM_PROMPT.formatted(rewriteQuestion);
 
-                ChatRequest req = ChatRequest.builder()
-                        .prompt(prompt)
-                        .temperature(0.7D) // 打招呼可以稍微活泼一点
-                        .topP(0.8D)
-                        .thinking(false)
-                        .build();
+            ChatRequest req = ChatRequest.builder()
+                    .prompt(prompt)
+                    .temperature(0.7D) // 打招呼可以稍微活泼一点
+                    .topP(0.8D)
+                    .thinking(false)
+                    .build();
 
-                return llmService.chat(req);
-            }
+            return llmService.chat(req);
         }
 
         List<NodeScore> ragIntentScores = nodeScores.stream()
@@ -74,19 +75,27 @@ public class RAGServiceImpl implements RAGService {
         int finalTopK = topK > 0 ? topK : 5;
         int searchTopK = Math.max(finalTopK * 3, 20); // 至少 20，避免问题很小时候召回太少
 
-        List<RetrievedChunk> allChunks = Collections.synchronizedList(new ArrayList<>());
-        ragIntentScores.parallelStream().forEach(nodeScore -> {
+        Map<String, List<RetrievedChunk>> intentChunks = new java.util.concurrent.ConcurrentHashMap<>();
+        ragIntentScores.parallelStream().forEach(ns -> {
+            IntentNode node = ns.getNode();
             RetrieveRequest request = RetrieveRequest.builder()
-                    .collectionName(nodeScore.getNode().getCollectionName())
+                    .collectionName(node.getCollectionName())
                     .query(rewriteQuestion)
                     .topK(searchTopK)
                     .build();
-
-            List<RetrievedChunk> nodeRetrieveChunks = retrieverService.retrieve(request);
-            if (CollUtil.isNotEmpty(nodeRetrieveChunks)) {
-                allChunks.addAll(nodeRetrieveChunks);
+            List<RetrievedChunk> chunks = retrieverService.retrieve(request);
+            if (CollUtil.isNotEmpty(chunks)) {
+                intentChunks.put(node.getId(), chunks);
             }
         });
+
+        List<NodeScore> retainedIntents = ragIntentScores.stream()
+                .filter(ns -> CollUtil.isNotEmpty(intentChunks.get(ns.getNode().getId())))
+                .toList();
+
+        List<RetrievedChunk> allChunks = retainedIntents.stream()
+                .flatMap(ns -> intentChunks.get(ns.getNode().getId()).stream())
+                .collect(Collectors.toList());
 
         // 如果没有检索到内容，直接 fallback
         if (allChunks.isEmpty()) {
@@ -100,16 +109,20 @@ public class RAGServiceImpl implements RAGService {
         // 暂时忽略分数排序，因为不同知识库类型召回数据不同，容易误判
         List<RetrievedChunk> elbowSelected = reranked;
 
+        // 选一个非空的最高分作对比基准（为空则跳过阈值过滤）
+        Float bestScore = elbowSelected.stream()
+                .map(RetrievedChunk::getScore)
+                .filter(Objects::nonNull)
+                .findFirst()
+                .orElse(null);
+
         double MIN_SCORE = 0.4;
         double MARGIN_RATIO = 0.75;
 
-        float bestScore = elbowSelected.get(0).getScore();
         List<RetrievedChunk> filteredByScore = elbowSelected.stream()
                 .filter(c -> {
                     Float s = c.getScore();
-                    if (s == null) {
-                        return true;
-                    }
+                    if (s == null || bestScore == null) return true;
                     return s >= MIN_SCORE && s >= bestScore * MARGIN_RATIO;
                 })
                 .toList();
@@ -124,15 +137,7 @@ public class RAGServiceImpl implements RAGService {
                 .map(h -> "- " + h.getText())
                 .collect(Collectors.joining("\n"));
 
-        String promptTemplate;
-        if (ragIntentScores.size() == 1 &&
-                StrUtil.isNotBlank(ragIntentScores.get(0).getNode().getPromptTemplate())) {
-            promptTemplate = ragIntentScores.get(0).getNode().getPromptTemplate();
-        } else {
-            promptTemplate = RAG_DEFAULT_PROMPT;
-        }
-
-        String prompt = promptTemplate.formatted(context, rewriteQuestion);
+        String prompt = ragPromptService.buildPrompt(context, rewriteQuestion, ragIntentScores, intentChunks);
 
         // 调 LLM
         ChatRequest req = ChatRequest.builder()
@@ -165,6 +170,7 @@ public class RAGServiceImpl implements RAGService {
             return;
         }
 
+        // 过滤出 RAG 意图（KB 类型）
         List<NodeScore> ragIntentScores = nodeScores.stream()
                 .filter(ns -> ns.getScore() >= INTENT_MIN_SCORE)
                 .filter(ns -> {
@@ -175,21 +181,34 @@ public class RAGServiceImpl implements RAGService {
                 .toList();
 
         int finalTopK = topK > 0 ? topK : 5;
-        int searchTopK = Math.max(finalTopK * 3, 20); // 至少 20，避免召回过少
+        int searchTopK = Math.max(finalTopK * 3, 20); // 至少 20，避免问题很小时候召回太少
 
-        List<RetrievedChunk> allChunks = Collections.synchronizedList(new ArrayList<>());
-        ragIntentScores.parallelStream().forEach(nodeScore -> {
+        // 跟同步版保持一致：按意图拆分检索结果
+        Map<String, List<RetrievedChunk>> intentChunks = new java.util.concurrent.ConcurrentHashMap<>();
+        ragIntentScores.parallelStream().forEach(ns -> {
+            IntentNode node = ns.getNode();
             RetrieveRequest request = RetrieveRequest.builder()
-                    .collectionName(nodeScore.getNode().getCollectionName())
+                    .collectionName(node.getCollectionName())
                     .query(rewriteQuestion)
                     .topK(searchTopK)
                     .build();
-            List<RetrievedChunk> nodeRetrieveChunks = retrieverService.retrieve(request);
-            if (CollUtil.isNotEmpty(nodeRetrieveChunks)) {
-                allChunks.addAll(nodeRetrieveChunks);
+            List<RetrievedChunk> chunks = retrieverService.retrieve(request);
+            if (CollUtil.isNotEmpty(chunks)) {
+                intentChunks.put(node.getId(), chunks);
             }
         });
 
+        // 只保留有检索结果的意图
+        List<NodeScore> retainedIntents = ragIntentScores.stream()
+                .filter(ns -> CollUtil.isNotEmpty(intentChunks.get(ns.getNode().getId())))
+                .toList();
+
+        // 聚合所有 chunk 做 Rerank
+        List<RetrievedChunk> allChunks = retainedIntents.stream()
+                .flatMap(ns -> intentChunks.get(ns.getNode().getId()).stream())
+                .collect(Collectors.toList());
+
+        // 如果没有检索到内容，直接 fallback
         if (allChunks.isEmpty()) {
             callback.onContent("未检索到与问题相关的文档内容，请尝试换一个问法。");
             return;
@@ -204,38 +223,44 @@ public class RAGServiceImpl implements RAGService {
         final double MIN_SCORE = 0.4;
         final double MARGIN_RATIO = 0.75;
 
-        float bestScore = elbowSelected.get(0).getScore();
+        // 选一个非空的最高分作对比基准（为空则跳过阈值过滤）
+        Float bestScore = elbowSelected.stream()
+                .map(RetrievedChunk::getScore)
+                .filter(Objects::nonNull)
+                .findFirst()
+                .orElse(null);
+
         List<RetrievedChunk> filteredByScore = elbowSelected.stream()
                 .filter(c -> {
                     Float s = c.getScore();
-                    if (s == null) return true;
+                    if (s == null || bestScore == null) {
+                        return true;
+                    }
                     return s >= MIN_SCORE && s >= bestScore * MARGIN_RATIO;
                 })
                 .toList();
 
+        // 如果筛完太少，就退回到 reranked 前 topK 几条
         if (filteredByScore.isEmpty()) {
             filteredByScore = reranked.subList(0, Math.min(finalTopK, reranked.size()));
         }
 
+        // 拼接上下文
         String context = filteredByScore.stream()
                 .map(h -> "- " + h.getText())
                 .collect(Collectors.joining("\n"));
 
-        String promptTemplate;
-        if (ragIntentScores.size() == 1 &&
-                StrUtil.isNotBlank(ragIntentScores.get(0).getNode().getPromptTemplate())) {
-            promptTemplate = ragIntentScores.get(0).getNode().getPromptTemplate();
-        } else {
-            promptTemplate = RAG_DEFAULT_PROMPT;
-        }
-        String prompt = promptTemplate.formatted(context, rewriteQuestion);
+        // 使用 ragPromptService 统一构建 Prompt（与同步方法保持一致）
+        String prompt = ragPromptService.buildPrompt(context, rewriteQuestion, ragIntentScores, intentChunks);
 
+        // 调 LLM 流式输出
         ChatRequest chatRequest = ChatRequest.builder()
                 .prompt(prompt)
                 .thinking(false)
                 .temperature(0D)
                 .topP(0.7D)
                 .build();
+
         llmService.streamChat(chatRequest, callback);
     }
 
