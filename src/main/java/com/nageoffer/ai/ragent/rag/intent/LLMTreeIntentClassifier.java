@@ -159,9 +159,6 @@ public class LLMTreeIntentClassifier {
      */
     private String buildPrompt(String question) {
         StringBuilder sb = new StringBuilder();
-
-        sb.append(INTENT_CLASSIFIER_PROMPT);
-
         for (IntentNode node : allNodes) {
             sb.append("- id=").append(node.getId()).append("\n");
             sb.append("  path=").append(node.getFullPath()).append("\n");
@@ -174,9 +171,7 @@ public class LLMTreeIntentClassifier {
             sb.append("\n");
         }
 
-        sb.append("\n【用户问题】\n").append(question).append("\n");
-
-        return sb.toString();
+        return INTENT_CLASSIFIER_PROMPT.formatted(sb.toString(), question);
     }
 
     private List<IntentNode> loadIntentTreeFromDB() {
