@@ -5,6 +5,7 @@ import com.nageoffer.ai.ragent.rag.chat.LLMService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,6 +17,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 public class QueryRewriteTests {
 
     private final LLMService llmService;
+    private final QueryRewriteService queryRewriteService;
 
     private static final String QUERY_REWRITE_PROMPT = """
             你是一个“查询改写器（Query Rewriter）”，只用于 RAG 系统的【检索阶段】。
@@ -71,6 +73,10 @@ public class QueryRewriteTests {
         Assertions.assertFalse(rewritten.isBlank());
     }
 
+    @Test
+    public void testQueryTermMapping() {
+        queryRewriteService.rewrite("阿里使用的是钉钉么？");
+    }
 
     /**
      * 小工具方法：封装一次调用，避免每个用例重复代码

@@ -1,6 +1,5 @@
 package com.nageoffer.ai.ragent.rag.rewrite;
 
-
 /**
  * 用户查询改写：将自然语言问题改写成适合 RAG 检索的查询语句
  */
