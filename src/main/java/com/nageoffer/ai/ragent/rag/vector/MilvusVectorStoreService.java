@@ -48,11 +48,9 @@ public class MilvusVectorStoreService implements VectorStoreService {
 
         List<JsonObject> rows = new ArrayList<>(chunks.size());
         for (int i = 0; i < chunks.size(); i++) {
-            Chunk c = chunks.get(i);
+            Chunk chunk = chunks.get(i);
 
-            String chunkPk = IdUtil.getSnowflakeNextIdStr();
-
-            String content = c.getContent() == null ? "" : c.getContent();
+            String content = chunk.getContent() == null ? "" : chunk.getContent();
             if (content.length() > 65535) {
                 content = content.substring(0, 65535);
             }
@@ -60,10 +58,10 @@ public class MilvusVectorStoreService implements VectorStoreService {
             JsonObject metadata = new JsonObject();
             metadata.addProperty("kb_id", kbId);
             metadata.addProperty("doc_id", docId);
-            metadata.addProperty("chunk_index", c.getIndex());
+            metadata.addProperty("chunk_index", chunk.getIndex());
 
             JsonObject row = new JsonObject();
-            row.addProperty("doc_id", chunkPk);
+            row.addProperty("doc_id", chunk.getChunkId());
             row.addProperty("content", content);
             row.add("metadata", metadata);
             row.add("embedding", toJsonArray(vectors[i]));
