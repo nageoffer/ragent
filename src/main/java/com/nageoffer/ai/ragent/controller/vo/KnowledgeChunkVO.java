@@ -13,17 +13,17 @@ public class KnowledgeChunkVO {
     /**
      * ID
      */
-    private Long id;
+    private String id;
 
     /**
      * 知识库ID
      */
-    private Long kbId;
+    private String kbId;
 
     /**
      * 文档ID
      */
-    private Long docId;
+    private String docId;
 
     /**
      * 分块序号（从0开始）
