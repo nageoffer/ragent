@@ -16,6 +16,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+import software.amazon.awssdk.services.s3.S3Client;
 
 @Slf4j
 @Service
@@ -25,6 +26,7 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     private final KnowledgeBaseMapper knowledgeBaseMapper;
     private final KnowledgeDocumentMapper knowledgeDocumentMapper;
     private final VectorStoreAdmin vectorStoreAdmin;
+    private final S3Client s3Client;
 
     @Override
     public String create(KnowledgeBaseCreateRequest requestParam) {
@@ -57,6 +59,12 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
                 .build();
 
         knowledgeBaseMapper.insert(kbDO);
+
+        String bucketName = requestParam.getCollectionName();
+        s3Client.createBucket(builder -> builder.bucket(bucketName));
+
+        log.info("成功创建RestFS存储桶，Bucket名称: {}", bucketName);
+
         return String.valueOf(kbDO.getId());
     }
 
