@@ -1,48 +1,76 @@
 package com.nageoffer.ai.ragent.service.impl;
 
+import cn.hutool.core.lang.Assert;
+import com.nageoffer.ai.ragent.dto.StoredFileDTO;
 import com.nageoffer.ai.ragent.service.FileStorageService;
+import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import org.apache.tika.Tika;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.FileSystemUtils;
 import org.springframework.web.multipart.MultipartFile;
+import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.services.s3.S3Client;
 
-import java.nio.file.Files;
+import java.io.InputStream;
+import java.net.URI;
 import java.nio.file.Path;
 import java.util.UUID;
 
 @Service
+@RequiredArgsConstructor
 public class LocalFileStorageService implements FileStorageService {
 
-    @Value("${kb.storage.root:/data/kb}")
-    private String rootDir;
+    private final S3Client s3Client;
 
     private static final Tika TIKA = new Tika();
 
     @Override
     @SneakyThrows
-    public StoredFile save(String kbId, MultipartFile file) {
-        String suffix = extractSuffix(file.getOriginalFilename());
-        String newName = UUID.randomUUID().toString().replace("-", "") + (suffix.isBlank() ? "" : "." + suffix);
+    public StoredFileDTO upload(String bucketName, MultipartFile file) {
+        Assert.notBlank(bucketName, "bucketName 不能为空");
+        Assert.isFalse(file == null || file.isEmpty(), "上传文件不能为空");
 
-        Path dir = Path.of(rootDir, String.valueOf(kbId));
-        Files.createDirectories(dir);
+        String originalFilename = file.getOriginalFilename();
+        String suffix = extractSuffix(originalFilename);
 
-        Path target = dir.resolve(newName);
-        file.transferTo(target);
+        String s3Key = UUID.randomUUID().toString().replace("-", "")
+                + (suffix.isBlank() ? "" : "." + suffix);
 
-        long size = Files.size(target);
-        String type = TIKA.detect(target);
+        long size = file.getSize();
 
-        // 简单返回本地 URL（真实场景可换成 MinIO/OSS 的外链）
-        String url = target.toAbsolutePath().toString();
-        return new StoredFile(url, normalizeType(type, suffix), size, file.getOriginalFilename());
+        // 更稳的类型检测方式：可以基于文件名/流
+        String detected;
+        try (InputStream is = file.getInputStream()) {
+            // Tika 支持 detect(InputStream, String)
+            detected = TIKA.detect(is, originalFilename);
+        }
+
+        // 上传：使用 InputStream，避免一次性读入内存
+        try (InputStream uploadIs = file.getInputStream()) {
+            s3Client.putObject(
+                    b -> b.bucket(bucketName)
+                            .key(s3Key)
+                            .contentType(detected)
+                            .build(),
+                    RequestBody.fromInputStream(uploadIs, size)
+            );
+        }
+
+        String url = toS3Url(bucketName, s3Key);
+
+        return StoredFileDTO.builder()
+                .url(url)
+                .detectedType(normalizeType(detected, suffix))
+                .size(size)
+                .originalFilename(originalFilename)
+                .build();
     }
 
     @Override
-    public Path localPathFromUrl(String url) {
-        return Path.of(url);
+    public InputStream openStream(String url) {
+        S3Location loc = parseS3Url(url);
+        return s3Client.getObject(b -> b.bucket(loc.bucket()).key(loc.key()));
     }
 
     @Override
@@ -51,20 +79,53 @@ public class LocalFileStorageService implements FileStorageService {
         FileSystemUtils.deleteRecursively(Path.of(url));
     }
 
-    private String extractSuffix(String name) {
-        if (name == null) return "";
-        int i = name.lastIndexOf('.');
-        return i > -1 ? name.substring(i + 1).toLowerCase() : "";
+    private String toS3Url(String bucket, String key) {
+        return "s3://" + bucket + "/" + key;
     }
 
-    private String normalizeType(String detected, String suffix) {
-        // 将 Tika 的 MIME 转换为表里更通俗的 file_type（可按需扩展）
-        return switch ((suffix == null ? "" : suffix)) {
-            case "md", "markdown" -> "markdown";
-            case "pdf" -> "pdf";
-            case "doc", "docx" -> "docx";
-            case "txt" -> "txt";
-            default -> detected;
-        };
+    private S3Location parseS3Url(String url) {
+        try {
+            URI uri = URI.create(url);
+            if (!"s3".equalsIgnoreCase(uri.getScheme())) {
+                throw new IllegalArgumentException("Unsupported url scheme: " + url);
+            }
+
+            String bucket = uri.getHost();
+            String path = uri.getPath(); // /key...
+            if (bucket == null || bucket.isBlank()) {
+                throw new IllegalArgumentException("Invalid s3 url(bucket missing): " + url);
+            }
+
+            String key = (path != null && path.startsWith("/")) ? path.substring(1) : path;
+            if (key == null || key.isBlank()) {
+                throw new IllegalArgumentException("Invalid s3 url(key missing): " + url);
+            }
+
+            return new S3Location(bucket, key);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Invalid s3 url: " + url, e);
+        }
+    }
+
+    private record S3Location(String bucket, String key) {
+    }
+
+    private String extractSuffix(String filename) {
+        if (filename == null) return "";
+        int idx = filename.lastIndexOf('.');
+        if (idx < 0 || idx == filename.length() - 1) {
+            return "";
+        }
+        return filename.substring(idx + 1).trim();
+    }
+
+    /**
+     * 你已有 normalizeType，这里保留签名，按你项目实现替换
+     */
+    private String normalizeType(String tikaType, String suffix) {
+        if (tikaType == null) {
+            return suffix == null ? "" : suffix;
+        }
+        return tikaType;
     }
 }

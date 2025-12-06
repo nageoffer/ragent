@@ -1,8 +1,8 @@
 package com.nageoffer.ai.ragent.rag.extractor;
 
-import java.nio.file.Path;
+import java.io.InputStream;
 
 public interface DocumentTextExtractor {
 
-    String extract(Path file, String originalFilename);
+    String extract(InputStream stream, String fileName);
 }

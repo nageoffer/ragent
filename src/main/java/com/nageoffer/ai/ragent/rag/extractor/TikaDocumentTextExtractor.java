@@ -1,12 +1,14 @@
 package com.nageoffer.ai.ragent.rag.extractor;
 
+import com.nageoffer.ai.ragent.framework.exception.ServiceException;
 import lombok.SneakyThrows;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.tika.Tika;
 import org.springframework.stereotype.Service;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
+import java.io.InputStream;
 
+@Slf4j
 @Service
 public class TikaDocumentTextExtractor implements DocumentTextExtractor {
 
@@ -14,20 +16,24 @@ public class TikaDocumentTextExtractor implements DocumentTextExtractor {
 
     @Override
     @SneakyThrows
-    public String extract(Path file, String originalFilename) {
-        try (var is = Files.newInputStream(file)) {
-            // 方式一：最简
-            String raw = TIKA.parseToString(is);
-            return cleanup(raw);
+    public String extract(InputStream stream, String fileName) {
+        try {
+            String text = TIKA.parseToString(stream);
+            return cleanup(text);
+        } catch (Exception e) {
+            log.error("从文件中提取文本内容失败: {}", fileName, e);
+            throw new ServiceException("解析文件失败: " + fileName);
         }
     }
 
-    private String cleanup(String s) {
-        if (s == null) return "";
-        String t = s.replace("\uFEFF", "") // 去掉 BOM
-                .replaceAll("[ \\t]+\\n", "\n") // 去尾随空格
-                .replaceAll("\\n{3,}", "\n\n")  // 合并过多空行
+    private String cleanup(String text) {
+        if (text == null || text.isEmpty()) {
+            return "";
+        }
+
+        return text.replace("\uFEFF", "")
+                .replaceAll("[ \\t]+\\n", "\n")
+                .replaceAll("\\n{3,}", "\n\n")
                 .trim();
-        return t;
     }
 }

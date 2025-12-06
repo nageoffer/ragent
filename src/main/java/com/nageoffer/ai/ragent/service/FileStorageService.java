@@ -1,17 +1,16 @@
 package com.nageoffer.ai.ragent.service;
 
+import com.nageoffer.ai.ragent.dto.StoredFileDTO;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.nio.file.Path;
+import java.io.InputStream;
+
 
 public interface FileStorageService {
 
-    record StoredFile(String url, String detectedType, long size, String originalFilename) {
-    }
+    StoredFileDTO upload(String bucketName, MultipartFile file);
 
-    StoredFile save(String kbId, MultipartFile file);
-
-    Path localPathFromUrl(String url);
+    InputStream openStream(String url);
 
     void deleteByUrl(String url);
 }

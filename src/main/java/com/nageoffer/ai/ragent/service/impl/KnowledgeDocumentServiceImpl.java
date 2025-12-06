@@ -10,7 +10,10 @@ import com.nageoffer.ai.ragent.dao.entity.KnowledgeDocumentDO;
 import com.nageoffer.ai.ragent.dao.mapper.KnowledgeBaseMapper;
 import com.nageoffer.ai.ragent.dao.mapper.KnowledgeDocumentMapper;
 import com.nageoffer.ai.ragent.controller.vo.KnowledgeDocumentVO;
+import com.nageoffer.ai.ragent.dto.StoredFileDTO;
 import com.nageoffer.ai.ragent.enums.DocumentStatus;
+import com.nageoffer.ai.ragent.framework.exception.ClientException;
+import com.nageoffer.ai.ragent.framework.exception.ServiceException;
 import com.nageoffer.ai.ragent.service.FileStorageService;
 import com.nageoffer.ai.ragent.service.KnowledgeDocumentService;
 import com.nageoffer.ai.ragent.rag.chunk.Chunk;
@@ -24,7 +27,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.nio.file.Path;
+import java.io.InputStream;
 import java.util.List;
 import java.util.Objects;
 
@@ -44,24 +47,25 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public KnowledgeDocumentVO upload(String kbId, MultipartFile file) {
-        KnowledgeBaseDO kb = kbMapper.selectById(kbId);
-        Assert.notNull(kb, "知识库不存在");
+        KnowledgeBaseDO kbDO = kbMapper.selectById(kbId);
+        Assert.notNull(kbDO, () -> new ClientException("知识库不存在"));
 
-        FileStorageService.StoredFile stored = fileStorageService.save(kbId, file);
+        StoredFileDTO stored = fileStorageService.upload(kbDO.getCollectionName(), file);
 
-        KnowledgeDocumentDO doc = new KnowledgeDocumentDO();
-        doc.setKbId(Long.parseLong(kbId));
-        doc.setDocName(stored.originalFilename());
-        doc.setEnabled(0);
-        doc.setChunkCount(0);
-        doc.setFileUrl(stored.url());
-        doc.setFileType(stored.detectedType());
-        doc.setFileSize(stored.size());
-        doc.setStatus(DocumentStatus.PENDING.getCode());
-        doc.setCreatedBy("");
-        docMapper.insert(doc);
+        KnowledgeDocumentDO documentDO = KnowledgeDocumentDO.builder()
+                .kbId(Long.parseLong(kbId))
+                .docName(stored.getOriginalFilename())
+                .enabled(0)
+                .chunkCount(0)
+                .fileUrl(stored.getUrl())
+                .fileType(stored.getDetectedType())
+                .fileSize(stored.getSize())
+                .status(DocumentStatus.PENDING.getCode())
+                .createdBy("")
+                .build();
+        docMapper.insert(documentDO);
 
-        return BeanUtil.toBean(doc, KnowledgeDocumentVO.class);
+        return BeanUtil.toBean(documentDO, KnowledgeDocumentVO.class);
     }
 
     @Override
@@ -69,18 +73,15 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
     public void startChunk(String kbId, String docId) {
         KnowledgeDocumentDO doc = docMapper.selectById(docId);
         Assert.notNull(doc, "文档不存在");
-        Assert.isTrue(Objects.equals(kbId, String.valueOf(doc.getKbId())), "kbId 与文档不匹配");
+        Assert.isTrue(Objects.equals(kbId, String.valueOf(doc.getKbId())), "知识库ID与文档不匹配");
         Assert.isTrue(!DocumentStatus.RUNNING.getCode().equals(doc.getStatus()), "文档分块进行中");
 
-        // 标记 running
         patchStatus(doc, DocumentStatus.RUNNING);
 
-        try {
-            // 1) 读取文本
-            Path localPath = fileStorageService.localPathFromUrl(doc.getFileUrl());
-            String text = textExtractor.extract(localPath, doc.getDocName());
+        try (InputStream is = fileStorageService.openStream(doc.getFileUrl())) {
 
-            // 2) 分块
+            String text = textExtractor.extract(is, doc.getDocName());
+
             List<Chunk> chunks = chunkService.split(text);
 
             List<String> texts = chunks.stream().map(Chunk::getContent).toList();
@@ -90,14 +91,13 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
             }
             vectorStoreService.upsert(String.valueOf(doc.getKbId()), String.valueOf(doc.getId()), chunks, vectors);
 
-            // 4) 更新计数 & 状态
             doc.setChunkCount(chunks.size());
             patchStatus(doc, DocumentStatus.SUCCESS);
             docMapper.updateById(doc);
         } catch (Exception e) {
-            log.error("Chunk failed. kbId={}, docId={}", kbId, docId, e);
+            log.error("文件分块失败：kbId={}, docId={}", kbId, docId, e);
             patchStatus(doc, DocumentStatus.FAILED);
-            throw new RuntimeException("分块失败：" + e.getMessage(), e);
+            throw new ServiceException("分块失败：" + e.getMessage());
         }
     }
 

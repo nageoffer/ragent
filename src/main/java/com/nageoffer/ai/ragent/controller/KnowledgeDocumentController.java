@@ -33,7 +33,7 @@ public class KnowledgeDocumentController {
      */
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Result<KnowledgeDocumentVO> upload(@PathVariable("kbId") String kbId,
-                                      @RequestPart("file") MultipartFile file) {
+                                              @RequestPart("file") MultipartFile file) {
         return Results.success(documentService.upload(kbId, file));
     }
 
@@ -42,7 +42,7 @@ public class KnowledgeDocumentController {
      */
     @PostMapping("/{docId}/chunk")
     public Result<Void> startChunk(@PathVariable("kbId") String kbId,
-                             @PathVariable("docId") String docId) {
+                                   @PathVariable("docId") String docId) {
         documentService.startChunk(kbId, docId);
         return Results.success();
     }
@@ -52,8 +52,8 @@ public class KnowledgeDocumentController {
      */
     @DeleteMapping("/{docId}")
     public Result<Void> delete(@PathVariable("kbId") String kbId,
-                         @PathVariable("docId") String docId,
-                         @RequestParam(value = "purgeVectors", defaultValue = "true") boolean purgeVectors) {
+                               @PathVariable("docId") String docId,
+                               @RequestParam(value = "purgeVectors", defaultValue = "true") boolean purgeVectors) {
         documentService.delete(kbId, docId, purgeVectors);
         return Results.success();
     }
@@ -63,7 +63,7 @@ public class KnowledgeDocumentController {
      */
     @GetMapping("/{docId}")
     public Result<KnowledgeDocumentVO> get(@PathVariable("kbId") String kbId,
-                                   @PathVariable("docId") String docId) {
+                                           @PathVariable("docId") String docId) {
         return Results.success(documentService.get(kbId, docId));
     }
 
@@ -72,10 +72,10 @@ public class KnowledgeDocumentController {
      */
     @GetMapping
     public Result<IPage<KnowledgeDocumentVO>> page(@PathVariable("kbId") String kbId,
-                                           @RequestParam(value = "pageNo", defaultValue = "1") int pageNo,
-                                           @RequestParam(value = "pageSize", defaultValue = "10") int pageSize,
-                                           @RequestParam(value = "status", required = false) String status,
-                                           @RequestParam(value = "keyword", required = false) String keyword) {
+                                                   @RequestParam(value = "pageNo", defaultValue = "1") int pageNo,
+                                                   @RequestParam(value = "pageSize", defaultValue = "10") int pageSize,
+                                                   @RequestParam(value = "status", required = false) String status,
+                                                   @RequestParam(value = "keyword", required = false) String keyword) {
         return Results.success(documentService.page(kbId, new Page<>(pageNo, pageSize), status, keyword));
     }
 
