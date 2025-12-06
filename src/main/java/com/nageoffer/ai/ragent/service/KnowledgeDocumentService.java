@@ -9,13 +9,13 @@ public interface KnowledgeDocumentService {
 
     KnowledgeDocumentVO upload(String kbId, MultipartFile file);
 
-    void startChunk(String kbId, String docId);
+    void startChunk(String docId);
 
-    void delete(String kbId, String docId, boolean purgeVectors);
+    void delete(String docId);
 
-    KnowledgeDocumentVO get(String kbId, String docId);
+    KnowledgeDocumentVO get(String docId);
 
     IPage<KnowledgeDocumentVO> page(String kbId, Page<KnowledgeDocumentVO> page, String status, String keyword);
 
-    void enable(String kbId, String docId, boolean enabled);
+    void enable(String docId, boolean enabled);
 }

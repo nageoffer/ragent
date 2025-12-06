@@ -70,17 +70,16 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void startChunk(String kbId, String docId) {
-        KnowledgeDocumentDO doc = docMapper.selectById(docId);
-        Assert.notNull(doc, "文档不存在");
-        Assert.isTrue(Objects.equals(kbId, String.valueOf(doc.getKbId())), "知识库ID与文档不匹配");
-        Assert.isTrue(!DocumentStatus.RUNNING.getCode().equals(doc.getStatus()), "文档分块进行中");
+    public void startChunk(String docId) {
+        KnowledgeDocumentDO documentDO = docMapper.selectById(docId);
+        Assert.notNull(documentDO, () -> new ClientException("文档不存在"));
+        Assert.isTrue(!DocumentStatus.RUNNING.getCode().equals(documentDO.getStatus()), () -> new ClientException("文档分块进行中"));
 
-        patchStatus(doc, DocumentStatus.RUNNING);
+        patchStatus(documentDO, DocumentStatus.RUNNING);
 
-        try (InputStream is = fileStorageService.openStream(doc.getFileUrl())) {
+        try (InputStream is = fileStorageService.openStream(documentDO.getFileUrl())) {
 
-            String text = textExtractor.extract(is, doc.getDocName());
+            String text = textExtractor.extract(is, documentDO.getDocName());
 
             List<Chunk> chunks = chunkService.split(text);
 
@@ -89,42 +88,36 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
             for (int i = 0; i < texts.size(); i++) {
                 vectors[i] = toArray(embeddingService.embed(texts.get(i)));
             }
-            vectorStoreService.upsert(String.valueOf(doc.getKbId()), String.valueOf(doc.getId()), chunks, vectors);
+            vectorStoreService.upsert(String.valueOf(documentDO.getKbId()), String.valueOf(documentDO.getId()), chunks, vectors);
 
-            doc.setChunkCount(chunks.size());
-            patchStatus(doc, DocumentStatus.SUCCESS);
-            docMapper.updateById(doc);
+            documentDO.setChunkCount(chunks.size());
+            patchStatus(documentDO, DocumentStatus.SUCCESS);
+            docMapper.updateById(documentDO);
         } catch (Exception e) {
-            log.error("文件分块失败：kbId={}, docId={}", kbId, docId, e);
-            patchStatus(doc, DocumentStatus.FAILED);
+            log.error("文件分块失败：docId={}", docId, e);
+            patchStatus(documentDO, DocumentStatus.FAILED);
             throw new ServiceException("分块失败：" + e.getMessage());
         }
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void delete(String kbId, String docId, boolean purgeVectors) {
-        KnowledgeDocumentDO doc = docMapper.selectById(docId);
-        Assert.notNull(doc, "文档不存在");
-        Assert.isTrue(Objects.equals(kbId, doc.getKbId()), "kbId 与文档不匹配");
+    public void delete(String docId) {
+        KnowledgeDocumentDO documentDO = docMapper.selectById(docId);
+        Assert.notNull(documentDO, () -> new ClientException("文档不存在"));
 
-        // 1) 逻辑删除记录
-        doc.setDeleted(1);
-        doc.setUpdatedBy("");
-        docMapper.updateById(doc);
+        documentDO.setDeleted(1);
+        documentDO.setUpdatedBy("");
+        docMapper.updateById(documentDO);
 
-        // 2) 可选：清理向量库
-        if (purgeVectors) {
-            vectorStoreService.removeByDocId(String.valueOf(doc.getKbId()), String.valueOf(doc.getId()));
-        }
+        vectorStoreService.removeByDocId(String.valueOf(documentDO.getKbId()), String.valueOf(documentDO.getId()));
     }
 
     @Override
-    public KnowledgeDocumentVO get(String kbId, String docId) {
-        KnowledgeDocumentDO doc = docMapper.selectById(docId);
-        Assert.notNull(doc, "文档不存在");
-        Assert.isTrue(Objects.equals(kbId, doc.getKbId()), "kbId 与文档不匹配");
-        return BeanUtil.toBean(doc, KnowledgeDocumentVO.class);
+    public KnowledgeDocumentVO get(String docId) {
+        KnowledgeDocumentDO documentDO = docMapper.selectById(docId);
+        Assert.notNull(documentDO, () -> new ClientException("文档不存在"));
+        return BeanUtil.toBean(documentDO, KnowledgeDocumentVO.class);
     }
 
     @Override
@@ -146,15 +139,14 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void enable(String kbId, String docId, boolean enabled) {
-        KnowledgeDocumentDO doc = docMapper.selectById(docId);
-        Assert.notNull(doc, "文档不存在");
-        Assert.isTrue(Objects.equals(kbId, doc.getKbId()), "kbId 与文档不匹配");
-        doc.setEnabled(0);
-        doc.setUpdatedBy("");
-        docMapper.updateById(doc);
+    public void enable(String docId, boolean enabled) {
+        KnowledgeDocumentDO documentDO = docMapper.selectById(docId);
+        Assert.notNull(documentDO, () -> new ClientException("文档不存在"));
+        documentDO.setEnabled(0);
+        documentDO.setUpdatedBy("");
+        docMapper.updateById(documentDO);
 
-        vectorStoreService.markEnabled(String.valueOf(doc.getKbId()), String.valueOf(doc.getId()), enabled);
+        vectorStoreService.markEnabled(String.valueOf(documentDO.getKbId()), String.valueOf(documentDO.getId()), enabled);
     }
 
     private void patchStatus(KnowledgeDocumentDO doc, DocumentStatus status) {
