@@ -55,7 +55,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
         KnowledgeDocumentDO documentDO = KnowledgeDocumentDO.builder()
                 .kbId(Long.parseLong(kbId))
                 .docName(stored.getOriginalFilename())
-                .enabled(0)
+                .enabled(1)
                 .chunkCount(0)
                 .fileUrl(stored.getUrl())
                 .fileType(stored.getDetectedType())
@@ -142,7 +142,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
     public void enable(String docId, boolean enabled) {
         KnowledgeDocumentDO documentDO = docMapper.selectById(docId);
         Assert.notNull(documentDO, () -> new ClientException("文档不存在"));
-        documentDO.setEnabled(0);
+        documentDO.setEnabled(enabled ? 1 : 0);
         documentDO.setUpdatedBy("");
         docMapper.updateById(documentDO);
 
