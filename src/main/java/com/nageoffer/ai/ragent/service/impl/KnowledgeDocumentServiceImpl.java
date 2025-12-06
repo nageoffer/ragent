@@ -88,7 +88,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
             for (int i = 0; i < texts.size(); i++) {
                 vectors[i] = toArray(embeddingService.embed(texts.get(i)));
             }
-            vectorStoreService.upsert(String.valueOf(documentDO.getKbId()), String.valueOf(documentDO.getId()), chunks, vectors);
+            vectorStoreService.indexDocumentChunks(String.valueOf(documentDO.getKbId()), docId, chunks, vectors);
 
             documentDO.setChunkCount(chunks.size());
             patchStatus(documentDO, DocumentStatus.SUCCESS);
@@ -110,7 +110,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
         documentDO.setUpdatedBy("");
         docMapper.updateById(documentDO);
 
-        vectorStoreService.removeByDocId(String.valueOf(documentDO.getKbId()), String.valueOf(documentDO.getId()));
+        vectorStoreService.deleteDocumentVectors(String.valueOf(documentDO.getKbId()), docId);
     }
 
     @Override
@@ -146,7 +146,10 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
         documentDO.setUpdatedBy("");
         docMapper.updateById(documentDO);
 
-        vectorStoreService.markEnabled(String.valueOf(documentDO.getKbId()), String.valueOf(documentDO.getId()), enabled);
+        if (!enabled) {
+            vectorStoreService.deleteDocumentVectors(String.valueOf(documentDO.getKbId()), docId);
+        }
+        // TODO 启用文档时，需要读取MySQL数据库Chunk记录，并更新向量库
     }
 
     private void patchStatus(KnowledgeDocumentDO doc, DocumentStatus status) {
