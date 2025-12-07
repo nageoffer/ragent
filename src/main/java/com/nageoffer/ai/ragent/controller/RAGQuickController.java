@@ -1,7 +1,7 @@
 package com.nageoffer.ai.ragent.controller;
 
-import com.nageoffer.ai.ragent.service.impl.SimpleRAGServiceImpl;
 import com.nageoffer.ai.ragent.rag.chat.StreamCallback;
+import com.nageoffer.ai.ragent.service.RAGService;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -15,19 +15,16 @@ import java.io.PrintWriter;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 
+/**
+ * 简单检索 + LLM，快速响应
+ */
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/rag/v1")
-public class SimpleRAGController {
+public class RAGQuickController {
 
-    private final SimpleRAGServiceImpl simpleRAGService;
+    private final RAGService ragQuickService;
     private final Executor executor = Executors.newCachedThreadPool();
-
-    @GetMapping("/chat")
-    public String chat(@RequestParam String question,
-                       @RequestParam(defaultValue = "3") Integer topK) {
-        return simpleRAGService.answer(question, topK);
-    }
 
     @GetMapping(value = "/stream", produces = "text/event-stream;charset=UTF-8")
     public SseEmitter stream(@RequestParam String question,
@@ -35,7 +32,7 @@ public class SimpleRAGController {
         SseEmitter emitter = new SseEmitter(0L);
         executor.execute(() -> {
             try {
-                simpleRAGService.streamAnswer(question, topK, new StreamCallback() {
+                ragQuickService.streamAnswer(question, topK, new StreamCallback() {
                     @Override
                     public void onContent(String chunk) {
                         try {
@@ -78,7 +75,7 @@ public class SimpleRAGController {
         PrintWriter writer = response.getWriter();
 
         try {
-            simpleRAGService.streamAnswer(question, topK, new StreamCallback() {
+            ragQuickService.streamAnswer(question, topK, new StreamCallback() {
                 @Override
                 public void onContent(String chunk) {
                     writer.write(chunk);

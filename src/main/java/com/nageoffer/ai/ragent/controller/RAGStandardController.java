@@ -1,11 +1,10 @@
 package com.nageoffer.ai.ragent.controller;
 
-import com.nageoffer.ai.ragent.service.RAGService;
 import com.nageoffer.ai.ragent.rag.chat.StreamCallback;
+import com.nageoffer.ai.ragent.service.RAGService;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -15,21 +14,23 @@ import java.io.PrintWriter;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 
+/**
+ * RAGQuickController + 意图识别 + Query重写 + Rerank
+ */
 @RestController
 @RequiredArgsConstructor
-@RequestMapping("/rag/v2")
-public class RAGController {
+public class RAGStandardController {
 
-    private final RAGService ragService;
+    private final RAGService ragStandardService;
     private final Executor executor = Executors.newCachedThreadPool();
 
-    @GetMapping(value = "/stream", produces = "text/event-stream;charset=UTF-8")
+    @GetMapping(value = "/rag/v2/stream", produces = "text/event-stream;charset=UTF-8")
     public SseEmitter stream(@RequestParam String question,
                              @RequestParam(defaultValue = "3") Integer topK) {
         SseEmitter emitter = new SseEmitter(0L);
         executor.execute(() -> {
             try {
-                ragService.streamAnswer(question, topK, new StreamCallback() {
+                ragStandardService.streamAnswer(question, topK, new StreamCallback() {
                     @Override
                     public void onContent(String chunk) {
                         try {
@@ -59,7 +60,7 @@ public class RAGController {
         return emitter;
     }
 
-    @GetMapping(value = "/stream-text")
+    @GetMapping(value = "/rag/v2/stream-text")
     public void streamText(@RequestParam String question,
                            @RequestParam(defaultValue = "3") Integer topK,
                            HttpServletResponse response) throws IOException {
@@ -72,7 +73,7 @@ public class RAGController {
         PrintWriter writer = response.getWriter();
 
         try {
-            ragService.streamAnswer(question, topK, new StreamCallback() {
+            ragStandardService.streamAnswer(question, topK, new StreamCallback() {
                 @Override
                 public void onContent(String chunk) {
                     writer.write(chunk);

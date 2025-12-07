@@ -35,9 +35,9 @@ import static com.nageoffer.ai.ragent.constant.RAGConstant.SEARCH_TOP_K_MULTIPLI
 import static com.nageoffer.ai.ragent.enums.IntentKind.SYSTEM;
 
 @Slf4j
-@Service
+@Service("ragStandardService")
 @RequiredArgsConstructor
-public class RAGServiceImpl implements RAGService {
+public class RAGStandardService implements RAGService {
 
     private final RetrieverService retrieverService;
     private final LLMService llmService;
