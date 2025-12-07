@@ -17,7 +17,7 @@ import java.util.concurrent.Executors;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping("/api/ragent/v1/rag")
+@RequestMapping("/rag/v1")
 public class SimpleRAGController {
 
     private final SimpleRAGServiceImpl simpleRAGService;

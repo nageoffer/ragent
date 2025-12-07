@@ -17,7 +17,7 @@ import java.util.concurrent.Executors;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping("/api/ragent/v2/rag")
+@RequestMapping("/rag/v2")
 public class RAGController {
 
     private final RAGService ragService;
