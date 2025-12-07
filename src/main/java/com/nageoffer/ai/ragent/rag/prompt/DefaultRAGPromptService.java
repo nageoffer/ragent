@@ -28,16 +28,6 @@ public class DefaultRAGPromptService implements RAGPromptService {
     private static final Pattern MULTI_BLANK_LINES = Pattern.compile("(\\n){3,}");
 
     @Override
-    public String buildPrompt(String docContent, String userQuestion) {
-        return buildPrompt(docContent, userQuestion, "", "");
-    }
-
-    @Override
-    public String buildPrompt(String docContent, String userQuestion, String intentRules) {
-        return buildPrompt(docContent, userQuestion, intentRules, null);
-    }
-
-    @Override
     public String buildPrompt(String docContent, String userQuestion, String intentRules, String baseTemplate) {
         String tpl = StrUtil.isNotBlank(baseTemplate) ? baseTemplate : RAG_DEFAULT_PROMPT;
 

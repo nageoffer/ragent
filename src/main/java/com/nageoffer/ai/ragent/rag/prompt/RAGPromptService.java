@@ -16,16 +16,6 @@ import java.util.Map;
 public interface RAGPromptService {
 
     /**
-     * 最简单构建：用默认模板，且无意图片段
-     */
-    String buildPrompt(String docContent, String userQuestion);
-
-    /**
-     * 默认模板 + 可选意图片段
-     */
-    String buildPrompt(String docContent, String userQuestion, String intentRules);
-
-    /**
      * 可覆盖基模板 + 可选意图片段（baseTemplate 为空则退回默认模板）
      */
     String buildPrompt(String docContent, String userQuestion, String intentRules, String baseTemplate);
