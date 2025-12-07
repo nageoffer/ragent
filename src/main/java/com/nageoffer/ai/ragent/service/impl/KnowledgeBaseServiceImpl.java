@@ -8,12 +8,14 @@ import com.nageoffer.ai.ragent.dao.mapper.KnowledgeBaseMapper;
 import com.nageoffer.ai.ragent.dao.mapper.KnowledgeDocumentMapper;
 import com.nageoffer.ai.ragent.controller.request.KnowledgeBaseCreateRequest;
 import com.nageoffer.ai.ragent.controller.request.KnowledgeBaseUpdateRequest;
+import com.nageoffer.ai.ragent.controller.vo.KnowledgeBaseVO;
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.framework.exception.ServiceException;
 import com.nageoffer.ai.ragent.service.KnowledgeBaseService;
 import com.nageoffer.ai.ragent.rag.vector.VectorSpaceId;
 import com.nageoffer.ai.ragent.rag.vector.VectorSpaceSpec;
 import com.nageoffer.ai.ragent.rag.vector.VectorStoreAdmin;
+import cn.hutool.core.bean.BeanUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -147,11 +149,11 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     }
 
     @Override
-    public KnowledgeBaseDO getById(String kbId) {
-        KnowledgeBaseDO kb = knowledgeBaseMapper.selectById(kbId);
-        if (kb == null || kb.getDeleted() != null && kb.getDeleted() == 1) {
-            return null;
+    public KnowledgeBaseVO queryById(String kbId) {
+        KnowledgeBaseDO kbDO = knowledgeBaseMapper.selectById(kbId);
+        if (kbDO == null || kbDO.getDeleted() != null && kbDO.getDeleted() == 1) {
+            throw new ClientException("知识库不存在");
         }
-        return kb;
+        return BeanUtil.toBean(kbDO, KnowledgeBaseVO.class);
     }
 }

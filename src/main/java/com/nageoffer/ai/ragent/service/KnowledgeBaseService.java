@@ -1,8 +1,8 @@
 package com.nageoffer.ai.ragent.service;
 
-import com.nageoffer.ai.ragent.dao.entity.KnowledgeBaseDO;
 import com.nageoffer.ai.ragent.controller.request.KnowledgeBaseCreateRequest;
 import com.nageoffer.ai.ragent.controller.request.KnowledgeBaseUpdateRequest;
+import com.nageoffer.ai.ragent.controller.vo.KnowledgeBaseVO;
 
 public interface KnowledgeBaseService {
 
@@ -14,5 +14,5 @@ public interface KnowledgeBaseService {
 
     void delete(String kbId);
 
-    KnowledgeBaseDO getById(String kbId);
+    KnowledgeBaseVO queryById(String kbId);
 }
