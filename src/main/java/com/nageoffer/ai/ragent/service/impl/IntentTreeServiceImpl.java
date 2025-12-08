@@ -5,18 +5,19 @@ import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.google.gson.Gson;
+import com.nageoffer.ai.ragent.controller.request.IntentNodeCreateRequest;
+import com.nageoffer.ai.ragent.controller.request.IntentNodeUpdateRequest;
+import com.nageoffer.ai.ragent.controller.vo.IntentNodeTreeVO;
 import com.nageoffer.ai.ragent.dao.entity.IntentNodeDO;
 import com.nageoffer.ai.ragent.dao.mapper.IntentNodeMapper;
-import com.nageoffer.ai.ragent.controller.request.IntentNodeCreateRequest;
-import com.nageoffer.ai.ragent.controller.vo.IntentNodeTreeVO;
-import com.nageoffer.ai.ragent.controller.request.IntentNodeUpdateRequest;
+import com.nageoffer.ai.ragent.dao.mapper.KnowledgeBaseMapper;
 import com.nageoffer.ai.ragent.enums.IntentKind;
 import com.nageoffer.ai.ragent.enums.IntentLevel;
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.framework.exception.ServiceException;
-import com.nageoffer.ai.ragent.service.IntentTreeService;
 import com.nageoffer.ai.ragent.rag.intent.IntentNode;
 import com.nageoffer.ai.ragent.rag.intent.IntentTreeFactory;
+import com.nageoffer.ai.ragent.service.IntentTreeService;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.collections4.CollectionUtils;
 import org.springframework.stereotype.Service;
@@ -35,6 +36,8 @@ import static com.nageoffer.ai.ragent.enums.IntentLevel.DOMAIN;
 @Service
 @RequiredArgsConstructor
 public class IntentTreeServiceImpl extends ServiceImpl<IntentNodeMapper, IntentNodeDO> implements IntentTreeService {
+
+    private final KnowledgeBaseMapper knowledgeBaseMapper;
 
     private static final Gson GSON = new Gson();
 
@@ -94,25 +97,36 @@ public class IntentTreeServiceImpl extends ServiceImpl<IntentNodeMapper, IntentN
             throw new ClientException("Domain类型的RAG检索意图识别时，必须指定目标知识库");
         }
 
-        IntentNodeDO node = new IntentNodeDO();
-        node.setIntentCode(req.getIntentCode());
-        if (StrUtil.isNotBlank(req.getKbId())) {
-            node.setKbId(Long.parseLong(req.getKbId()));
-        }
-        node.setName(req.getName());
-        node.setLevel(req.getLevel());
-        node.setParentCode(req.getParentCode());
-        node.setDescription(req.getDescription());
-        node.setExamples(req.getExamples() == null ? null : GSON.toJson(req.getExamples()));
-        node.setCollectionName(req.getCollectionName());
-        node.setKind(req.getKind() == null ? 0 : req.getKind());
-        node.setSortOrder(req.getSortOrder() == null ? 0 : req.getSortOrder());
-        node.setEnabled(req.getEnabled() == null ? 1 : req.getEnabled());
-        node.setCreateBy("");
-        node.setUpdateBy("");
-        node.setPromptSnippet(req.getPromptSnippet());
-        node.setPromptTemplate(req.getPromptTemplate());
-        node.setDeleted(0);
+        IntentNodeDO node = IntentNodeDO.builder()
+                .intentCode(req.getIntentCode())
+                .kbId(
+                        StrUtil.isNotBlank(req.getKbId()) ? Long.parseLong(req.getKbId()) : null
+                )
+                .collectionName(
+                        StrUtil.isNotBlank(req.getKbId()) ? knowledgeBaseMapper.selectById(req.getKbId()).getCollectionName() : null
+                )
+                .name(req.getName())
+                .level(req.getLevel())
+                .parentCode(req.getParentCode())
+                .description(req.getDescription())
+                .examples(
+                        req.getExamples() == null ? null : GSON.toJson(req.getExamples())
+                )
+                .kind(
+                        req.getKind() == null ? 0 : req.getKind()
+                )
+                .sortOrder(
+                        req.getSortOrder() == null ? 0 : req.getSortOrder()
+                )
+                .enabled(
+                        req.getEnabled() == null ? 1 : req.getEnabled()
+                )
+                .createBy("")
+                .updateBy("")
+                .promptSnippet(req.getPromptSnippet())
+                .promptTemplate(req.getPromptTemplate())
+                .deleted(0)
+                .build();
 
         this.save(node);
         return String.valueOf(node.getId());
@@ -175,21 +189,21 @@ public class IntentTreeServiceImpl extends ServiceImpl<IntentNodeMapper, IntentN
                 continue;
             }
 
-            IntentNodeCreateRequest dto = new IntentNodeCreateRequest();
-            dto.setKbId(node.getKbId());
-            dto.setIntentCode(node.getId());
-            dto.setName(node.getName());
-            dto.setLevel(mapLevel(node.getLevel()));
-            dto.setParentCode(node.getParentId());
-            dto.setDescription(node.getDescription());
-            dto.setExamples(node.getExamples());
-            dto.setCollectionName(node.getCollectionName());
-            dto.setKind(mapKind(node.getKind()));
-            dto.setSortOrder(sort++);
-            dto.setEnabled(1);
-            dto.setPromptTemplate(node.getPromptTemplate());
-            dto.setPromptSnippet(node.getPromptSnippet());
-            createNode(dto);
+            IntentNodeCreateRequest nodeCreateRequest = IntentNodeCreateRequest.builder()
+                    .kbId(node.getKbId())
+                    .intentCode(node.getId())
+                    .name(node.getName())
+                    .level(mapLevel(node.getLevel()))
+                    .parentCode(node.getParentId())
+                    .description(node.getDescription())
+                    .examples(node.getExamples())
+                    .kind(mapKind(node.getKind()))
+                    .sortOrder(sort++)
+                    .enabled(1)
+                    .promptTemplate(node.getPromptTemplate())
+                    .promptSnippet(node.getPromptSnippet())
+                    .build();
+            createNode(nodeCreateRequest);
             created++;
         }
 
