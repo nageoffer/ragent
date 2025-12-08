@@ -189,9 +189,10 @@ public class LLMTreeIntentClassifier {
         Map<String, IntentNode> id2Node = new HashMap<>();
         for (IntentNodeDO each : intentNodeDOList) {
             IntentNode node = BeanUtil.toBean(each, IntentNode.class);
-            // 这里重点：数据库中的 code 映射到 IntentNode 的 id/parentId
+            // 数据库中的 code 映射到 IntentNode 的 id/parentId
             node.setId(each.getIntentCode());
             node.setParentId(each.getParentCode());
+            node.setMcpToolId(each.getMcpToolId());
             // 确保 children 不为 null（避免后面 add NPE）
             if (node.getChildren() == null) {
                 node.setChildren(new ArrayList<>());

@@ -59,12 +59,17 @@ public class IntentNodeDO {
     private String examples;
 
     /**
-     * 关联的 Collection 名称
+     * Milvus Collection 名称（仅对 kind=0 有意义）
      */
     private String collectionName;
 
     /**
-     * 类型：0=RAG，1=SYSTEM
+     * MCP 工具 ID（仅对 kind=2 有意义）
+     */
+    private String mcpToolId;
+
+    /**
+     * 类型：0=KB(RAG)，1=SYSTEM，2=MCP
      */
     private Integer kind;
 

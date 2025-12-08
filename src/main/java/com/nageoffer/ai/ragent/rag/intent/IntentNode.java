@@ -76,9 +76,14 @@ public class IntentNode {
     private IntentKind kind = IntentKind.KB;
 
     /**
-     * 仅对 kind=KB 有意义，对 SYSTEM 节点可以为 null
+     * Milvus Collection 名称（仅对 kind=KB 有意义）
      */
     private String collectionName;
+
+    /**
+     * MCP 工具 ID（仅对 kind=MCP 有意义）
+     */
+    private String mcpToolId;
 
     /**
      * 短规则片段（可选）
@@ -97,6 +102,27 @@ public class IntentNode {
      */
     public boolean isLeaf() {
         return children == null || children.isEmpty();
+    }
+
+    /**
+     * 是否为 KB 类型节点
+     */
+    public boolean isKB() {
+        return kind == null || kind == IntentKind.KB;
+    }
+
+    /**
+     * 是否为 MCP 类型节点
+     */
+    public boolean isMCP() {
+        return kind == IntentKind.MCP;
+    }
+
+    /**
+     * 是否为 SYSTEM 类型节点
+     */
+    public boolean isSystem() {
+        return kind == IntentKind.SYSTEM;
     }
 }
 

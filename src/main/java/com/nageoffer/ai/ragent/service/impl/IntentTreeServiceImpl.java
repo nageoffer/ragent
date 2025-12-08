@@ -238,13 +238,13 @@ public class IntentTreeServiceImpl extends ServiceImpl<IntentNodeMapper, IntentN
     }
 
     /**
-     * IntentKind -> Integer（0=RAG,1=SYSTEM）
+     * IntentKind -> Integer（0=KB, 1=SYSTEM, 2=MCP）
      */
     private int mapKind(IntentKind kind) {
         if (kind == null) {
-            return 0; // 默认 RAG
+            return 0; // 默认 KB
         }
-        return kind == IntentKind.SYSTEM ? 1 : 0;
+        return kind.getCode();
     }
 
     /**

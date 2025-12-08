@@ -19,7 +19,12 @@ public enum IntentKind {
     /**
      * 系统交互类，比如欢迎语、介绍自己
      */
-    SYSTEM(1);
+    SYSTEM(1),
+
+    /**
+     * MCP，实时数据交互
+     */
+    MCP(2);
 
     /**
      * 意图类型编码
