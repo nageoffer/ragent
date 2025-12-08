@@ -70,13 +70,6 @@ public class InvoiceIndexDocumentTests {
     }
 
     @Test
-    public void ragQuery() {
-        String question = "阿里巴巴发票抬头";
-        String answer = ragService.answer(question, 5);
-        System.out.println(answer);
-    }
-
-    @Test
     public void chatLlmQuery() {
         String question = "阿里发票抬头";
         List<RetrievedChunk> retrievedChunks = retrieverService.retrieve(question, 5);
