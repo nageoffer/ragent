@@ -25,7 +25,6 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 import static com.nageoffer.ai.ragent.constant.RAGConstant.INTENT_CLASSIFIER_PROMPT;
-import static com.nageoffer.ai.ragent.constant.RAGConstant.INTENT_CLASSIFIER_PROMPT_V3;
 
 /**
  * 基于大模型（LLM）的 Tree 意图分类器：
@@ -95,7 +94,7 @@ public class LLMTreeIntentClassifier {
      */
     public List<NodeScore> classifyTargets(String question) {
         String prompt = buildPrompt(question);
-        String raw = llmService.chat(prompt);  // 走你现有的 LLMService
+        String raw = llmService.chat(prompt);
 
         try {
             JsonElement root = JsonParser.parseString(raw.trim());
@@ -172,7 +171,7 @@ public class LLMTreeIntentClassifier {
         StringBuilder sb = new StringBuilder();
         boolean hasMcpNode = false;
 
-        for (IntentNode node : allNodes) {
+        for (IntentNode node : leafNodes) {
             sb.append("- id=").append(node.getId()).append("\n");
             sb.append("  path=").append(node.getFullPath()).append("\n");
             sb.append("  description=").append(node.getDescription()).append("\n");
@@ -198,10 +197,6 @@ public class LLMTreeIntentClassifier {
             sb.append("\n");
         }
 
-        // 如果存在 MCP 节点，使用增强版 Prompt
-        if (hasMcpNode) {
-            return INTENT_CLASSIFIER_PROMPT_V3.formatted(sb.toString(), question);
-        }
         return INTENT_CLASSIFIER_PROMPT.formatted(sb.toString(), question);
     }
 
