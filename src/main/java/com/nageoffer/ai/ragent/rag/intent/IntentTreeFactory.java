@@ -202,6 +202,32 @@ public class IntentTreeFactory {
         biz.setChildren(List.of(oa, ins));
         roots.add(biz);
 
+        // ========== 3. MCP 实时数据意图查询 ==========
+
+        IntentNode sales = IntentNode.builder()
+                .id("sales")
+                .name("销售汇总数据统计")
+                .level(DOMAIN)
+                .kind(IntentKind.MCP) // Domain 可以先标 SYSTEM，仅作语义提示
+                .build();
+
+        IntentNode dingTaskSales = IntentNode.builder()
+                .id("sales-data")
+                .name("销售数据统计")
+                .level(CATEGORY)
+                .parentId(sales.getId())
+                .mcpToolId("sales_query")
+                .kind(IntentKind.MCP)
+                .description("销售数据统计，如：销售总额、销售量、销售占比、销售趋势、销售预测等")
+                .examples(List.of(
+                        "销售总额是多少？",
+                        "销售量是多少？"
+                ))
+                .build();
+
+        sales.setChildren(List.of(dingTaskSales));
+        roots.add(sales);
+
         // ========== 4. 系统交互 / 助手说明 ==========
         IntentNode sys = IntentNode.builder()
                 .id("sys")
