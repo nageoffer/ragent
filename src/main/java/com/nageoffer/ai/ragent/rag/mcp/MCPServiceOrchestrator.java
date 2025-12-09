@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.stream.Collectors;
 
 /**
@@ -18,10 +19,10 @@ import java.util.stream.Collectors;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-
 public class MCPServiceOrchestrator implements MCPService {
 
     private final MCPToolRegistry toolRegistry;
+    private final ThreadPoolExecutor mcpBatchThreadPoolExecutor;
 
     @Override
     public MCPResponse execute(MCPRequest request) {
@@ -54,14 +55,15 @@ public class MCPServiceOrchestrator implements MCPService {
             long costMs = System.currentTimeMillis() - startTime;
             response.setCostMs(costMs);
 
-            log.info("MCP 工具执行完成, toolId: {}, 成功: {}, 耗时: {}ms",
-                    toolId, response.isSuccess(), costMs);
+            log.info("MCP 工具执行完成, toolId: {}, 成功: {}, 耗时: {}ms", toolId, response.isSuccess(), costMs);
 
             return response;
         } catch (Exception e) {
             log.error("MCP 工具执行异常, toolId: {}", toolId, e);
+
             MCPResponse errorResponse = MCPResponse.error(toolId, "EXECUTION_ERROR", "工具调用异常: " + e.getMessage());
             errorResponse.setCostMs(System.currentTimeMillis() - startTime);
+
             return errorResponse;
         }
     }
@@ -76,7 +78,7 @@ public class MCPServiceOrchestrator implements MCPService {
 
         // 并行执行所有请求
         List<CompletableFuture<MCPResponse>> futures = requests.stream()
-                .map(request -> CompletableFuture.supplyAsync(() -> execute(request)))
+                .map(request -> CompletableFuture.supplyAsync(() -> execute(request), mcpBatchThreadPoolExecutor))
                 .toList();
 
         // 等待所有任务完成并收集结果
@@ -152,7 +154,6 @@ public class MCPServiceOrchestrator implements MCPService {
         StringBuilder sb = new StringBuilder();
 
         if (!successResults.isEmpty()) {
-            sb.append("【实时数据查询结果】\n\n");
             for (String result : successResults) {
                 sb.append(result).append("\n\n");
             }
