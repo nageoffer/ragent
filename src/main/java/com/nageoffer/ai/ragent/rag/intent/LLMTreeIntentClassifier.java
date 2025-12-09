@@ -3,7 +3,10 @@ package com.nageoffer.ai.ragent.rag.intent;
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
-import com.google.gson.*;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.nageoffer.ai.ragent.dao.entity.IntentNodeDO;
 import com.nageoffer.ai.ragent.dao.mapper.IntentNodeMapper;
 import com.nageoffer.ai.ragent.rag.chat.LLMService;
@@ -12,10 +15,17 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.util.*;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.Deque;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 import static com.nageoffer.ai.ragent.constant.RAGConstant.INTENT_CLASSIFIER_PROMPT;
+import static com.nageoffer.ai.ragent.constant.RAGConstant.INTENT_CLASSIFIER_PROMPT_V3;
 
 /**
  * 基于大模型（LLM）的 Tree 意图分类器：
@@ -155,14 +165,31 @@ public class LLMTreeIntentClassifier {
      * 构造给 LLM 的 Prompt：
      * - 列出所有【叶子节点】的 id / 路径 / 描述 / 示例问题
      * - 要求 LLM 只在这些 id 中选择，输出 JSON 数组：[{"id": "...", "score": 0.9, "reason": "..."}]
-     * - 特别强调：如果问题里只提到 “OA系统”，不要选 “保险系统” 的分类
+     * - 特别强调：如果问题里只提到 "OA系统"，不要选 "保险系统" 的分类
+     * - 如果存在 MCP 类型节点，使用增强版 Prompt 并添加 type/toolId 标识
      */
     private String buildPrompt(String question) {
         StringBuilder sb = new StringBuilder();
+        boolean hasMcpNode = false;
+
         for (IntentNode node : allNodes) {
             sb.append("- id=").append(node.getId()).append("\n");
             sb.append("  path=").append(node.getFullPath()).append("\n");
             sb.append("  description=").append(node.getDescription()).append("\n");
+
+            // 添加节点类型标识（V3 Enterprise 支持 MCP）
+            if (node.isMCP()) {
+                hasMcpNode = true;
+                sb.append("  type=MCP\n");
+                if (node.getMcpToolId() != null) {
+                    sb.append("  toolId=").append(node.getMcpToolId()).append("\n");
+                }
+            } else if (node.isSystem()) {
+                sb.append("  type=SYSTEM\n");
+            } else {
+                sb.append("  type=KB\n");
+            }
+
             if (node.getExamples() != null && !node.getExamples().isEmpty()) {
                 sb.append("  examples=");
                 sb.append(String.join(" / ", node.getExamples()));
@@ -171,6 +198,10 @@ public class LLMTreeIntentClassifier {
             sb.append("\n");
         }
 
+        // 如果存在 MCP 节点，使用增强版 Prompt
+        if (hasMcpNode) {
+            return INTENT_CLASSIFIER_PROMPT_V3.formatted(sb.toString(), question);
+        }
         return INTENT_CLASSIFIER_PROMPT.formatted(sb.toString(), question);
     }
 
