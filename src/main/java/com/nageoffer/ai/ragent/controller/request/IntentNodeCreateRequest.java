@@ -37,4 +37,9 @@ public class IntentNodeCreateRequest {
      * 场景用的完整 Prompt 模板（可选）
      */
     private String promptTemplate;
+
+    /**
+     * 参数提取提示词模板（MCP模式专属）
+     */
+    private String paramPromptTemplate;
 }

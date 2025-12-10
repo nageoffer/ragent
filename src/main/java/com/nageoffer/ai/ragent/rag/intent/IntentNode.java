@@ -96,6 +96,12 @@ public class IntentNode {
     private String promptTemplate;
 
     /**
+     * 参数提取提示词模板（MCP 模式专属）
+     * 如果配置了此字段，MCP 参数提取时使用自定义提示词
+     */
+    private String paramPromptTemplate;
+
+    /**
      * 是否为“最终节点”（叶子节点）：
      * - 叶子节点才挂知识库（Milvus Collection）
      * - 叶子节点才会参与意图匹配打分

@@ -219,6 +219,7 @@ public class LLMTreeIntentClassifier {
             node.setId(each.getIntentCode());
             node.setParentId(each.getParentCode());
             node.setMcpToolId(each.getMcpToolId());
+            node.setParamPromptTemplate(each.getParamPromptTemplate());
             // 确保 children 不为 null（避免后面 add NPE）
             if (node.getChildren() == null) {
                 node.setChildren(new ArrayList<>());
