@@ -131,16 +131,30 @@ public class RAGEnterpriseService implements RAGService {
     private RetrievalContext buildRetrievalContext(String question, IntentGroup intentGroup, int topK) {
         int finalTopK = topK > 0 ? topK : DEFAULT_TOP_K;
 
-        // 并行执行 MCP 和 KB
-        CompletableFuture<String> mcpFuture = CompletableFuture.supplyAsync(() ->
-                executeMcpAndMerge(question, intentGroup.mcpIntents));
+        boolean hasMcpIntents = CollUtil.isNotEmpty(intentGroup.mcpIntents);
+        boolean hasKbIntents = CollUtil.isNotEmpty(intentGroup.kbIntents);
 
-        CompletableFuture<KbResult> kbFuture = CompletableFuture.supplyAsync(() ->
-                retrieveAndRerank(question, intentGroup.kbIntents, finalTopK));
+        // 只有当 MCP 和 KB 都存在时才并行执行，否则同步执行
+        if (hasMcpIntents && hasKbIntents) {
+            CompletableFuture<String> mcpFuture = CompletableFuture.supplyAsync(() ->
+                    executeMcpAndMerge(question, intentGroup.mcpIntents));
 
-        // 等待结果
-        String mcpContext = mcpFuture.join();
-        KbResult kbResult = kbFuture.join();
+            CompletableFuture<KbResult> kbFuture = CompletableFuture.supplyAsync(() ->
+                    retrieveAndRerank(question, intentGroup.kbIntents, finalTopK));
+
+            String mcpContext = mcpFuture.join();
+            KbResult kbResult = kbFuture.join();
+
+            return RetrievalContext.builder()
+                    .mcpContext(mcpContext)
+                    .kbContext(kbResult.context)
+                    .intentChunks(kbResult.intentChunks)
+                    .build();
+        }
+
+        // 同步执行
+        String mcpContext = hasMcpIntents ? executeMcpAndMerge(question, intentGroup.mcpIntents) : "";
+        KbResult kbResult = hasKbIntents ? retrieveAndRerank(question, intentGroup.kbIntents, finalTopK) : KbResult.empty();
 
         return RetrievalContext.builder()
                 .mcpContext(mcpContext)
