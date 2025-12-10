@@ -32,6 +32,11 @@ public class LLMMCPParameterExtractor implements MCPParameterExtractor {
 
     @Override
     public Map<String, Object> extractParameters(String userQuestion, MCPTool tool) {
+        return extractParameters(userQuestion, tool, null);
+    }
+
+    @Override
+    public Map<String, Object> extractParameters(String userQuestion, MCPTool tool, String customPromptTemplate) {
         if (tool == null || tool.getParameters() == null || tool.getParameters().isEmpty()) {
             return new HashMap<>();
         }
@@ -39,8 +44,14 @@ public class LLMMCPParameterExtractor implements MCPParameterExtractor {
         // 构建工具定义描述
         String toolDefinition = buildToolDefinition(tool);
 
-        // 构建 Prompt
-        String prompt = MCP_PARAMETER_EXTRACT_PROMPT.formatted(toolDefinition, userQuestion);
+        // 构建 Prompt：优先使用自定义提示词
+        String prompt;
+        if (StrUtil.isNotBlank(customPromptTemplate)) {
+            prompt = customPromptTemplate.formatted(toolDefinition, userQuestion);
+            log.debug("MCP 参数提取使用自定义提示词, toolId: {}", tool.getToolId());
+        } else {
+            prompt = MCP_PARAMETER_EXTRACT_PROMPT.formatted(toolDefinition, userQuestion);
+        }
 
         log.debug("MCP 参数提取 Prompt: {}", prompt);
 

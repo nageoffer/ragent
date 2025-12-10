@@ -20,6 +20,19 @@ public interface MCPParameterExtractor {
     Map<String, Object> extractParameters(String userQuestion, MCPTool tool);
 
     /**
+     * 从用户问题中提取 MCP 工具所需的参数（支持自定义提示词）
+     *
+     * @param userQuestion         用户原始问题
+     * @param tool                 MCP 工具定义（包含参数定义）
+     * @param customPromptTemplate 自定义参数提取提示词模板（可选，为空则使用默认提示词）
+     * @return 提取到的参数键值对
+     */
+    default Map<String, Object> extractParameters(String userQuestion, MCPTool tool, String customPromptTemplate) {
+        // 默认实现忽略自定义提示词，子类可以覆写
+        return extractParameters(userQuestion, tool);
+    }
+
+    /**
      * 校验必填参数是否完整
      *
      * @param params 已提取的参数
@@ -69,8 +82,8 @@ public interface MCPParameterExtractor {
         }
 
         public static ParameterValidationResult invalid(Map<String, Object> params,
-                                                         java.util.List<String> missingParams,
-                                                         MCPTool tool) {
+                                                        java.util.List<String> missingParams,
+                                                        MCPTool tool) {
             StringBuilder sb = new StringBuilder();
             sb.append("为了更准确地查询，请补充以下信息：\n");
             for (String paramName : missingParams) {

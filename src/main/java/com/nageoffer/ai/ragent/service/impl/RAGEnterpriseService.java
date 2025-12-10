@@ -16,6 +16,7 @@ import com.nageoffer.ai.ragent.rag.mcp.MCPService;
 import com.nageoffer.ai.ragent.rag.mcp.MCPTool;
 import com.nageoffer.ai.ragent.rag.mcp.MCPToolExecutor;
 import com.nageoffer.ai.ragent.rag.mcp.MCPToolRegistry;
+import com.nageoffer.ai.ragent.rag.prompt.MCPPromptService;
 import com.nageoffer.ai.ragent.rag.prompt.RAGPromptService;
 import com.nageoffer.ai.ragent.rag.rerank.RerankService;
 import com.nageoffer.ai.ragent.rag.retrieve.RetrieveRequest;
@@ -29,6 +30,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -41,8 +43,6 @@ import static com.nageoffer.ai.ragent.constant.RAGConstant.CHAT_SYSTEM_PROMPT;
 import static com.nageoffer.ai.ragent.constant.RAGConstant.DEFAULT_TOP_K;
 import static com.nageoffer.ai.ragent.constant.RAGConstant.INTENT_MIN_SCORE;
 import static com.nageoffer.ai.ragent.constant.RAGConstant.MAX_INTENT_COUNT;
-import static com.nageoffer.ai.ragent.constant.RAGConstant.MCP_KB_MIXED_CONTEXT_TEMPLATE;
-import static com.nageoffer.ai.ragent.constant.RAGConstant.MCP_ONLY_PROMPT;
 import static com.nageoffer.ai.ragent.constant.RAGConstant.MIN_SEARCH_TOP_K;
 import static com.nageoffer.ai.ragent.constant.RAGConstant.RERANK_LIMIT_MULTIPLIER;
 import static com.nageoffer.ai.ragent.constant.RAGConstant.SEARCH_TOP_K_MULTIPLIER;
@@ -64,6 +64,7 @@ public class RAGEnterpriseService implements RAGService {
     private final LLMTreeIntentClassifier llmTreeIntentClassifier;
     private final QueryRewriteService queryRewriteService;
     private final RAGPromptService ragPromptService;
+    private final MCPPromptService mcpPromptService;
     private final MCPService mcpService;
     private final MCPParameterExtractor mcpParameterExtractor;
     private final MCPToolRegistry mcpToolRegistry;
@@ -93,7 +94,7 @@ public class RAGEnterpriseService implements RAGService {
             return;
         }
 
-        streamLLMResponse(rewriteQuestion, ctx, intentGroup.kbIntents, callback);
+        streamLLMResponse(rewriteQuestion, ctx, intentGroup, callback);
     }
 
     // ==================== 意图分离 ====================
@@ -223,8 +224,8 @@ public class RAGEnterpriseService implements RAGService {
     }
 
     private void streamLLMResponse(String question, RetrievalContext ctx,
-                                   List<NodeScore> kbIntents, StreamCallback callback) {
-        String prompt = buildPrompt(question, ctx, kbIntents);
+                                   IntentGroup intentGroup, StreamCallback callback) {
+        String prompt = buildPrompt(question, ctx, intentGroup);
 
         ChatRequest chatRequest = ChatRequest.builder()
                 .prompt(prompt)
@@ -237,36 +238,45 @@ public class RAGEnterpriseService implements RAGService {
     }
 
     /**
-     * 统一 Prompt 构建
+     * 统一 Prompt 构建（实现完整的5种场景）
+     * <p>
+     * 场景1: 单问题命中KB，使用 promptTemplate 或默认 RAG 提示词
+     * 场景2: 多问题多意图全命中KB，使用默认 RAG 提示词 + promptSnippet
+     * 场景3: 单问题命中MCP，使用 promptTemplate 或默认 MCP 提示词
+     * 场景4: 多问题多意图全命中MCP，使用默认 MCP 提示词 + promptSnippet
+     * 场景5: 混合命中 MCP 和 KB，使用混合提示词 + promptSnippet
      */
-    private String buildPrompt(String question, RetrievalContext ctx, List<NodeScore> kbIntents) {
-        // 场景1：只有 MCP
+    private String buildPrompt(String question, RetrievalContext ctx, IntentGroup intentGroup) {
+        // 场景3/4: 只有 MCP
         if (ctx.hasMcp() && !ctx.hasKb()) {
-            return MCP_ONLY_PROMPT.formatted(ctx.mcpContext, question);
+            return mcpPromptService.buildMcpOnlyPrompt(ctx.mcpContext, question, intentGroup.mcpIntents);
         }
 
-        // 场景2：只有 KB
+        // 场景1/2: 只有 KB
         if (!ctx.hasMcp() && ctx.hasKb()) {
-            return ragPromptService.buildPrompt(ctx.kbContext, question, kbIntents, ctx.intentChunks);
+            return ragPromptService.buildPrompt(ctx.kbContext, question, intentGroup.kbIntents, ctx.intentChunks);
         }
 
-        // 场景3：MCP + KB 混合
-        String combinedContext = MCP_KB_MIXED_CONTEXT_TEMPLATE.formatted(ctx.mcpContext, ctx.kbContext);
-        return ragPromptService.buildPrompt(combinedContext, question, kbIntents, ctx.intentChunks);
+        // 场景5: MCP + KB 混合
+        List<NodeScore> allIntents = new ArrayList<>();
+        allIntents.addAll(intentGroup.mcpIntents);
+        allIntents.addAll(intentGroup.kbIntents);
+        return mcpPromptService.buildMixedPrompt(ctx.mcpContext, ctx.kbContext, question, allIntents);
     }
 
     // ==================== MCP 工具执行 ====================
 
     private List<MCPResponse> executeMcpTools(String question, List<NodeScore> mcpIntentScores) {
         List<MCPRequest> requests = mcpIntentScores.stream()
-                .map(ns -> buildMcpRequest(question, ns.getNode().getMcpToolId()))
+                .map(ns -> buildMcpRequest(question, ns.getNode()))
                 .filter(Objects::nonNull)
                 .toList();
 
         return requests.isEmpty() ? List.of() : mcpService.executeBatch(requests);
     }
 
-    private MCPRequest buildMcpRequest(String question, String toolId) {
+    private MCPRequest buildMcpRequest(String question, IntentNode intentNode) {
+        String toolId = intentNode.getMcpToolId();
         Optional<MCPToolExecutor> executorOpt = mcpToolRegistry.getExecutor(toolId);
         if (executorOpt.isEmpty()) {
             log.warn("MCP 工具不存在: {}", toolId);
@@ -274,8 +284,12 @@ public class RAGEnterpriseService implements RAGService {
         }
 
         MCPTool tool = executorOpt.get().getToolDefinition();
-        Map<String, Object> params = mcpParameterExtractor.extractParameters(question, tool);
-        log.info("MCP 参数提取 - toolId: {}, params: {}", toolId, params);
+
+        // 使用意图节点配置的自定义参数提取提示词（如果配置了）
+        String customParamPrompt = intentNode.getParamPromptTemplate();
+        Map<String, Object> params = mcpParameterExtractor.extractParameters(question, tool, customParamPrompt);
+        log.info("MCP 参数提取 - toolId: {}, 使用自定义提示词: {}, params: {}",
+                toolId, StrUtil.isNotBlank(customParamPrompt), params);
 
         return MCPRequest.builder()
                 .toolId(toolId)
