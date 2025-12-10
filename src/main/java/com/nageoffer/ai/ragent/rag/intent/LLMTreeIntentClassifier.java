@@ -169,7 +169,6 @@ public class LLMTreeIntentClassifier {
      */
     private String buildPrompt(String question) {
         StringBuilder sb = new StringBuilder();
-        boolean hasMcpNode = false;
 
         for (IntentNode node : leafNodes) {
             sb.append("- id=").append(node.getId()).append("\n");
@@ -178,7 +177,6 @@ public class LLMTreeIntentClassifier {
 
             // 添加节点类型标识（V3 Enterprise 支持 MCP）
             if (node.isMCP()) {
-                hasMcpNode = true;
                 sb.append("  type=MCP\n");
                 if (node.getMcpToolId() != null) {
                     sb.append("  toolId=").append(node.getMcpToolId()).append("\n");
