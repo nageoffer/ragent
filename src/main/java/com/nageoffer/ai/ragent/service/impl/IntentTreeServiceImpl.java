@@ -82,50 +82,51 @@ public class IntentTreeServiceImpl extends ServiceImpl<IntentNodeMapper, IntentN
     }
 
     @Override
-    public String createNode(IntentNodeCreateRequest req) {
+    public String createNode(IntentNodeCreateRequest requestParam) {
         // 简单重复校验：intentCode 不允许重复
         long count = this.count(new LambdaQueryWrapper<IntentNodeDO>()
-                .eq(IntentNodeDO::getIntentCode, req.getIntentCode())
+                .eq(IntentNodeDO::getIntentCode, requestParam.getIntentCode())
                 .eq(IntentNodeDO::getDeleted, 0));
         if (count > 0) {
-            throw new ClientException("意图标识已存在: " + req.getIntentCode());
+            throw new ClientException("意图标识已存在: " + requestParam.getIntentCode());
         }
 
-        if (Objects.equals(req.getLevel(), DOMAIN.getCode())
-                && Objects.equals(req.getKind(), IntentKind.KB.getCode())
-                && StrUtil.isBlank(req.getKbId())) {
+        if (Objects.equals(requestParam.getLevel(), DOMAIN.getCode())
+                && Objects.equals(requestParam.getKind(), IntentKind.KB.getCode())
+                && StrUtil.isBlank(requestParam.getKbId())) {
             throw new ClientException("Domain类型的RAG检索意图识别时，必须指定目标知识库");
         }
 
         IntentNodeDO node = IntentNodeDO.builder()
-                .intentCode(req.getIntentCode())
+                .intentCode(requestParam.getIntentCode())
                 .kbId(
-                        StrUtil.isNotBlank(req.getKbId()) ? Long.parseLong(req.getKbId()) : null
+                        StrUtil.isNotBlank(requestParam.getKbId()) ? Long.parseLong(requestParam.getKbId()) : null
                 )
                 .collectionName(
-                        StrUtil.isNotBlank(req.getKbId()) ? knowledgeBaseMapper.selectById(req.getKbId()).getCollectionName() : null
+                        StrUtil.isNotBlank(requestParam.getKbId()) ? knowledgeBaseMapper.selectById(requestParam.getKbId()).getCollectionName() : null
                 )
-                .name(req.getName())
-                .level(req.getLevel())
-                .parentCode(req.getParentCode())
-                .description(req.getDescription())
-                .mcpToolId(req.getMcpToolId())
+                .name(requestParam.getName())
+                .level(requestParam.getLevel())
+                .parentCode(requestParam.getParentCode())
+                .description(requestParam.getDescription())
+                .mcpToolId(requestParam.getMcpToolId())
                 .examples(
-                        req.getExamples() == null ? null : GSON.toJson(req.getExamples())
+                        requestParam.getExamples() == null ? null : GSON.toJson(requestParam.getExamples())
                 )
                 .kind(
-                        req.getKind() == null ? 0 : req.getKind()
+                        requestParam.getKind() == null ? 0 : requestParam.getKind()
                 )
                 .sortOrder(
-                        req.getSortOrder() == null ? 0 : req.getSortOrder()
+                        requestParam.getSortOrder() == null ? 0 : requestParam.getSortOrder()
                 )
                 .enabled(
-                        req.getEnabled() == null ? 1 : req.getEnabled()
+                        requestParam.getEnabled() == null ? 1 : requestParam.getEnabled()
                 )
                 .createBy("")
                 .updateBy("")
-                .promptSnippet(req.getPromptSnippet())
-                .promptTemplate(req.getPromptTemplate())
+                .paramPromptTemplate(requestParam.getParamPromptTemplate())
+                .promptSnippet(requestParam.getPromptSnippet())
+                .promptTemplate(requestParam.getPromptTemplate())
                 .deleted(0)
                 .build();
 
@@ -204,6 +205,7 @@ public class IntentTreeServiceImpl extends ServiceImpl<IntentNodeMapper, IntentN
                     .enabled(1)
                     .promptTemplate(node.getPromptTemplate())
                     .promptSnippet(node.getPromptSnippet())
+                    .paramPromptTemplate(node.getParamPromptTemplate())
                     .build();
             createNode(nodeCreateRequest);
             created++;
