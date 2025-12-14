@@ -20,6 +20,12 @@ spring:
       maximum-pool-size: 5
       minimum-idle: 5
 
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 6379
+      password: 123456
+
 milvus:
   uri: http://localhost:19530
 
