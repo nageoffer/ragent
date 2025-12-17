@@ -133,7 +133,7 @@ public class RAGEnterpriseService implements RAGService {
             return;
         }
 
-        streamLLMResponse(rewriteQuestion, ctx, intentGroup, callback);
+        streamLLMResponse(rewriteResult, ctx, intentGroup, callback);
     }
 
     // ==================== 意图分离 ====================
@@ -293,9 +293,9 @@ public class RAGEnterpriseService implements RAGService {
         llmService.streamChat(req, callback);
     }
 
-    private void streamLLMResponse(String question, RetrievalContext ctx,
+    private void streamLLMResponse(QueryRewriteService.RewriteResult rewriteResult, RetrievalContext ctx,
                                    IntentGroup intentGroup, StreamCallback callback) {
-        String prompt = buildPrompt(question, ctx, intentGroup);
+        String prompt = buildPrompt(rewriteResult.joinSubQuestions(), ctx, intentGroup);
 
         ChatRequest chatRequest = ChatRequest.builder()
                 .prompt(prompt)

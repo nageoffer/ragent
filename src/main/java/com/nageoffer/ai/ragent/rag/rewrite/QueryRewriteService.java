@@ -28,5 +28,25 @@ public interface QueryRewriteService {
      * 改写与拆分结果封装
      */
     record RewriteResult(String rewrittenQuestion, List<String> subQuestions) {
+
+        public String joinSubQuestions() {
+            if (subQuestions == null || subQuestions.isEmpty()) {
+                return "";
+            }
+
+            // 如果只有一个子问题，直接返回
+            if (subQuestions.size() == 1) {
+                return subQuestions.get(0);
+            }
+
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < subQuestions.size(); i++) {
+                sb.append(i + 1).append(". ").append(subQuestions.get(i));
+                if (i < subQuestions.size() - 1) {
+                    sb.append("\n");
+                }
+            }
+            return sb.toString();
+        }
     }
 }
