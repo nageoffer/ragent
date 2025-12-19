@@ -7,10 +7,8 @@ import org.springframework.stereotype.Service;
 
 import java.util.Collections;
 import java.util.List;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-import static com.nageoffer.ai.ragent.constant.RAGConstant.INTENT_RULES_SECTION;
 import static com.nageoffer.ai.ragent.constant.RAGEnterpriseConstant.MCP_KB_MIXED_PROMPT;
 import static com.nageoffer.ai.ragent.constant.RAGEnterpriseConstant.MCP_ONLY_PROMPT;
 
@@ -25,8 +23,6 @@ import static com.nageoffer.ai.ragent.constant.RAGEnterpriseConstant.MCP_ONLY_PR
 @Service
 public class DefaultMCPPromptService implements MCPPromptService {
 
-    private static final Pattern MULTI_BLANK_LINES = Pattern.compile("(\\n){3,}");
-
     @Override
     public String buildMcpOnlyPrompt(String mcpContext, String userQuestion, List<NodeScore> mcpIntents) {
         List<NodeScore> safeIntents = mcpIntents == null ? Collections.emptyList() : mcpIntents;
@@ -39,14 +35,14 @@ public class DefaultMCPPromptService implements MCPPromptService {
 
             if (StrUtil.isNotBlank(tpl)) {
                 // 单意图 + 有模板：使用自定义模板
-                String withIntent = injectIntentRules(tpl, snippet);
+                String withIntent = PromptTemplateUtils.injectIntentRules(tpl, snippet);
                 return formatPrompt(withIntent, mcpContext, userQuestion);
             }
         }
 
         // 多意图或无自定义模板：使用默认 MCP 提示词 + 合并 snippets
         String mergedSnippets = mergeSnippets(safeIntents);
-        String withIntent = injectIntentRules(MCP_ONLY_PROMPT, mergedSnippets);
+        String withIntent = PromptTemplateUtils.injectIntentRules(MCP_ONLY_PROMPT, mergedSnippets);
         return formatPrompt(withIntent, mcpContext, userQuestion);
     }
 
@@ -56,7 +52,7 @@ public class DefaultMCPPromptService implements MCPPromptService {
 
         // 混合场景：合并所有意图的 snippets
         String mergedSnippets = mergeSnippets(safeIntents);
-        String withIntent = injectIntentRules(MCP_KB_MIXED_PROMPT, mergedSnippets);
+        String withIntent = PromptTemplateUtils.injectIntentRules(MCP_KB_MIXED_PROMPT, mergedSnippets);
 
         // MCP_KB_MIXED_PROMPT 需要三个参数：mcpContext, kbContext, userQuestion
         String prompt = withIntent.formatted(
@@ -65,7 +61,7 @@ public class DefaultMCPPromptService implements MCPPromptService {
                 defaultString(userQuestion).trim()
         );
 
-        return cleanupPrompt(prompt);
+        return PromptTemplateUtils.cleanupPrompt(prompt);
     }
 
     @Override
@@ -83,22 +79,6 @@ public class DefaultMCPPromptService implements MCPPromptService {
     }
 
     /**
-     * 注入意图规则到模板中
-     */
-    private String injectIntentRules(String template, String intentRules) {
-        if (StrUtil.isBlank(intentRules)) {
-            return template.replace("{{INTENT_RULES}}", "");
-        }
-
-        String section = INTENT_RULES_SECTION.formatted(intentRules.trim());
-        if (template.contains("{{INTENT_RULES}}")) {
-            return template.replace("{{INTENT_RULES}}", section);
-        } else {
-            return section + "\n\n" + template;
-        }
-    }
-
-    /**
      * 格式化 MCP 提示词（两个参数版本：mcpContext, userQuestion）
      */
     private String formatPrompt(String template, String mcpContext, String userQuestion) {
@@ -106,14 +86,7 @@ public class DefaultMCPPromptService implements MCPPromptService {
                 defaultString(mcpContext).trim(),
                 defaultString(userQuestion).trim()
         );
-        return cleanupPrompt(prompt);
-    }
-
-    /**
-     * 清理多余空行
-     */
-    private String cleanupPrompt(String prompt) {
-        return MULTI_BLANK_LINES.matcher(prompt).replaceAll("\n\n").trim();
+        return PromptTemplateUtils.cleanupPrompt(prompt);
     }
 
     private static String defaultString(String s) {

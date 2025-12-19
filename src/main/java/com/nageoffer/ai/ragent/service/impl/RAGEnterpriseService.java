@@ -2,12 +2,13 @@ package com.nageoffer.ai.ragent.service.impl;
 
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
+import com.nageoffer.ai.ragent.constant.RAGConstant;
 import com.nageoffer.ai.ragent.convention.ChatRequest;
 import com.nageoffer.ai.ragent.enums.IntentKind;
 import com.nageoffer.ai.ragent.rag.chat.LLMService;
 import com.nageoffer.ai.ragent.rag.chat.StreamCallback;
-import com.nageoffer.ai.ragent.rag.intent.IntentNode;
 import com.nageoffer.ai.ragent.rag.intent.IntentClassifier;
+import com.nageoffer.ai.ragent.rag.intent.IntentNode;
 import com.nageoffer.ai.ragent.rag.intent.NodeScore;
 import com.nageoffer.ai.ragent.rag.mcp.MCPParameterExtractor;
 import com.nageoffer.ai.ragent.rag.mcp.MCPRequest;
@@ -16,13 +17,17 @@ import com.nageoffer.ai.ragent.rag.mcp.MCPService;
 import com.nageoffer.ai.ragent.rag.mcp.MCPTool;
 import com.nageoffer.ai.ragent.rag.mcp.MCPToolExecutor;
 import com.nageoffer.ai.ragent.rag.mcp.MCPToolRegistry;
-import com.nageoffer.ai.ragent.rag.prompt.MCPPromptService;
-import com.nageoffer.ai.ragent.rag.prompt.RAGPromptService;
+import com.nageoffer.ai.ragent.rag.prompt.ContextFormatter;
+import com.nageoffer.ai.ragent.rag.prompt.PromptBuildPlan;
+import com.nageoffer.ai.ragent.rag.prompt.PromptContext;
+import com.nageoffer.ai.ragent.rag.prompt.PromptPlanner;
+import com.nageoffer.ai.ragent.rag.prompt.PromptRenderer;
 import com.nageoffer.ai.ragent.rag.rerank.RerankService;
 import com.nageoffer.ai.ragent.rag.retrieve.RetrieveRequest;
 import com.nageoffer.ai.ragent.rag.retrieve.RetrievedChunk;
 import com.nageoffer.ai.ragent.rag.retrieve.RetrieverService;
 import com.nageoffer.ai.ragent.rag.rewrite.QueryRewriteService;
+import com.nageoffer.ai.ragent.rag.rewrite.RewriteResult;
 import com.nageoffer.ai.ragent.service.RAGService;
 import lombok.Builder;
 import lombok.Data;
@@ -38,7 +43,6 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadPoolExecutor;
-import java.util.stream.Collectors;
 
 import static com.nageoffer.ai.ragent.constant.RAGConstant.CHAT_SYSTEM_PROMPT;
 import static com.nageoffer.ai.ragent.constant.RAGConstant.DEFAULT_TOP_K;
@@ -63,11 +67,13 @@ public class RAGEnterpriseService implements RAGService {
     private final RerankService rerankService;
     private final IntentClassifier intentClassifier;
     private final QueryRewriteService queryRewriteService;
-    private final RAGPromptService ragPromptService;
-    private final MCPPromptService mcpPromptService;
+    private final PromptPlanner promptPlanner;
+    private final PromptRenderer promptRenderer;
+    private final ContextFormatter contextFormatter;
     private final MCPService mcpService;
     private final MCPParameterExtractor mcpParameterExtractor;
     private final MCPToolRegistry mcpToolRegistry;
+    private final ThreadPoolExecutor intentClassifyExecutor;
     private final ThreadPoolExecutor ragContextExecutor;
     private final ThreadPoolExecutor ragRetrievalExecutor;
 
@@ -75,25 +81,29 @@ public class RAGEnterpriseService implements RAGService {
             RetrieverService retrieverService,
             LLMService llmService,
             RerankService rerankService,
-            MCPPromptService mcpPromptService,
             MCPService mcpService,
             MCPParameterExtractor mcpParameterExtractor,
             MCPToolRegistry mcpToolRegistry,
-            @Qualifier("ragEnterprisePromptService") RAGPromptService ragPromptService,
+            PromptPlanner promptPlanner,
+            PromptRenderer promptRenderer,
+            ContextFormatter contextFormatter,
             @Qualifier("defaultIntentClassifier") IntentClassifier intentClassifier,
             @Qualifier("multiQuestionRewriteService") QueryRewriteService queryRewriteService,
+            @Qualifier("intentClassifyThreadPoolExecutor") ThreadPoolExecutor intentClassifyExecutor,
             @Qualifier("ragContextThreadPoolExecutor") ThreadPoolExecutor ragContextExecutor,
             @Qualifier("ragRetrievalThreadPoolExecutor") ThreadPoolExecutor ragRetrievalExecutor) {
         this.retrieverService = retrieverService;
         this.llmService = llmService;
         this.rerankService = rerankService;
-        this.ragPromptService = ragPromptService;
-        this.mcpPromptService = mcpPromptService;
+        this.promptPlanner = promptPlanner;
+        this.promptRenderer = promptRenderer;
+        this.contextFormatter = contextFormatter;
         this.mcpService = mcpService;
         this.mcpParameterExtractor = mcpParameterExtractor;
         this.mcpToolRegistry = mcpToolRegistry;
         this.intentClassifier = intentClassifier;
         this.queryRewriteService = queryRewriteService;
+        this.intentClassifyExecutor = intentClassifyExecutor;
         this.ragContextExecutor = ragContextExecutor;
         this.ragRetrievalExecutor = ragRetrievalExecutor;
     }
@@ -102,16 +112,10 @@ public class RAGEnterpriseService implements RAGService {
 
     @Override
     public void streamAnswer(String question, int topK, StreamCallback callback) {
-        QueryRewriteService.RewriteResult rewriteResult = queryRewriteService.rewriteWithSplit(question);
+        RewriteResult rewriteResult = queryRewriteService.rewriteWithSplit(question);
         String rewriteQuestion = rewriteResult.rewrittenQuestion();
 
-        List<String> subQuestions = CollUtil.isNotEmpty(rewriteResult.subQuestions())
-                ? rewriteResult.subQuestions()
-                : List.of(rewriteQuestion);
-
-        List<SubQuestionIntent> subIntents = subQuestions.stream()
-                .map(q -> new SubQuestionIntent(q, classifyIntents(q)))
-                .toList();
+        List<SubQuestionIntent> subIntents = buildSubQuestionIntents(rewriteResult, rewriteQuestion);
 
         boolean allSystemOnly = subIntents.stream()
                 .allMatch(si -> isSystemOnly(si.nodeScores));
@@ -127,14 +131,7 @@ public class RAGEnterpriseService implements RAGService {
         }
 
         // 聚合所有意图用于 prompt 规划
-        List<NodeScore> allIntents = subIntents.stream()
-                .flatMap(si -> separateIntents(si.nodeScores).allIntents().stream())
-                .toList();
-
-        IntentGroup mergedGroup = new IntentGroup(
-                allIntents.stream().filter(ns -> ns.getNode().isMCP()).toList(),
-                allIntents.stream().filter(ns -> ns.getNode().isKB()).toList()
-        );
+        IntentGroup mergedGroup = mergeIntentGroup(subIntents);
 
         streamLLMResponse(rewriteResult, ctx, mergedGroup, callback);
     }
@@ -156,24 +153,94 @@ public class RAGEnterpriseService implements RAGService {
         return nodeScores.size() == 1 && Objects.equals(nodeScores.get(0).getNode().getKind(), SYSTEM);
     }
 
-    private IntentGroup separateIntents(List<NodeScore> nodeScores) {
-        List<NodeScore> mcpIntents = nodeScores.stream()
+    private List<SubQuestionIntent> buildSubQuestionIntents(RewriteResult rewriteResult,
+                                                            String rewriteQuestion) {
+        List<String> subQuestions = CollUtil.isNotEmpty(rewriteResult.subQuestions())
+                ? rewriteResult.subQuestions()
+                : List.of(rewriteQuestion);
+        List<CompletableFuture<SubQuestionIntent>> tasks = subQuestions.stream()
+                .map(q -> CompletableFuture.supplyAsync(
+                        () -> new SubQuestionIntent(q, classifyIntents(q)),
+                        intentClassifyExecutor
+                ))
+                .toList();
+        List<SubQuestionIntent> subIntents = tasks.stream()
+                .map(CompletableFuture::join)
+                .toList();
+        return capTotalIntents(subIntents);
+    }
+
+    private List<SubQuestionIntent> capTotalIntents(List<SubQuestionIntent> subIntents) {
+        int total = subIntents.stream()
+                .mapToInt(si -> si.nodeScores.size())
+                .sum();
+        if (total <= RAGConstant.MAX_INTENT_COUNT) {
+            return subIntents;
+        }
+
+        List<IntentCandidate> candidates = new ArrayList<>();
+        Map<Integer, List<NodeScore>> retainedByIndex = new ConcurrentHashMap<>();
+        for (int i = 0; i < subIntents.size(); i++) {
+            SubQuestionIntent si = subIntents.get(i);
+            if (CollUtil.isEmpty(si.nodeScores)) {
+                continue;
+            }
+            List<NodeScore> sorted = si.nodeScores.stream()
+                    .sorted((a, b) -> Double.compare(b.getScore(), a.getScore()))
+                    .toList();
+            retainedByIndex.computeIfAbsent(i, k -> new ArrayList<>())
+                    .add(sorted.get(0));
+            for (int j = 1; j < sorted.size(); j++) {
+                candidates.add(new IntentCandidate(i, sorted.get(j)));
+            }
+        }
+
+        int remaining = Math.max(0, RAGConstant.MAX_INTENT_COUNT
+                - retainedByIndex.values().stream().mapToInt(List::size).sum());
+        if (remaining > 0 && CollUtil.isNotEmpty(candidates)) {
+            candidates.sort((a, b) -> Double.compare(b.nodeScore.getScore(), a.nodeScore.getScore()));
+            for (int i = 0; i < Math.min(remaining, candidates.size()); i++) {
+                IntentCandidate kept = candidates.get(i);
+                retainedByIndex.computeIfAbsent(kept.subQuestionIndex, k -> new ArrayList<>())
+                        .add(kept.nodeScore);
+            }
+        }
+
+        List<SubQuestionIntent> capped = new ArrayList<>();
+        for (int i = 0; i < subIntents.size(); i++) {
+            SubQuestionIntent si = subIntents.get(i);
+            List<NodeScore> retained = retainedByIndex.getOrDefault(i, List.of());
+            capped.add(new SubQuestionIntent(si.subQuestion, retained));
+        }
+        return capped;
+    }
+
+    private IntentGroup mergeIntentGroup(List<SubQuestionIntent> subIntents) {
+        List<NodeScore> mcpIntents = new ArrayList<>();
+        List<NodeScore> kbIntents = new ArrayList<>();
+        for (SubQuestionIntent si : subIntents) {
+            mcpIntents.addAll(filterMcpIntents(si.nodeScores));
+            kbIntents.addAll(filterKbIntents(si.nodeScores));
+        }
+        return new IntentGroup(mcpIntents, kbIntents);
+    }
+
+    private List<NodeScore> filterMcpIntents(List<NodeScore> nodeScores) {
+        return nodeScores.stream()
                 .filter(ns -> ns.getScore() >= INTENT_MIN_SCORE)
                 .filter(ns -> ns.getNode().getKind() == IntentKind.MCP)
                 .filter(ns -> StrUtil.isNotBlank(ns.getNode().getMcpToolId()))
-                .limit(MAX_INTENT_COUNT)
                 .toList();
+    }
 
-        List<NodeScore> kbIntents = nodeScores.stream()
+    private List<NodeScore> filterKbIntents(List<NodeScore> nodeScores) {
+        return nodeScores.stream()
                 .filter(ns -> ns.getScore() >= INTENT_MIN_SCORE)
                 .filter(ns -> {
                     IntentNode node = ns.getNode();
                     return node.getKind() == null || node.getKind() == IntentKind.KB;
                 })
-                .limit(MAX_INTENT_COUNT)
                 .toList();
-
-        return new IntentGroup(mcpIntents, kbIntents);
     }
 
     // ==================== 上下文构建（核心重构点）====================
@@ -189,10 +256,11 @@ public class RAGEnterpriseService implements RAGService {
 
         List<CompletableFuture<Void>> tasks = subIntents.stream()
                 .map(si -> CompletableFuture.runAsync(() -> {
-                    IntentGroup group = separateIntents(si.nodeScores);
+                    List<NodeScore> kbIntents = filterKbIntents(si.nodeScores);
+                    List<NodeScore> mcpIntents = filterMcpIntents(si.nodeScores);
 
-                    if (CollUtil.isNotEmpty(group.kbIntents)) {
-                        KbResult kbResult = retrieveAndRerank(si.subQuestion, group.kbIntents, finalTopK);
+                    if (CollUtil.isNotEmpty(kbIntents)) {
+                        KbResult kbResult = retrieveAndRerank(si.subQuestion, kbIntents, finalTopK);
                         if (StrUtil.isNotBlank(kbResult.groupedContext)) {
                             synchronized (kbBuilder) {
                                 kbBuilder.append(kbResult.groupedContext).append("\n\n");
@@ -201,8 +269,8 @@ public class RAGEnterpriseService implements RAGService {
                         }
                     }
 
-                    if (CollUtil.isNotEmpty(group.mcpIntents)) {
-                        String mcpContext = executeMcpAndMerge(si.subQuestion, group.mcpIntents);
+                    if (CollUtil.isNotEmpty(mcpIntents)) {
+                        String mcpContext = executeMcpAndMerge(si.subQuestion, mcpIntents);
                         if (StrUtil.isNotBlank(mcpContext)) {
                             synchronized (mcpBuilder) {
                                 mcpBuilder.append(mcpContext).append("\n\n");
@@ -234,7 +302,7 @@ public class RAGEnterpriseService implements RAGService {
             return "";
         }
 
-        return mcpService.mergeResponsesToText(responses);
+        return contextFormatter.formatMcpContext(responses);
     }
 
     /**
@@ -247,19 +315,17 @@ public class RAGEnterpriseService implements RAGService {
 
         int searchTopK = Math.max(topK * SEARCH_TOP_K_MULTIPLIER, MIN_SEARCH_TOP_K);
         Map<String, List<RetrievedChunk>> intentChunks = new ConcurrentHashMap<>();
-        Map<String, List<RetrievedChunk>> rerankedByIntent = new ConcurrentHashMap<>();
 
         List<CompletableFuture<Void>> tasks = kbIntents.stream()
                 .map(ns -> CompletableFuture.supplyAsync(() -> {
                             IntentNode node = ns.getNode();
-                            List<RetrievedChunk> chunks = retrieverService.retrieve(
+                            return retrieverService.retrieve(
                                     RetrieveRequest.builder()
                                             .collectionName(node.getCollectionName())
                                             .query(question)
                                             .topK(searchTopK)
                                             .build()
                             );
-                            return chunks;
                         }, ragRetrievalExecutor)
                         .thenApply(chunks -> {
                             if (CollUtil.isEmpty(chunks)) {
@@ -271,31 +337,17 @@ public class RAGEnterpriseService implements RAGService {
                         .thenAccept(perIntent -> {
                             if (CollUtil.isNotEmpty(perIntent)) {
                                 intentChunks.put(ns.getNode().getId(), perIntent);
-                                rerankedByIntent.put(ns.getNode().getId(), perIntent);
                             }
                         }))
                 .toList();
 
         CompletableFuture.allOf(tasks.toArray(CompletableFuture[]::new)).join();
 
-        if (rerankedByIntent.isEmpty()) {
+        if (intentChunks.isEmpty()) {
             return KbResult.empty();
         }
 
-        String groupedContext = kbIntents.stream()
-                .map(ns -> {
-                    List<RetrievedChunk> chunks = rerankedByIntent.get(ns.getNode().getId());
-                    if (CollUtil.isEmpty(chunks)) {
-                        return "";
-                    }
-                    String body = chunks.stream()
-                            .limit(topK)
-                            .map(RetrievedChunk::getText)
-                            .collect(Collectors.joining("\n"));
-                    return "#### 意图：" + ns.getNode().getName() + "\n````text\n" + body + "\n````";
-                })
-                .filter(StrUtil::isNotBlank)
-                .collect(Collectors.joining("\n\n"));
+        String groupedContext = contextFormatter.formatKbContext(kbIntents, intentChunks, topK);
 
         return new KbResult(groupedContext, intentChunks);
     }
@@ -312,9 +364,19 @@ public class RAGEnterpriseService implements RAGService {
         llmService.streamChat(req, callback);
     }
 
-    private void streamLLMResponse(QueryRewriteService.RewriteResult rewriteResult, RetrievalContext ctx,
+    private void streamLLMResponse(RewriteResult rewriteResult, RetrievalContext ctx,
                                    IntentGroup intentGroup, StreamCallback callback) {
-        String prompt = buildPrompt(rewriteResult.joinSubQuestions(), ctx, intentGroup);
+        PromptContext promptContext = PromptContext.builder()
+                .question(rewriteResult.joinSubQuestions())
+                .mcpContext(ctx.mcpContext)
+                .kbContext(ctx.kbContext)
+                .mcpIntents(intentGroup.mcpIntents)
+                .kbIntents(intentGroup.kbIntents)
+                .intentChunks(ctx.intentChunks)
+                .build();
+
+        PromptBuildPlan plan = promptPlanner.plan(promptContext);
+        String prompt = promptRenderer.render(plan);
 
         ChatRequest chatRequest = ChatRequest.builder()
                 .prompt(prompt)
@@ -324,33 +386,6 @@ public class RAGEnterpriseService implements RAGService {
                 .build();
 
         llmService.streamChat(chatRequest, callback);
-    }
-
-    /**
-     * 统一 Prompt 构建（实现完整的5种场景）
-     * <p>
-     * 场景1: 单问题命中KB，使用 promptTemplate 或默认 RAG 提示词
-     * 场景2: 多问题多意图全命中KB，使用默认 RAG 提示词 + promptSnippet
-     * 场景3: 单问题命中MCP，使用 promptTemplate 或默认 MCP 提示词
-     * 场景4: 多问题多意图全命中MCP，使用默认 MCP 提示词 + promptSnippet
-     * 场景5: 混合命中 MCP 和 KB，使用混合提示词 + promptSnippet
-     */
-    private String buildPrompt(String question, RetrievalContext ctx, IntentGroup intentGroup) {
-        // 场景3/4: 只有 MCP
-        if (ctx.hasMcp() && !ctx.hasKb()) {
-            return mcpPromptService.buildMcpOnlyPrompt(ctx.mcpContext, question, intentGroup.mcpIntents);
-        }
-
-        // 场景1/2: 只有 KB
-        if (!ctx.hasMcp() && ctx.hasKb()) {
-            return ragPromptService.buildPrompt(ctx.kbContext, question, intentGroup.kbIntents, ctx.intentChunks);
-        }
-
-        // 场景5: MCP + KB 混合
-        List<NodeScore> allIntents = new ArrayList<>();
-        allIntents.addAll(intentGroup.mcpIntents);
-        allIntents.addAll(intentGroup.kbIntents);
-        return mcpPromptService.buildMixedPrompt(ctx.mcpContext, ctx.kbContext, question, allIntents);
     }
 
     // ==================== MCP 工具执行 ====================
@@ -393,19 +428,12 @@ public class RAGEnterpriseService implements RAGService {
      * 意图分组
      */
     private record IntentGroup(List<NodeScore> mcpIntents, List<NodeScore> kbIntents) {
-        List<NodeScore> allIntents() {
-            List<NodeScore> all = new ArrayList<>();
-            if (mcpIntents != null) {
-                all.addAll(mcpIntents);
-            }
-            if (kbIntents != null) {
-                all.addAll(kbIntents);
-            }
-            return all;
-        }
     }
 
     private record SubQuestionIntent(String subQuestion, List<NodeScore> nodeScores) {
+    }
+
+    private record IntentCandidate(int subQuestionIndex, NodeScore nodeScore) {
     }
 
     /**
