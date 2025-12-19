@@ -12,21 +12,29 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import static com.nageoffer.ai.ragent.constant.RAGEnterpriseConstant.MCP_KB_MIXED_PROMPT;
+import static com.nageoffer.ai.ragent.constant.RAGEnterpriseConstant.MCP_ONLY_PROMPT;
+import static com.nageoffer.ai.ragent.constant.RAGEnterpriseConstant.RAG_ENTERPRISE_PROMPT;
+
 @Service
-public class DefaultPromptPlanner implements PromptPlanner {
+public class PromptBuilder {
 
     private final RAGPromptService ragPromptService;
     private final MCPPromptService mcpPromptService;
 
-    public DefaultPromptPlanner(
-            @Qualifier("ragEnterprisePromptService") RAGPromptService ragPromptService,
-            MCPPromptService mcpPromptService) {
+    public PromptBuilder(
+            MCPPromptService mcpPromptService,
+            @Qualifier("ragEnterprisePromptService") RAGPromptService ragPromptService) {
         this.ragPromptService = ragPromptService;
         this.mcpPromptService = mcpPromptService;
     }
 
-    @Override
-    public PromptBuildPlan plan(PromptContext context) {
+    public String buildPrompt(PromptContext context) {
+        PromptBuildPlan plan = plan(context);
+        return render(plan);
+    }
+
+    private PromptBuildPlan plan(PromptContext context) {
         if (context.hasMcp() && !context.hasKb()) {
             return planMcpOnly(context);
         }
@@ -36,8 +44,7 @@ public class DefaultPromptPlanner implements PromptPlanner {
         if (context.hasMcp() && context.hasKb()) {
             return planMixed(context);
         }
-
-        return PromptBuildPlan.builder().scene(PromptScene.EMPTY).build();
+        throw new IllegalStateException("PromptContext requires MCP or KB context.");
     }
 
     private PromptBuildPlan planKbOnly(PromptContext context) {
@@ -103,5 +110,48 @@ public class DefaultPromptPlanner implements PromptPlanner {
                 .intentRules(intentRules)
                 .slots(slots)
                 .build();
+    }
+
+    private String render(PromptBuildPlan plan) {
+        String template = StrUtil.isNotBlank(plan.getBaseTemplate())
+                ? plan.getBaseTemplate()
+                : defaultTemplate(plan.getScene());
+
+        if (StrUtil.isBlank(template)) {
+            return "";
+        }
+
+        String withRules = PromptTemplateUtils.injectIntentRules(template, plan.getIntentRules());
+        String prompt = formatByScene(withRules, plan.getScene(), plan.getSlots());
+        return PromptTemplateUtils.cleanupPrompt(prompt);
+    }
+
+    private String defaultTemplate(PromptScene scene) {
+        return switch (scene) {
+            case KB_ONLY -> RAG_ENTERPRISE_PROMPT;
+            case MCP_ONLY -> MCP_ONLY_PROMPT;
+            case MIXED -> MCP_KB_MIXED_PROMPT;
+            case EMPTY -> "";
+        };
+    }
+
+    private String formatByScene(String template, PromptScene scene, Map<String, String> slots) {
+        String mcp = slot(slots, PromptSlots.MCP_CONTEXT);
+        String kb = slot(slots, PromptSlots.KB_CONTEXT);
+        String question = slot(slots, PromptSlots.QUESTION);
+
+        return switch (scene) {
+            case KB_ONLY -> template.formatted(kb, question);
+            case MCP_ONLY -> template.formatted(mcp, question);
+            case MIXED -> template.formatted(mcp, kb, question);
+            case EMPTY -> template;
+        };
+    }
+
+    private String slot(Map<String, String> slots, String key) {
+        if (slots == null) {
+            return "";
+        }
+        return StrUtil.emptyIfNull(slots.get(key)).trim();
     }
 }

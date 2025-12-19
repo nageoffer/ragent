@@ -18,10 +18,8 @@ import com.nageoffer.ai.ragent.rag.mcp.MCPTool;
 import com.nageoffer.ai.ragent.rag.mcp.MCPToolExecutor;
 import com.nageoffer.ai.ragent.rag.mcp.MCPToolRegistry;
 import com.nageoffer.ai.ragent.rag.prompt.ContextFormatter;
-import com.nageoffer.ai.ragent.rag.prompt.PromptBuildPlan;
+import com.nageoffer.ai.ragent.rag.prompt.PromptBuilder;
 import com.nageoffer.ai.ragent.rag.prompt.PromptContext;
-import com.nageoffer.ai.ragent.rag.prompt.PromptPlanner;
-import com.nageoffer.ai.ragent.rag.prompt.PromptRenderer;
 import com.nageoffer.ai.ragent.rag.rerank.RerankService;
 import com.nageoffer.ai.ragent.rag.retrieve.RetrieveRequest;
 import com.nageoffer.ai.ragent.rag.retrieve.RetrievedChunk;
@@ -67,8 +65,7 @@ public class RAGEnterpriseService implements RAGService {
     private final RerankService rerankService;
     private final IntentClassifier intentClassifier;
     private final QueryRewriteService queryRewriteService;
-    private final PromptPlanner promptPlanner;
-    private final PromptRenderer promptRenderer;
+    private final PromptBuilder promptBuilder;
     private final ContextFormatter contextFormatter;
     private final MCPService mcpService;
     private final MCPParameterExtractor mcpParameterExtractor;
@@ -84,8 +81,7 @@ public class RAGEnterpriseService implements RAGService {
             MCPService mcpService,
             MCPParameterExtractor mcpParameterExtractor,
             MCPToolRegistry mcpToolRegistry,
-            PromptPlanner promptPlanner,
-            PromptRenderer promptRenderer,
+            PromptBuilder promptBuilder,
             ContextFormatter contextFormatter,
             @Qualifier("defaultIntentClassifier") IntentClassifier intentClassifier,
             @Qualifier("multiQuestionRewriteService") QueryRewriteService queryRewriteService,
@@ -95,8 +91,7 @@ public class RAGEnterpriseService implements RAGService {
         this.retrieverService = retrieverService;
         this.llmService = llmService;
         this.rerankService = rerankService;
-        this.promptPlanner = promptPlanner;
-        this.promptRenderer = promptRenderer;
+        this.promptBuilder = promptBuilder;
         this.contextFormatter = contextFormatter;
         this.mcpService = mcpService;
         this.mcpParameterExtractor = mcpParameterExtractor;
@@ -366,17 +361,16 @@ public class RAGEnterpriseService implements RAGService {
 
     private void streamLLMResponse(RewriteResult rewriteResult, RetrievalContext ctx,
                                    IntentGroup intentGroup, StreamCallback callback) {
-        PromptContext promptContext = PromptContext.builder()
-                .question(rewriteResult.joinSubQuestions())
-                .mcpContext(ctx.mcpContext)
-                .kbContext(ctx.kbContext)
-                .mcpIntents(intentGroup.mcpIntents)
-                .kbIntents(intentGroup.kbIntents)
-                .intentChunks(ctx.intentChunks)
-                .build();
-
-        PromptBuildPlan plan = promptPlanner.plan(promptContext);
-        String prompt = promptRenderer.render(plan);
+        String prompt = promptBuilder.buildPrompt(
+                PromptContext.builder()
+                        .question(rewriteResult.joinSubQuestions())
+                        .mcpContext(ctx.mcpContext)
+                        .kbContext(ctx.kbContext)
+                        .mcpIntents(intentGroup.mcpIntents)
+                        .kbIntents(intentGroup.kbIntents)
+                        .intentChunks(ctx.intentChunks)
+                        .build()
+        );
 
         ChatRequest chatRequest = ChatRequest.builder()
                 .prompt(prompt)
