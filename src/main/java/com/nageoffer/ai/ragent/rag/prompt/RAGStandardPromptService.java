@@ -20,7 +20,7 @@ import static com.nageoffer.ai.ragent.constant.RAGConstant.RAG_DEFAULT_PROMPT;
  * 默认实现：使用占位符 {{INTENT_RULES}} 控制可选段落的插入
  */
 @Service("ragDefaultPromptService")
-public class RAGDefaultPromptService implements RAGPromptService {
+public class RAGStandardPromptService implements RAGPromptService {
 
     /**
      * 允许 2+ 个连续换行被压成 2 个，成品更干净
