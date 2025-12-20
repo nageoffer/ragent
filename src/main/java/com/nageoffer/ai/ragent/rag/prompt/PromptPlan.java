@@ -9,8 +9,8 @@ import lombok.RequiredArgsConstructor;
 import java.util.List;
 
 @Data
-@AllArgsConstructor
 @RequiredArgsConstructor
+@AllArgsConstructor
 @Builder
 public class PromptPlan {
 
@@ -23,9 +23,4 @@ public class PromptPlan {
      * 选用的基模板（单意图且有模板才会有值，否则为 null 表示用默认模板）
      */
     private String baseTemplate;
-
-    /**
-     * 合并后的意图片段（单意图走模板时通常为空；多意图则为聚合片段）
-     */
-    private String intentRules;
 }

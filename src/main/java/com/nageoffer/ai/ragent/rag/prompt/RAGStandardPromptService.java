@@ -11,14 +11,9 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
-import static com.nageoffer.ai.ragent.constant.RAGConstant.INTENT_RULES_SECTION;
 import static com.nageoffer.ai.ragent.constant.RAGConstant.RAG_DEFAULT_PROMPT;
 
-/**
- * 默认实现：使用占位符 {{INTENT_RULES}} 控制可选段落的插入
- */
 @Service("ragDefaultPromptService")
 public class RAGStandardPromptService implements RAGPromptService {
 
@@ -28,25 +23,10 @@ public class RAGStandardPromptService implements RAGPromptService {
     private static final Pattern MULTI_BLANK_LINES = Pattern.compile("(\\n){3,}");
 
     @Override
-    public String buildPrompt(String docContent, String userQuestion, String intentRules, String baseTemplate) {
+    public String buildPrompt(String docContent, String userQuestion, String baseTemplate) {
         String tpl = StrUtil.isNotBlank(baseTemplate) ? baseTemplate : RAG_DEFAULT_PROMPT;
 
-        // 注入“意图补充规则”可选段：
-        // 1) 模板包含 {{INTENT_RULES}} -> 定点替换；
-        // 2) 模板不包含该占位 -> 若有规则则前置兜底插入。
-        String withIntent;
-        if (StrUtil.isBlank(intentRules)) {
-            withIntent = tpl.replace("{{INTENT_RULES}}", "");
-        } else {
-            String section = INTENT_RULES_SECTION.formatted(intentRules.trim());
-            if (tpl.contains("{{INTENT_RULES}}")) {
-                withIntent = tpl.replace("{{INTENT_RULES}}", section);
-            } else {
-                withIntent = section + "\n\n" + tpl;
-            }
-        }
-
-        String prompt = withIntent.formatted(
+        String prompt = tpl.formatted(
                 defaultString(docContent).trim(),
                 defaultString(userQuestion).trim()
         );
@@ -70,35 +50,25 @@ public class RAGStandardPromptService implements RAGPromptService {
                 .toList();
 
         if (retained.isEmpty()) {
-            // 没有任何可用意图：无基模板，无片段（上层可根据业务选择 fallback）
-            return new PromptPlan(Collections.emptyList(), null, "");
+            // 没有任何可用意图：无基模板（上层可根据业务选择 fallback）
+            return new PromptPlan(Collections.emptyList(), null);
         }
 
         // 2) 单 / 多意图的模板与片段策略
         if (retained.size() == 1) {
             IntentNode only = retained.get(0).getNode();
             String tpl = StrUtil.emptyIfNull(only.getPromptTemplate()).trim();
-            String snippet = StrUtil.emptyIfNull(only.getPromptSnippet()).trim();
 
             if (StrUtil.isNotBlank(tpl)) {
-                // 单意图 + 有模板：默认只用模板，避免 snippet 与模板规则“撞车”
-                // 如果模板作者明确预留了 {{INTENT_RULES}}，才注入 snippet（更可控）
-                String rules = tpl.contains("{{INTENT_RULES}}") && StrUtil.isNotBlank(snippet) ? snippet : "";
-                return new PromptPlan(retained, tpl, rules);
+                // 单意图 + 有模板：使用模板本身
+                return new PromptPlan(retained, tpl);
             } else {
                 // 单意图 + 无模板：走默认模板，snippet 作为补充规则
-                String rules = StrUtil.isNotBlank(snippet) ? snippet : "";
-                return new PromptPlan(retained, null, rules);
+                return new PromptPlan(retained, null);
             }
         } else {
             // 多意图：统一默认模板，合并所有片段（去空/去重）
-            String mergedRules = retained.stream()
-                    .map(ns -> ns.getNode().getPromptSnippet())
-                    .filter(StrUtil::isNotBlank)
-                    .map(String::trim)
-                    .distinct()
-                    .collect(Collectors.joining("\n\n"));
-            return new PromptPlan(retained, null, mergedRules);
+            return new PromptPlan(retained, null);
         }
     }
 
@@ -106,7 +76,7 @@ public class RAGStandardPromptService implements RAGPromptService {
     public String buildPrompt(String docContent, String userQuestion,
                               List<NodeScore> intents, Map<String, List<RetrievedChunk>> intentChunks) {
         PromptPlan plan = planPrompt(intents, intentChunks);
-        return buildPrompt(docContent, userQuestion, plan.getIntentRules(), plan.getBaseTemplate());
+        return buildPrompt(docContent, userQuestion, plan.getBaseTemplate());
     }
 
     // === 工具方法 ===

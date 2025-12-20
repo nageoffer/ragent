@@ -9,16 +9,14 @@ import java.util.Map;
 /**
  * 构建 RAG 提示词的服务
  * <p>
- * 约定：
- * 1) 若意图补充规则为空，则不插入对应标题与说明；
- * 2) 返回的 Prompt 会做简单空行清理（最多连续两个换行）
+ * 约定：返回的 Prompt 会做简单空行清理（最多连续两个换行）
  */
 public interface RAGPromptService {
 
     /**
-     * 可覆盖基模板 + 可选意图片段（baseTemplate 为空则退回默认模板）
+     * 可覆盖基模板（baseTemplate 为空则退回默认模板）
      */
-    String buildPrompt(String docContent, String userQuestion, String intentRules, String baseTemplate);
+    String buildPrompt(String docContent, String userQuestion, String baseTemplate);
 
     /**
      * 规划提示词的组成（会剔除未命中检索的意图，并据此决定模板与片段策略）
@@ -35,4 +33,3 @@ public interface RAGPromptService {
                        List<NodeScore> intents, Map<String, List<RetrievedChunk>> intentChunks);
 
 }
-
