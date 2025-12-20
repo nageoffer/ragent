@@ -7,9 +7,7 @@ import com.nageoffer.ai.ragent.rag.intent.NodeScore;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 import static com.nageoffer.ai.ragent.constant.RAGEnterpriseConstant.MCP_KB_MIXED_PROMPT;
 import static com.nageoffer.ai.ragent.constant.RAGEnterpriseConstant.MCP_ONLY_PROMPT;
@@ -45,9 +43,11 @@ public class PromptBuilder {
 
     private PromptBuildPlan planKbOnly(PromptContext context) {
         PromptPlan plan = ragPromptService.planPrompt(context.getKbIntents(), context.getIntentChunks());
-        Map<String, String> slots = new HashMap<>();
-        slots.put(PromptSlots.KB_CONTEXT, context.getKbContext());
-        slots.put(PromptSlots.QUESTION, context.getQuestion());
+        PromptSlots slots = new PromptSlots(
+                context.getMcpContext(),
+                context.getKbContext(),
+                context.getQuestion()
+        );
         return PromptBuildPlan.builder()
                 .scene(PromptScene.KB_ONLY)
                 .baseTemplate(plan.getBaseTemplate())
@@ -66,9 +66,11 @@ public class PromptBuilder {
             }
         }
 
-        Map<String, String> slots = new HashMap<>();
-        slots.put(PromptSlots.MCP_CONTEXT, context.getMcpContext());
-        slots.put(PromptSlots.QUESTION, context.getQuestion());
+        PromptSlots slots = new PromptSlots(
+                context.getMcpContext(),
+                context.getKbContext(),
+                context.getQuestion()
+        );
 
         return PromptBuildPlan.builder()
                 .scene(PromptScene.MCP_ONLY)
@@ -78,10 +80,11 @@ public class PromptBuilder {
     }
 
     private PromptBuildPlan planMixed(PromptContext context) {
-        Map<String, String> slots = new HashMap<>();
-        slots.put(PromptSlots.MCP_CONTEXT, context.getMcpContext());
-        slots.put(PromptSlots.KB_CONTEXT, context.getKbContext());
-        slots.put(PromptSlots.QUESTION, context.getQuestion());
+        PromptSlots slots = new PromptSlots(
+                context.getMcpContext(),
+                context.getKbContext(),
+                context.getQuestion()
+        );
 
         return PromptBuildPlan.builder()
                 .scene(PromptScene.MIXED)
@@ -111,10 +114,11 @@ public class PromptBuilder {
         };
     }
 
-    private String formatByScene(String template, PromptScene scene, Map<String, String> slots) {
-        String mcp = slot(slots, PromptSlots.MCP_CONTEXT);
-        String kb = slot(slots, PromptSlots.KB_CONTEXT);
-        String question = slot(slots, PromptSlots.QUESTION);
+    private String formatByScene(String template, PromptScene scene, PromptSlots slots) {
+        PromptSlots safe = slots == null ? PromptSlots.empty() : slots;
+        String mcp = StrUtil.emptyIfNull(safe.mcpContext()).trim();
+        String kb = StrUtil.emptyIfNull(safe.kbContext()).trim();
+        String question = StrUtil.emptyIfNull(safe.question()).trim();
 
         return switch (scene) {
             case KB_ONLY -> template.formatted(kb, question);
@@ -122,13 +126,6 @@ public class PromptBuilder {
             case MIXED -> template.formatted(mcp, kb, question);
             case EMPTY -> template;
         };
-    }
-
-    private String slot(Map<String, String> slots, String key) {
-        if (slots == null) {
-            return "";
-        }
-        return StrUtil.emptyIfNull(slots.get(key)).trim();
     }
 
 }
