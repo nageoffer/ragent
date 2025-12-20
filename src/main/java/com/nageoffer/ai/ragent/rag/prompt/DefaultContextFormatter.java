@@ -42,11 +42,11 @@ public class DefaultContextFormatter implements ContextFormatter {
                             .map(RetrievedChunk::getText)
                             .collect(Collectors.joining("\n"));
                     StringBuilder block = new StringBuilder();
-                    block.append("### 意图\n").append(title).append("\n");
+                    block.append("#### 意图：").append(title).append("\n");
                     if (StrUtil.isNotBlank(snippet)) {
-                        block.append("### 意图补充规则（以下内容用于补充说明本次回答在某些特定问题类型下需要遵守的额外规则）\n").append(snippet).append("\n");
+                        block.append("#### 意图规则\n").append(snippet).append("\n");
                     }
-                    block.append("### 知识库Chunks\n````\n").append(body).append("\n````");
+                    block.append("#### 知识库片段\n````text\n").append(body).append("\n````");
                     return block.toString();
                 })
                 .filter(StrUtil::isNotBlank)
@@ -92,11 +92,11 @@ public class DefaultContextFormatter implements ContextFormatter {
                         return "";
                     }
                     StringBuilder block = new StringBuilder();
-                    block.append("### 意图\n").append(title).append("\n");
+                    block.append("#### 意图：").append(title).append("\n");
                     if (StrUtil.isNotBlank(snippet)) {
-                        block.append("### 意图补充规则（以下内容用于补充说明本次回答在某些特定问题类型下需要遵守的额外规则）\n").append(snippet).append("\n");
+                        block.append("#### 意图规则\n").append(snippet).append("\n");
                     }
-                    block.append("### 动态数据\n").append(body);
+                    block.append("#### 动态数据片段\n").append(body);
                     return block.toString();
                 })
                 .filter(StrUtil::isNotBlank)

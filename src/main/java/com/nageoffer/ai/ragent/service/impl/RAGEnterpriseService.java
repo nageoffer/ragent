@@ -258,7 +258,8 @@ public class RAGEnterpriseService implements RAGService {
                         KbResult kbResult = retrieveAndRerank(si.subQuestion, kbIntents, finalTopK);
                         if (StrUtil.isNotBlank(kbResult.groupedContext)) {
                             synchronized (kbBuilder) {
-                                kbBuilder.append(kbResult.groupedContext).append("\n\n");
+                                kbBuilder.append("### 子问题：").append(si.subQuestion).append("\n")
+                                        .append(kbResult.groupedContext).append("\n\n");
                             }
                             mergedIntentChunks.putAll(kbResult.intentChunks);
                         }
@@ -268,7 +269,8 @@ public class RAGEnterpriseService implements RAGService {
                         String mcpContext = executeMcpAndMerge(si.subQuestion, mcpIntents);
                         if (StrUtil.isNotBlank(mcpContext)) {
                             synchronized (mcpBuilder) {
-                                mcpBuilder.append(mcpContext).append("\n\n");
+                                mcpBuilder.append("### 子问题：").append(si.subQuestion).append("\n")
+                                        .append(mcpContext).append("\n\n");
                             }
                         }
                     }
