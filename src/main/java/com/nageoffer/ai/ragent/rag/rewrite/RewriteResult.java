@@ -23,15 +23,7 @@ public class RewriteResult {
     public String joinSubQuestions() {
         StringBuilder sb = new StringBuilder();
         if (rewrittenQuestion != null && !rewrittenQuestion.isBlank()) {
-            sb.append(rewrittenQuestion.trim()).append("\n\n");
-        }
-        sb.append("### 子问题\n");
-        if (subQuestions != null && !subQuestions.isEmpty()) {
-            for (int i = 0; i < subQuestions.size(); i++) {
-                sb.append(i + 1).append(". ").append(subQuestions.get(i)).append("\n");
-            }
-        } else {
-            sb.append("1. ").append(rewrittenQuestion != null ? rewrittenQuestion : "").append("\n");
+            sb.append(rewrittenQuestion.trim()).append("\n");
         }
         return sb.toString();
     }
