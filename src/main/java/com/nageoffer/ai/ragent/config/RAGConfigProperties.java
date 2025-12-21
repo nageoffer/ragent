@@ -31,4 +31,16 @@ public class RAGConfigProperties {
      */
     @Value("${rag.query-rewrite.enabled:true}")
     private Boolean queryRewriteEnabled;
+
+    /**
+     * 改写时用于承接上下文的最大历史消息数
+     */
+    @Value("${rag.query-rewrite.max-history-messages:4}")
+    private Integer queryRewriteMaxHistoryMessages;
+
+    /**
+     * 触发承接式改写的短问长度阈值
+     */
+    @Value("${rag.query-rewrite.short-query-threshold:12}")
+    private Integer queryRewriteShortQueryThreshold;
 }

@@ -1,15 +1,13 @@
-<?xml version="1.0" encoding="UTF-8"?>
 <component name="InspectionProjectProfileManager">
-    <profile version="1.0">
-        <option name="myName" value="Project Default"/>
-
-        <!-- 其他 inspection 配置省略 -->
-
-        <!-- 关键：关闭 “Duplicated code fragment” 检查 -->
-        <inspection_tool
-                class="DuplicatedCode"
-                enabled="false"
-                enabled_by_default="false"
-                level="WEAK WARNING"/>
-    </profile>
+  <profile version="1.0">
+    <option name="myName" value="Project Default" />
+    <inspection_tool class="DuplicatedCode" enabled="false" level="WEAK WARNING" enabled_by_default="false" />
+    <inspection_tool class="IncorrectHttpHeaderInspection" enabled="true" level="WARNING" enabled_by_default="true">
+      <option name="customHeaders">
+        <set>
+          <option value="X-Session-Id" />
+        </set>
+      </option>
+    </inspection_tool>
+  </profile>
 </component>

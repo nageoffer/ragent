@@ -8,6 +8,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.nageoffer.ai.ragent.config.RAGConfigProperties;
 import com.nageoffer.ai.ragent.constant.RAGConstant;
+import com.nageoffer.ai.ragent.convention.ChatMessage;
 import com.nageoffer.ai.ragent.convention.ChatRequest;
 import com.nageoffer.ai.ragent.rag.chat.LLMService;
 import lombok.RequiredArgsConstructor;
@@ -18,6 +19,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
+
+import static com.nageoffer.ai.ragent.constant.RAGEnterpriseConstant.QUERY_REWRITE_AND_SPLIT_WITH_HISTORY_PROMPT;
 
 /**
  * 查询预处理：改写 + 拆分多问句
@@ -41,6 +44,11 @@ public class MultiQuestionRewriteService implements QueryRewriteService {
         return rewriteAndSplit(userQuestion);
     }
 
+    @Override
+    public RewriteResult rewriteWithSplit(String userQuestion, List<ChatMessage> history) {
+        return rewriteAndSplit(userQuestion, history);
+    }
+
     /**
      * 先用默认改写做归一化，再进行多问句拆分。
      */
@@ -54,7 +62,7 @@ public class MultiQuestionRewriteService implements QueryRewriteService {
 
         String normalizedQuestion = queryTermMappingService.normalize(userQuestion);
 
-        RewriteResult llmResult = callLlmRewriteAndSplit(normalizedQuestion, userQuestion);
+        RewriteResult llmResult = callLLMRewriteAndSplit(normalizedQuestion, userQuestion);
         if (llmResult != null) {
             return llmResult;
         }
@@ -64,7 +72,28 @@ public class MultiQuestionRewriteService implements QueryRewriteService {
         return new RewriteResult(normalizedQuestion, subQuestions);
     }
 
-    private RewriteResult callLlmRewriteAndSplit(String normalizedQuestion, String originalQuestion) {
+    private RewriteResult rewriteAndSplit(String userQuestion, List<ChatMessage> history) {
+        if (!ragConfigProperties.getQueryRewriteEnabled()) {
+            String normalized = queryTermMappingService.normalize(userQuestion);
+            List<String> subs = ruleBasedSplit(normalized);
+            return new RewriteResult(normalized, subs);
+        }
+
+        String normalizedQuestion = queryTermMappingService.normalize(userQuestion);
+
+        boolean useHistory = shouldUseHistoryForRewrite(normalizedQuestion, history);
+        RewriteResult llmResult = useHistory
+                ? callLLMRewriteAndSplitWithHistory(normalizedQuestion, userQuestion, history)
+                : callLLMRewriteAndSplit(normalizedQuestion, userQuestion);
+        if (llmResult != null) {
+            return llmResult;
+        }
+
+        List<String> subQuestions = ruleBasedSplit(normalizedQuestion);
+        return new RewriteResult(normalizedQuestion, subQuestions);
+    }
+
+    private RewriteResult callLLMRewriteAndSplit(String normalizedQuestion, String originalQuestion) {
         String prompt = RAGConstant.QUERY_REWRITE_AND_SPLIT_PROMPT.formatted(normalizedQuestion);
 
         ChatRequest req = ChatRequest.builder()
@@ -91,6 +120,81 @@ public class MultiQuestionRewriteService implements QueryRewriteService {
             log.warn("查询改写+拆分 LLM 调用失败，question={}", originalQuestion, e);
         }
         return null;
+    }
+
+    private RewriteResult callLLMRewriteAndSplitWithHistory(String normalizedQuestion,
+                                                            String originalQuestion,
+                                                            List<ChatMessage> history) {
+        String historyText = buildHistoryContext(history);
+        String prompt = QUERY_REWRITE_AND_SPLIT_WITH_HISTORY_PROMPT.formatted(historyText, normalizedQuestion);
+
+        ChatRequest req = ChatRequest.builder()
+                .prompt(prompt)
+                .temperature(0.1D)
+                .topP(0.3D)
+                .thinking(false)
+                .build();
+
+        try {
+            String raw = llmService.chat(req);
+            RewriteResult parsed = parseRewriteAndSplit(raw);
+            if (parsed != null) {
+                log.info("""
+                        查询改写+拆分（带历史）
+                        原始问题：{}
+                        归一化后：{}
+                        改写结果：{}
+                        子问题：{}
+                        """, originalQuestion, normalizedQuestion, parsed.rewrittenQuestion(), parsed.subQuestions());
+                return parsed;
+            }
+        } catch (Exception e) {
+            log.warn("查询改写+拆分（带历史）LLM 调用失败，question={}", originalQuestion, e);
+        }
+        return null;
+    }
+
+    private boolean shouldUseHistoryForRewrite(String question, List<ChatMessage> history) {
+        if (StrUtil.isBlank(question) || CollUtil.isEmpty(history)) {
+            return false;
+        }
+        String trimmed = question.trim();
+        Integer threshold = ragConfigProperties.getQueryRewriteShortQueryThreshold();
+        int limit = threshold == null ? 0 : threshold;
+        return limit > 0 && trimmed.length() <= limit;
+    }
+
+    private String buildHistoryContext(List<ChatMessage> history) {
+        if (CollUtil.isEmpty(history)) {
+            return "";
+        }
+        List<ChatMessage> slice = history;
+        Integer maxMessages = ragConfigProperties.getQueryRewriteMaxHistoryMessages();
+        int limit = maxMessages == null ? 0 : maxMessages;
+        if (limit > 0 && history.size() > limit) {
+            slice = history.subList(history.size() - limit, history.size());
+        }
+        StringBuilder sb = new StringBuilder();
+        for (ChatMessage message : slice) {
+            if (message == null || StrUtil.isBlank(message.getContent())) {
+                continue;
+            }
+            sb.append(toRoleLabel(message.getRole()))
+                    .append(message.getContent().trim())
+                    .append("\n");
+        }
+        return sb.toString().trim();
+    }
+
+    private String toRoleLabel(ChatMessage.Role role) {
+        if (role == null) {
+            return "";
+        }
+        return switch (role) {
+            case USER -> "用户：";
+            case ASSISTANT -> "助手：";
+            case SYSTEM -> "系统：";
+        };
     }
 
     private RewriteResult parseRewriteAndSplit(String raw) {

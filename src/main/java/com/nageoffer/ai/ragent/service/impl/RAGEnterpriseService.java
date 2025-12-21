@@ -3,13 +3,17 @@ package com.nageoffer.ai.ragent.service.impl;
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
 import com.nageoffer.ai.ragent.constant.RAGConstant;
+import com.nageoffer.ai.ragent.convention.ChatMessage;
 import com.nageoffer.ai.ragent.convention.ChatRequest;
 import com.nageoffer.ai.ragent.enums.IntentKind;
+import com.nageoffer.ai.ragent.config.MemoryProperties;
+import com.nageoffer.ai.ragent.framework.context.UserContext;
 import com.nageoffer.ai.ragent.rag.chat.LLMService;
 import com.nageoffer.ai.ragent.rag.chat.StreamCallback;
 import com.nageoffer.ai.ragent.rag.intent.IntentClassifier;
 import com.nageoffer.ai.ragent.rag.intent.IntentNode;
 import com.nageoffer.ai.ragent.rag.intent.NodeScore;
+import com.nageoffer.ai.ragent.rag.memory.ConversationMemoryService;
 import com.nageoffer.ai.ragent.rag.mcp.MCPParameterExtractor;
 import com.nageoffer.ai.ragent.rag.mcp.MCPRequest;
 import com.nageoffer.ai.ragent.rag.mcp.MCPResponse;
@@ -60,6 +64,8 @@ import static com.nageoffer.ai.ragent.enums.IntentKind.SYSTEM;
 @Service("ragEnterpriseService")
 public class RAGEnterpriseService implements RAGService {
 
+    private static final int ROLE_HISTORY_MULTIPLIER = 2;
+
     private final RetrieverService retrieverService;
     private final LLMService llmService;
     private final RerankService rerankService;
@@ -70,9 +76,11 @@ public class RAGEnterpriseService implements RAGService {
     private final MCPService mcpService;
     private final MCPParameterExtractor mcpParameterExtractor;
     private final MCPToolRegistry mcpToolRegistry;
+    private final ConversationMemoryService memoryService;
     private final Executor intentClassifyExecutor;
     private final Executor ragContextExecutor;
     private final Executor ragRetrievalExecutor;
+    private final int memoryMaxTurns;
 
     public RAGEnterpriseService(
             RetrieverService retrieverService,
@@ -85,6 +93,8 @@ public class RAGEnterpriseService implements RAGService {
             ContextFormatter contextFormatter,
             @Qualifier("defaultIntentClassifier") IntentClassifier intentClassifier,
             @Qualifier("multiQuestionRewriteService") QueryRewriteService queryRewriteService,
+            ConversationMemoryService memoryService,
+            MemoryProperties memoryProperties,
             @Qualifier("intentClassifyThreadPoolExecutor") Executor intentClassifyExecutor,
             @Qualifier("ragContextThreadPoolExecutor") Executor ragContextExecutor,
             @Qualifier("ragRetrievalThreadPoolExecutor") Executor ragRetrievalExecutor) {
@@ -98,16 +108,24 @@ public class RAGEnterpriseService implements RAGService {
         this.mcpToolRegistry = mcpToolRegistry;
         this.intentClassifier = intentClassifier;
         this.queryRewriteService = queryRewriteService;
+        this.memoryService = memoryService;
         this.intentClassifyExecutor = intentClassifyExecutor;
         this.ragContextExecutor = ragContextExecutor;
         this.ragRetrievalExecutor = ragRetrievalExecutor;
+        this.memoryMaxTurns = memoryProperties.getMaxTurns();
     }
 
     // ==================== 主入口 ====================
 
     @Override
     public void streamAnswer(String question, int topK, StreamCallback callback) {
-        RewriteResult rewriteResult = queryRewriteService.rewriteWithSplit(question);
+        streamAnswer(question, topK, null, callback);
+    }
+
+    @Override
+    public void streamAnswer(String question, int topK, String sessionId, StreamCallback callback) {
+        List<ChatMessage> history = loadMemory(sessionId);
+        RewriteResult rewriteResult = queryRewriteService.rewriteWithSplit(question, history);
         String rewriteQuestion = rewriteResult.rewrittenQuestion();
 
         List<SubQuestionIntent> subIntents = buildSubQuestionIntents(rewriteResult, rewriteQuestion);
@@ -128,7 +146,12 @@ public class RAGEnterpriseService implements RAGService {
         // 聚合所有意图用于 prompt 规划
         IntentGroup mergedGroup = mergeIntentGroup(subIntents);
 
-        streamLLMResponse(rewriteResult, ctx, mergedGroup, callback);
+        ChatMessage userMessage = ChatMessage.user(question);
+        if (StrUtil.isNotBlank(sessionId)) {
+            memoryService.append(sessionId, UserContext.getUserId(), userMessage);
+        }
+        StreamCallback wrapped = wrapWithMemory(sessionId, callback);
+        streamLLMResponse(rewriteResult, ctx, mergedGroup, history, wrapped);
     }
 
     // ==================== 意图分离 ====================
@@ -362,7 +385,7 @@ public class RAGEnterpriseService implements RAGService {
     }
 
     private void streamLLMResponse(RewriteResult rewriteResult, RetrievalContext ctx,
-                                   IntentGroup intentGroup, StreamCallback callback) {
+                                   IntentGroup intentGroup, List<ChatMessage> history, StreamCallback callback) {
         String prompt = promptBuilder.buildPrompt(
                 PromptContext.builder()
                         .question(rewriteResult.joinSubQuestions())
@@ -376,6 +399,7 @@ public class RAGEnterpriseService implements RAGService {
 
         ChatRequest chatRequest = ChatRequest.builder()
                 .prompt(prompt)
+                .history(history)
                 .thinking(false)
                 .temperature(ctx.hasMcp() ? 0.3D : 0D)  // MCP 场景稍微放宽温度
                 .topP(0.7D)
@@ -416,6 +440,43 @@ public class RAGEnterpriseService implements RAGService {
                 .userQuestion(question)
                 .parameters(params)
                 .build();
+    }
+
+    private List<ChatMessage> loadMemory(String sessionId) {
+        if (StrUtil.isBlank(sessionId) || memoryMaxTurns <= 0) {
+            return List.of();
+        }
+        int maxMessages = memoryMaxTurns * ROLE_HISTORY_MULTIPLIER;
+        return memoryService.load(sessionId, UserContext.getUserId(), maxMessages);
+    }
+
+    private StreamCallback wrapWithMemory(String sessionId, StreamCallback delegate) {
+        if (StrUtil.isBlank(sessionId)) {
+            return delegate;
+        }
+        StringBuilder answer = new StringBuilder();
+        return new StreamCallback() {
+            @Override
+            public void onContent(String chunk) {
+                if (StrUtil.isNotBlank(chunk)) {
+                    answer.append(chunk);
+                }
+                delegate.onContent(chunk);
+            }
+
+            @Override
+            public void onComplete() {
+                if (!answer.isEmpty()) {
+                    memoryService.append(sessionId, UserContext.getUserId(), ChatMessage.assistant(answer.toString()));
+                }
+                delegate.onComplete();
+            }
+
+            @Override
+            public void onError(Throwable t) {
+                delegate.onError(t);
+            }
+        };
     }
 
     // ==================== 内部数据结构 ====================

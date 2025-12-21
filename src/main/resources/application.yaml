@@ -37,6 +37,12 @@ rag:
 
   query-rewrite:
     enabled: true
+    max-history-messages: 4
+    short-query-threshold: 12
+
+  memory:
+    max-turns: 5
+    ttl-minutes: 60
 
 ai:
   embedding:

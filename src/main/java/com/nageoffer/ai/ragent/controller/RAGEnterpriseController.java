@@ -1,5 +1,7 @@
 package com.nageoffer.ai.ragent.controller;
 
+import cn.hutool.core.util.IdUtil;
+import cn.hutool.core.util.StrUtil;
 import com.nageoffer.ai.ragent.rag.chat.StreamCallback;
 import com.nageoffer.ai.ragent.service.RAGService;
 import jakarta.servlet.http.HttpServletResponse;
@@ -25,10 +27,14 @@ public class RAGEnterpriseController {
 
     @GetMapping(value = "/rag/v3/stream", produces = "text/event-stream;charset=UTF-8")
     public SseEmitter stream(@RequestParam String question,
-                             @RequestParam(defaultValue = "3") Integer topK) {
+                             @RequestParam(defaultValue = "3") Integer topK,
+                             @RequestParam(required = false) String sessionId,
+                             HttpServletResponse response) {
+        String actualSessionId = resolveSessionId(sessionId);
+        response.setHeader("X-Session-Id", actualSessionId);
         SseEmitter emitter = new SseEmitter(0L);
         try {
-            ragEnterpriseService.streamAnswer(question, topK, new StreamCallback() {
+            ragEnterpriseService.streamAnswer(question, topK, actualSessionId, new StreamCallback() {
                 @Override
                 public void onContent(String chunk) {
                     try {
@@ -60,7 +66,10 @@ public class RAGEnterpriseController {
     @GetMapping(value = "/rag/v3/stream-text")
     public void streamText(@RequestParam String question,
                            @RequestParam(defaultValue = "3") Integer topK,
+                           @RequestParam(required = false) String sessionId,
                            HttpServletResponse response) throws IOException {
+        String actualSessionId = resolveSessionId(sessionId);
+        response.setHeader("X-Session-Id", actualSessionId);
         // 设置响应头
         response.setContentType("text/plain;charset=UTF-8");
         response.setCharacterEncoding("UTF-8");
@@ -70,7 +79,7 @@ public class RAGEnterpriseController {
         PrintWriter writer = response.getWriter();
 
         try {
-            ragEnterpriseService.streamAnswer(question, topK, new StreamCallback() {
+            ragEnterpriseService.streamAnswer(question, topK, actualSessionId, new StreamCallback() {
                 @Override
                 public void onContent(String chunk) {
                     writer.write(chunk);
@@ -92,5 +101,12 @@ public class RAGEnterpriseController {
             log.error("流式处理失败", e);
             writer.close();
         }
+    }
+
+    private String resolveSessionId(String sessionId) {
+        if (StrUtil.isBlank(sessionId)) {
+            return IdUtil.getSnowflakeNextIdStr();
+        }
+        return sessionId.trim();
     }
 }

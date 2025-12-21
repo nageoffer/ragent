@@ -1,5 +1,7 @@
 package com.nageoffer.ai.ragent.rag.rewrite;
 
+import com.nageoffer.ai.ragent.convention.ChatMessage;
+
 import java.util.List;
 
 /**
@@ -16,11 +18,19 @@ public interface QueryRewriteService {
     String rewrite(String userQuestion);
 
     /**
-     * 可选：改写 + 拆分多问句。
-     * 默认实现仅返回改写结果并将其作为单个子问题。
+     * 可选：改写 + 拆分多问句
+     * 默认实现仅返回改写结果并将其作为单个子问题
      */
     default RewriteResult rewriteWithSplit(String userQuestion) {
         String rewritten = rewrite(userQuestion);
         return new RewriteResult(rewritten, List.of(rewritten));
+    }
+
+    /**
+     * 可选：改写 + 拆分多问句，支持会话历史
+     * 默认实现忽略历史，回退到基础改写逻辑
+     */
+    default RewriteResult rewriteWithSplit(String userQuestion, List<ChatMessage> history) {
+        return rewriteWithSplit(userQuestion);
     }
 }
