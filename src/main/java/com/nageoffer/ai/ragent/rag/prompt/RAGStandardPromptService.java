@@ -14,7 +14,7 @@ import java.util.regex.Pattern;
 
 import static com.nageoffer.ai.ragent.constant.RAGConstant.RAG_DEFAULT_PROMPT;
 
-@Service("ragStandardPromptService")
+@Service
 public class RAGStandardPromptService {
 
     /**

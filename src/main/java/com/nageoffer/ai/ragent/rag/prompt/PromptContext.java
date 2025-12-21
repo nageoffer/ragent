@@ -12,11 +12,17 @@ import java.util.Map;
 @Data
 @Builder
 public class PromptContext {
+
     private String question;
+
     private String mcpContext;
+
     private String kbContext;
+
     private List<NodeScore> mcpIntents;
+
     private List<NodeScore> kbIntents;
+
     private Map<String, List<RetrievedChunk>> intentChunks;
 
     public boolean hasMcp() {
