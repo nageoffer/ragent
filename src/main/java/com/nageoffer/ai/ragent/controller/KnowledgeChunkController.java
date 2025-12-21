@@ -32,8 +32,8 @@ public class KnowledgeChunkController {
     /**
      * 分页查询 Chunk 列表
      */
-    @GetMapping("/knowledge-base/docs/{docId}/chunks")
-    public Result<IPage<KnowledgeChunkVO>> pageQuery(@PathVariable("docId") String docId,
+    @GetMapping("/knowledge-base/docs/{doc-id}/chunks")
+    public Result<IPage<KnowledgeChunkVO>> pageQuery(@PathVariable("doc-id") String docId,
                                                      @Validated KnowledgeChunkPageRequest requestParam) {
         return Results.success(knowledgeChunkService.pageQuery(docId, requestParam));
     }
@@ -41,8 +41,8 @@ public class KnowledgeChunkController {
     /**
      * 新增 Chunk
      */
-    @PostMapping("/knowledge-base/docs/{docId}/chunks")
-    public Result<KnowledgeChunkVO> create(@PathVariable("docId") String docId,
+    @PostMapping("/knowledge-base/docs/{doc-id}/chunks")
+    public Result<KnowledgeChunkVO> create(@PathVariable("doc-id") String docId,
                                            @RequestBody KnowledgeChunkCreateRequest request) {
         return Results.success(knowledgeChunkService.create(docId, request));
     }
@@ -50,9 +50,9 @@ public class KnowledgeChunkController {
     /**
      * 更新 Chunk 内容
      */
-    @PutMapping("/knowledge-base/docs/{docId}/chunks/{chunkId}")
-    public Result<Void> update(@PathVariable("docId") String docId,
-                               @PathVariable("chunkId") String chunkId,
+    @PutMapping("/knowledge-base/docs/{doc-id}/chunks/{chunk-id}")
+    public Result<Void> update(@PathVariable("doc-id") String docId,
+                               @PathVariable("chunk-id") String chunkId,
                                @RequestBody KnowledgeChunkUpdateRequest request) {
         knowledgeChunkService.update(docId, chunkId, request);
         return Results.success();
@@ -61,9 +61,9 @@ public class KnowledgeChunkController {
     /**
      * 删除 Chunk
      */
-    @DeleteMapping("/knowledge-base/docs/{docId}/chunks/{chunkId}")
-    public Result<Void> delete(@PathVariable("docId") String docId,
-                               @PathVariable("chunkId") String chunkId) {
+    @DeleteMapping("/knowledge-base/docs/{doc-id}/chunks/{chunk-id}")
+    public Result<Void> delete(@PathVariable("doc-id") String docId,
+                               @PathVariable("chunk-id") String chunkId) {
         knowledgeChunkService.delete(docId, chunkId);
         return Results.success();
     }
@@ -71,9 +71,9 @@ public class KnowledgeChunkController {
     /**
      * 启用单条 Chunk
      */
-    @PostMapping("/knowledge-base/docs/{docId}/chunks/{chunkId}/enable")
-    public Result<Void> enable(@PathVariable("docId") String docId,
-                               @PathVariable("chunkId") String chunkId) {
+    @PostMapping("/knowledge-base/docs/{doc-id}/chunks/{chunk-id}/enable")
+    public Result<Void> enable(@PathVariable("doc-id") String docId,
+                               @PathVariable("chunk-id") String chunkId) {
         knowledgeChunkService.enableChunk(docId, chunkId, true);
         return Results.success();
     }
@@ -81,9 +81,9 @@ public class KnowledgeChunkController {
     /**
      * 禁用单条 Chunk
      */
-    @PostMapping("/knowledge-base/docs/{docId}/chunks/{chunkId}/disable")
-    public Result<Void> disable(@PathVariable("docId") String docId,
-                                @PathVariable("chunkId") String chunkId) {
+    @PostMapping("/knowledge-base/docs/{doc-id}/chunks/{chunk-id}/disable")
+    public Result<Void> disable(@PathVariable("doc-id") String docId,
+                                @PathVariable("chunk-id") String chunkId) {
         knowledgeChunkService.enableChunk(docId, chunkId, false);
         return Results.success();
     }
@@ -91,8 +91,8 @@ public class KnowledgeChunkController {
     /**
      * 批量启用 Chunk
      */
-    @PostMapping("/knowledge-base/docs/{docId}/chunks/batch-enable")
-    public Result<Void> batchEnable(@PathVariable("docId") String docId,
+    @PostMapping("/knowledge-base/docs/{doc-id}/chunks/batch-enable")
+    public Result<Void> batchEnable(@PathVariable("doc-id") String docId,
                                     @RequestBody(required = false) KnowledgeChunkBatchRequest request) {
         knowledgeChunkService.batchEnable(docId, request);
         return Results.success();
@@ -101,8 +101,8 @@ public class KnowledgeChunkController {
     /**
      * 批量禁用 Chunk
      */
-    @PostMapping("/knowledge-base/docs/{docId}/chunks/batch-disable")
-    public Result<Void> batchDisable(@PathVariable("docId") String docId,
+    @PostMapping("/knowledge-base/docs/{doc-id}/chunks/batch-disable")
+    public Result<Void> batchDisable(@PathVariable("doc-id") String docId,
                                      @RequestBody(required = false) KnowledgeChunkBatchRequest request) {
         knowledgeChunkService.batchDisable(docId, request);
         return Results.success();
@@ -111,8 +111,8 @@ public class KnowledgeChunkController {
     /**
      * 重建文档向量（以 MySQL enabled=1 的 chunk 为准）
      */
-    @PostMapping("/knowledge-base/docs/{docId}/chunks/rebuild")
-    public Result<Void> rebuild(@PathVariable("docId") String docId) {
+    @PostMapping("/knowledge-base/docs/{doc-id}/chunks/rebuild")
+    public Result<Void> rebuild(@PathVariable("doc-id") String docId) {
         knowledgeChunkService.rebuildByDocId(docId);
         return Results.success();
     }

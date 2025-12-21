@@ -34,8 +34,8 @@ public class KnowledgeBaseController {
     /**
      * 重命名知识库
      */
-    @PutMapping("/knowledge-base/{kbId}")
-    public Result<Void> renameKnowledgeBase(@PathVariable("kbId") String kbId,
+    @PutMapping("/knowledge-base/{kb-id}")
+    public Result<Void> renameKnowledgeBase(@PathVariable("kb-id") String kbId,
                                             @RequestBody KnowledgeBaseUpdateRequest requestParam) {
         knowledgeBaseService.rename(kbId, requestParam);
         return Results.success();
@@ -44,8 +44,8 @@ public class KnowledgeBaseController {
     /**
      * 删除知识库
      */
-    @DeleteMapping("/knowledge-base/{kbId}")
-    public Result<Void> deleteKnowledgeBase(@PathVariable("kbId") String kbId) {
+    @DeleteMapping("/knowledge-base/{kb-id}")
+    public Result<Void> deleteKnowledgeBase(@PathVariable("kb-id") String kbId) {
         knowledgeBaseService.delete(kbId);
         return Results.success();
     }
@@ -53,8 +53,8 @@ public class KnowledgeBaseController {
     /**
      * 查询知识库详情
      */
-    @GetMapping("/knowledge-base/{kbId}")
-    public Result<KnowledgeBaseVO> queryKnowledgeBase(@PathVariable("kbId") String kbId) {
+    @GetMapping("/knowledge-base/{kb-id}")
+    public Result<KnowledgeBaseVO> queryKnowledgeBase(@PathVariable("kb-id") String kbId) {
         return Results.success(knowledgeBaseService.queryById(kbId));
     }
 
