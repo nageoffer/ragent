@@ -8,7 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.Executor;
 import java.util.stream.Collectors;
 
 /**
@@ -22,7 +22,7 @@ import java.util.stream.Collectors;
 public class MCPServiceOrchestrator implements MCPService {
 
     private final MCPToolRegistry toolRegistry;
-    private final ThreadPoolExecutor mcpBatchThreadPoolExecutor;
+    private final Executor mcpBatchThreadPoolExecutor;
 
     @Override
     public MCPResponse execute(MCPRequest request) {

@@ -21,6 +21,7 @@
         <s3.version>2.40.2</s3.version>
         <mockito-core.version>5.20.0</mockito-core.version>
         <sa-token.version>1.43.0</sa-token.version>
+        <transmittable-thread-local.version>2.14.5</transmittable-thread-local.version>
     </properties>
 
     <dependencyManagement>
@@ -144,6 +145,12 @@
             <groupId>cn.dev33</groupId>
             <artifactId>sa-token-redis-template</artifactId>
             <version>${sa-token.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.alibaba</groupId>
+            <artifactId>transmittable-thread-local</artifactId>
+            <version>${transmittable-thread-local.version}</version>
         </dependency>
     </dependencies>
 

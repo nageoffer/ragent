@@ -1,10 +1,12 @@
 package com.nageoffer.ai.ragent.config;
 
 import cn.hutool.core.thread.ThreadFactoryBuilder;
+import com.alibaba.ttl.threadpool.TtlExecutors;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
@@ -14,8 +16,8 @@ public class ThreadPoolExecutorConfig {
     public static final int CPU_COUNT = Runtime.getRuntime().availableProcessors();
 
     @Bean
-    public ThreadPoolExecutor mcpBatchThreadPoolExecutor() {
-        return new ThreadPoolExecutor(
+    public Executor mcpBatchThreadPoolExecutor() {
+        ThreadPoolExecutor executor = new ThreadPoolExecutor(
                 CPU_COUNT,
                 CPU_COUNT << 1,
                 60,
@@ -26,11 +28,12 @@ public class ThreadPoolExecutorConfig {
                         .build(),
                 new ThreadPoolExecutor.CallerRunsPolicy()
         );
+        return TtlExecutors.getTtlExecutor(executor);
     }
 
     @Bean
-    public ThreadPoolExecutor ragContextThreadPoolExecutor() {
-        return new ThreadPoolExecutor(
+    public Executor ragContextThreadPoolExecutor() {
+        ThreadPoolExecutor executor = new ThreadPoolExecutor(
                 2,
                 4,
                 60,
@@ -41,11 +44,12 @@ public class ThreadPoolExecutorConfig {
                         .build(),
                 new ThreadPoolExecutor.CallerRunsPolicy()
         );
+        return TtlExecutors.getTtlExecutor(executor);
     }
 
     @Bean
-    public ThreadPoolExecutor ragRetrievalThreadPoolExecutor() {
-        return new ThreadPoolExecutor(
+    public Executor ragRetrievalThreadPoolExecutor() {
+        ThreadPoolExecutor executor = new ThreadPoolExecutor(
                 CPU_COUNT,
                 CPU_COUNT << 1,
                 60,
@@ -56,14 +60,15 @@ public class ThreadPoolExecutorConfig {
                         .build(),
                 new ThreadPoolExecutor.CallerRunsPolicy()
         );
+        return TtlExecutors.getTtlExecutor(executor);
     }
 
     /**
      * 意图识别并行执行线程池
      */
     @Bean
-    public ThreadPoolExecutor intentClassifyThreadPoolExecutor() {
-        return new ThreadPoolExecutor(
+    public Executor intentClassifyThreadPoolExecutor() {
+        ThreadPoolExecutor executor = new ThreadPoolExecutor(
                 CPU_COUNT,
                 CPU_COUNT << 1,
                 60,
@@ -74,5 +79,6 @@ public class ThreadPoolExecutorConfig {
                         .build(),
                 new ThreadPoolExecutor.CallerRunsPolicy()
         );
+        return TtlExecutors.getTtlExecutor(executor);
     }
 }
