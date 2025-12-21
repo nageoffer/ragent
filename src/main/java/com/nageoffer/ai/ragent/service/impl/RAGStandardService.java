@@ -8,7 +8,7 @@ import com.nageoffer.ai.ragent.rag.chat.StreamCallback;
 import com.nageoffer.ai.ragent.rag.intent.IntentNode;
 import com.nageoffer.ai.ragent.rag.intent.IntentClassifier;
 import com.nageoffer.ai.ragent.rag.intent.NodeScore;
-import com.nageoffer.ai.ragent.rag.prompt.RAGPromptService;
+import com.nageoffer.ai.ragent.rag.prompt.RAGStandardPromptService;
 import com.nageoffer.ai.ragent.rag.rerank.RerankService;
 import com.nageoffer.ai.ragent.rag.retrieve.RetrieveRequest;
 import com.nageoffer.ai.ragent.rag.retrieve.RetrievedChunk;
@@ -44,7 +44,7 @@ public class RAGStandardService implements RAGService {
     private final RerankService rerankService;
     private final IntentClassifier defaultIntentClassifier;
     private final QueryRewriteService defaultQueryRewriteService;
-    private final RAGPromptService ragDefaultPromptService;
+    private final RAGStandardPromptService ragStandardPromptService;
 
     @Override
     public void streamAnswer(String question, int topK, StreamCallback callback) {
@@ -122,7 +122,12 @@ public class RAGStandardService implements RAGService {
                 .collect(Collectors.joining("\n"));
 
         // 使用 ragPromptService 统一构建 Prompt（与同步方法保持一致）
-        String prompt = ragDefaultPromptService.buildPrompt(context, rewriteQuestion, ragIntentScores, intentChunks);
+        String prompt = ragStandardPromptService.buildPrompt(
+                context,
+                rewriteQuestion,
+                ragIntentScores,
+                intentChunks
+        );
 
         // 调 LLM 流式输出
         ChatRequest chatRequest = ChatRequest.builder()

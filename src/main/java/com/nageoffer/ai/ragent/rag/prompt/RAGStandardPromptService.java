@@ -14,15 +14,14 @@ import java.util.regex.Pattern;
 
 import static com.nageoffer.ai.ragent.constant.RAGConstant.RAG_DEFAULT_PROMPT;
 
-@Service("ragDefaultPromptService")
-public class RAGStandardPromptService implements RAGPromptService {
+@Service("ragStandardPromptService")
+public class RAGStandardPromptService {
 
     /**
      * 允许 2+ 个连续换行被压成 2 个，成品更干净
      */
     private static final Pattern MULTI_BLANK_LINES = Pattern.compile("(\\n){3,}");
 
-    @Override
     public String buildPrompt(String docContent, String userQuestion, String baseTemplate) {
         String tpl = StrUtil.isNotBlank(baseTemplate) ? baseTemplate : RAG_DEFAULT_PROMPT;
 
@@ -35,7 +34,6 @@ public class RAGStandardPromptService implements RAGPromptService {
         return prompt;
     }
 
-    @Override
     public PromptPlan planPrompt(List<NodeScore> intents, Map<String, List<RetrievedChunk>> intentChunks) {
         List<NodeScore> safeIntents = intents == null ? Collections.emptyList() : intents;
 
@@ -72,7 +70,6 @@ public class RAGStandardPromptService implements RAGPromptService {
         }
     }
 
-    @Override
     public String buildPrompt(String docContent, String userQuestion,
                               List<NodeScore> intents, Map<String, List<RetrievedChunk>> intentChunks) {
         PromptPlan plan = planPrompt(intents, intentChunks);

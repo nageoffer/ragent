@@ -18,8 +18,8 @@ import com.nageoffer.ai.ragent.rag.mcp.MCPTool;
 import com.nageoffer.ai.ragent.rag.mcp.MCPToolExecutor;
 import com.nageoffer.ai.ragent.rag.mcp.MCPToolRegistry;
 import com.nageoffer.ai.ragent.rag.prompt.ContextFormatter;
-import com.nageoffer.ai.ragent.rag.prompt.PromptBuilder;
 import com.nageoffer.ai.ragent.rag.prompt.PromptContext;
+import com.nageoffer.ai.ragent.rag.prompt.RAGEnterprisePromptService;
 import com.nageoffer.ai.ragent.rag.rerank.RerankService;
 import com.nageoffer.ai.ragent.rag.retrieve.RetrieveRequest;
 import com.nageoffer.ai.ragent.rag.retrieve.RetrievedChunk;
@@ -65,7 +65,7 @@ public class RAGEnterpriseService implements RAGService {
     private final RerankService rerankService;
     private final IntentClassifier intentClassifier;
     private final QueryRewriteService queryRewriteService;
-    private final PromptBuilder promptBuilder;
+    private final RAGEnterprisePromptService promptBuilder;
     private final ContextFormatter contextFormatter;
     private final MCPService mcpService;
     private final MCPParameterExtractor mcpParameterExtractor;
@@ -81,7 +81,7 @@ public class RAGEnterpriseService implements RAGService {
             MCPService mcpService,
             MCPParameterExtractor mcpParameterExtractor,
             MCPToolRegistry mcpToolRegistry,
-            PromptBuilder promptBuilder,
+            RAGEnterprisePromptService promptBuilder,
             ContextFormatter contextFormatter,
             @Qualifier("defaultIntentClassifier") IntentClassifier intentClassifier,
             @Qualifier("multiQuestionRewriteService") QueryRewriteService queryRewriteService,

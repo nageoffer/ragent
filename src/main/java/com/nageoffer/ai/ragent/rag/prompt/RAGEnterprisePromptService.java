@@ -12,39 +12,22 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import static com.nageoffer.ai.ragent.constant.RAGEnterpriseConstant.MCP_KB_MIXED_PROMPT;
+import static com.nageoffer.ai.ragent.constant.RAGEnterpriseConstant.MCP_ONLY_PROMPT;
 import static com.nageoffer.ai.ragent.constant.RAGEnterpriseConstant.RAG_ENTERPRISE_PROMPT;
 
-/**
- * 默认实现
- */
-@Service("ragEnterprisePromptService")
-public class RAGEnterprisePromptService implements RAGPromptService {
+@Service
+public class RAGEnterprisePromptService {
 
     /**
      * 允许 2+ 个连续换行被压成 2 个，成品更干净
      */
-    @Override
-    public String buildPrompt(String docContent, String userQuestion, String baseTemplate) {
-        String tpl = StrUtil.isNotBlank(baseTemplate) ? baseTemplate : RAG_ENTERPRISE_PROMPT;
-
-        String prompt;
-        if (tpl.contains("{{")) {
-            Map<String, String> slots = new HashMap<>();
-            slots.put("KB_CONTEXT", defaultString(docContent).trim());
-            slots.put("QUESTION", defaultString(userQuestion).trim());
-            prompt = PromptTemplateUtils.fillSlots(tpl, slots);
-        } else {
-            prompt = tpl.formatted(
-                    defaultString(docContent).trim(),
-                    defaultString(userQuestion).trim()
-            );
-        }
-
-        return PromptTemplateUtils.cleanupPrompt(prompt);
+    public String buildPrompt(PromptContext context) {
+        PromptBuildPlan plan = plan(context);
+        return render(plan);
     }
 
-    @Override
-    public PromptPlan planPrompt(List<NodeScore> intents, Map<String, List<RetrievedChunk>> intentChunks) {
+    private PromptPlan planPrompt(List<NodeScore> intents, Map<String, List<RetrievedChunk>> intentChunks) {
         List<NodeScore> safeIntents = intents == null ? Collections.emptyList() : intents;
 
         // 1) 先剔除“未命中检索”的意图
@@ -80,11 +63,100 @@ public class RAGEnterprisePromptService implements RAGPromptService {
         }
     }
 
-    @Override
-    public String buildPrompt(String docContent, String userQuestion,
-                              List<NodeScore> intents, Map<String, List<RetrievedChunk>> intentChunks) {
-        PromptPlan plan = planPrompt(intents, intentChunks);
-        return buildPrompt(docContent, userQuestion, plan.getBaseTemplate());
+    private PromptBuildPlan plan(PromptContext context) {
+        if (context.hasMcp() && !context.hasKb()) {
+            return planMcpOnly(context);
+        }
+        if (!context.hasMcp() && context.hasKb()) {
+            return planKbOnly(context);
+        }
+        if (context.hasMcp() && context.hasKb()) {
+            return planMixed(context);
+        }
+        throw new IllegalStateException("PromptContext requires MCP or KB context.");
+    }
+
+    private PromptBuildPlan planKbOnly(PromptContext context) {
+        PromptPlan plan = planPrompt(context.getKbIntents(), context.getIntentChunks());
+        return PromptBuildPlan.builder()
+                .scene(PromptScene.KB_ONLY)
+                .baseTemplate(plan.getBaseTemplate())
+                .mcpContext(context.getMcpContext())
+                .kbContext(context.getKbContext())
+                .question(context.getQuestion())
+                .build();
+    }
+
+    private PromptBuildPlan planMcpOnly(PromptContext context) {
+        List<NodeScore> intents = context.getMcpIntents();
+        String baseTemplate = null;
+        if (CollUtil.isNotEmpty(intents) && intents.size() == 1) {
+            IntentNode node = intents.get(0).getNode();
+            String tpl = StrUtil.emptyIfNull(node.getPromptTemplate()).trim();
+            if (StrUtil.isNotBlank(tpl)) {
+                baseTemplate = tpl;
+            }
+        }
+
+        return PromptBuildPlan.builder()
+                .scene(PromptScene.MCP_ONLY)
+                .baseTemplate(baseTemplate)
+                .mcpContext(context.getMcpContext())
+                .kbContext(context.getKbContext())
+                .question(context.getQuestion())
+                .build();
+    }
+
+    private PromptBuildPlan planMixed(PromptContext context) {
+        return PromptBuildPlan.builder()
+                .scene(PromptScene.MIXED)
+                .mcpContext(context.getMcpContext())
+                .kbContext(context.getKbContext())
+                .question(context.getQuestion())
+                .build();
+    }
+
+    private String render(PromptBuildPlan plan) {
+        String template = StrUtil.isNotBlank(plan.getBaseTemplate())
+                ? plan.getBaseTemplate()
+                : defaultTemplate(plan.getScene());
+
+        if (StrUtil.isBlank(template)) {
+            return "";
+        }
+
+        String prompt = formatByScene(template, plan.getScene(), plan);
+        return PromptTemplateUtils.cleanupPrompt(prompt);
+    }
+
+    private String defaultTemplate(PromptScene scene) {
+        return switch (scene) {
+            case KB_ONLY -> RAG_ENTERPRISE_PROMPT;
+            case MCP_ONLY -> MCP_ONLY_PROMPT;
+            case MIXED -> MCP_KB_MIXED_PROMPT;
+            case EMPTY -> "";
+        };
+    }
+
+    private String formatByScene(String template, PromptScene scene, PromptBuildPlan plan) {
+        String mcp = StrUtil.emptyIfNull(plan.getMcpContext()).trim();
+        String kb = StrUtil.emptyIfNull(plan.getKbContext()).trim();
+        String question = StrUtil.emptyIfNull(plan.getQuestion()).trim();
+        Map<String, String> slotValues = new HashMap<>();
+        slotValues.put("MCP_CONTEXT", mcp);
+        slotValues.put("KB_CONTEXT", kb);
+        slotValues.put("QUESTION", question);
+
+        if (template.contains("{{")) {
+            return PromptTemplateUtils.fillSlots(template, slotValues);
+        }
+
+        return switch (scene) {
+            case KB_ONLY -> template.formatted(kb, question);
+            case MCP_ONLY -> template.formatted(mcp, question);
+            case MIXED -> template.formatted(mcp, kb, question);
+            case EMPTY -> template;
+        };
     }
 
     // === 工具方法 ===
@@ -98,7 +170,4 @@ public class RAGEnterprisePromptService implements RAGPromptService {
         return String.valueOf(node.getId());
     }
 
-    private static String defaultString(String s) {
-        return s == null ? "" : s;
-    }
 }

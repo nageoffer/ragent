@@ -3,7 +3,6 @@ package com.nageoffer.ai.ragent.rag.prompt;
 import lombok.Builder;
 import lombok.Data;
 
-
 @Data
 @Builder
 public class PromptBuildPlan {
@@ -12,5 +11,9 @@ public class PromptBuildPlan {
 
     private String baseTemplate;
 
-    private PromptSlots slots;
+    private String mcpContext;
+
+    private String kbContext;
+
+    private String question;
 }
