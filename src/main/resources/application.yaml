@@ -39,6 +39,7 @@ rag:
     enabled: true
     max-history-messages: 4
     short-query-threshold: 12
+    max-history-chars: 500
 
   memory:
     max-turns: 5

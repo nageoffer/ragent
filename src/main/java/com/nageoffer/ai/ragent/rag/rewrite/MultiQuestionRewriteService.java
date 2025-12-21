@@ -18,6 +18,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -167,20 +168,26 @@ public class MultiQuestionRewriteService implements QueryRewriteService {
         if (CollUtil.isEmpty(history)) {
             return "";
         }
-        List<ChatMessage> slice = history;
         Integer maxMessages = ragConfigProperties.getQueryRewriteMaxHistoryMessages();
         int limit = maxMessages == null ? 0 : maxMessages;
-        if (limit > 0 && history.size() > limit) {
-            slice = history.subList(history.size() - limit, history.size());
+        List<ChatMessage> slice = history;
+        if (limit > 0) {
+            slice = pickLatestUserMessages(history, limit);
         }
         StringBuilder sb = new StringBuilder();
+        int maxChars = resolveMaxHistoryChars();
         for (ChatMessage message : slice) {
             if (message == null || StrUtil.isBlank(message.getContent())) {
                 continue;
             }
-            sb.append(toRoleLabel(message.getRole()))
-                    .append(message.getContent().trim())
-                    .append("\n");
+            if (message.getRole() != ChatMessage.Role.USER) {
+                continue;
+            }
+            String line = toRoleLabel(message.getRole()) + message.getContent().trim() + "\n";
+            if (maxChars > 0 && sb.length() + line.length() > maxChars) {
+                break;
+            }
+            sb.append(line);
         }
         return sb.toString().trim();
     }
@@ -194,6 +201,32 @@ public class MultiQuestionRewriteService implements QueryRewriteService {
             case ASSISTANT -> "助手：";
             case SYSTEM -> "系统：";
         };
+    }
+
+    private List<ChatMessage> pickLatestUserMessages(List<ChatMessage> history, int limit) {
+        if (CollUtil.isEmpty(history) || limit <= 0) {
+            return List.of();
+        }
+        List<ChatMessage> users = new ArrayList<>();
+        for (int i = history.size() - 1; i >= 0; i--) {
+            ChatMessage msg = history.get(i);
+            if (msg != null && msg.getRole() == ChatMessage.Role.USER && StrUtil.isNotBlank(msg.getContent())) {
+                users.add(msg);
+                if (users.size() >= limit) {
+                    break;
+                }
+            }
+        }
+        if (users.isEmpty()) {
+            return List.of();
+        }
+        Collections.reverse(users);
+        return users;
+    }
+
+    private int resolveMaxHistoryChars() {
+        Integer maxChars = ragConfigProperties.getQueryRewriteMaxHistoryChars();
+        return maxChars == null ? 0 : maxChars;
     }
 
     private RewriteResult parseRewriteAndSplit(String raw) {
