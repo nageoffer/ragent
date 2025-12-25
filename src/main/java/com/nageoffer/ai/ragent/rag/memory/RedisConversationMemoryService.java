@@ -12,6 +12,7 @@ import com.nageoffer.ai.ragent.dao.mapper.ConversationMapper;
 import com.nageoffer.ai.ragent.dao.mapper.ConversationMessageMapper;
 import com.nageoffer.ai.ragent.rag.chat.LLMService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -23,6 +24,7 @@ import java.util.stream.Collectors;
 
 import static com.nageoffer.ai.ragent.constant.RAGEnterpriseConstant.CONVERSATION_SUMMARY_PROMPT;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class RedisConversationMemoryService implements ConversationMemoryService {
@@ -218,6 +220,7 @@ public class RedisConversationMemoryService implements ConversationMemoryService
             String result = llmService.chat(request);
             return result == null ? "" : result.trim();
         } catch (Exception e) {
+            log.error("对话记忆摘要生成失败, conversationId相关消息数: {}", messages.size(), e);
             return "";
         }
     }
