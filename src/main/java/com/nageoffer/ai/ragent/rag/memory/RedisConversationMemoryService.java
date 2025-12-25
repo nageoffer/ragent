@@ -93,8 +93,23 @@ public class RedisConversationMemoryService implements ConversationMemoryService
         persistToDb(conversationId, userId, message);
         String payload = gson.toJson(message);
         stringRedisTemplate.opsForList().rightPush(key, payload);
+        trimToMaxSize(key);
         applyExpire(key);
         compressIfNeeded(conversationId, userId, message);
+    }
+
+    /**
+     * 限制 Redis List 最大长度，防止无界增长
+     */
+    private void trimToMaxSize(String key) {
+        int maxTurns = memoryProperties.getMaxTurns();
+        if (maxTurns <= 0) {
+            return;
+        }
+        // 一轮对话包含 user + assistant 两条消息
+        int maxSize = maxTurns * 2;
+        // LTRIM 保留最新的 maxSize 条消息（从 -maxSize 到 -1）
+        stringRedisTemplate.opsForList().trim(key, -maxSize, -1);
     }
 
     private String buildKey(String conversationId, String userId) {
