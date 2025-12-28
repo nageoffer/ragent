@@ -1,18 +1,19 @@
 package com.nageoffer.ai.ragent.rag.memory;
 
+import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.google.gson.Gson;
 import com.nageoffer.ai.ragent.config.MemoryProperties;
 import com.nageoffer.ai.ragent.convention.ChatMessage;
 import com.nageoffer.ai.ragent.convention.ChatRequest;
-import com.nageoffer.ai.ragent.dao.entity.ConversationMessageDO;
 import com.nageoffer.ai.ragent.dao.entity.ConversationDO;
+import com.nageoffer.ai.ragent.dao.entity.ConversationMessageDO;
 import com.nageoffer.ai.ragent.dao.mapper.ConversationMapper;
 import com.nageoffer.ai.ragent.dao.mapper.ConversationMessageMapper;
 import com.nageoffer.ai.ragent.rag.chat.LLMService;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -20,23 +21,42 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import java.util.stream.Collectors;
 
 import static com.nageoffer.ai.ragent.constant.RAGEnterpriseConstant.CONVERSATION_SUMMARY_PROMPT;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class RedisConversationMemoryService implements ConversationMemoryService {
 
     private static final String KEY_PREFIX = "ragent:memory:";
+    private static final String SUMMARY_LOCK_PREFIX = "ragent:memory:summary:lock:";
+    private static final Duration SUMMARY_LOCK_TTL = Duration.ofMinutes(5);
 
     private final StringRedisTemplate stringRedisTemplate;
     private final ConversationMessageMapper messageMapper;
     private final ConversationMapper conversationMapper;
     private final MemoryProperties memoryProperties;
     private final LLMService llmService;
+    private final Executor memorySummaryExecutor;
     private final Gson gson = new Gson();
+
+    public RedisConversationMemoryService(
+            StringRedisTemplate stringRedisTemplate,
+            ConversationMessageMapper messageMapper,
+            ConversationMapper conversationMapper,
+            MemoryProperties memoryProperties,
+            LLMService llmService,
+            @Qualifier("memorySummaryThreadPoolExecutor") Executor memorySummaryExecutor) {
+        this.stringRedisTemplate = stringRedisTemplate;
+        this.messageMapper = messageMapper;
+        this.conversationMapper = conversationMapper;
+        this.memoryProperties = memoryProperties;
+        this.llmService = llmService;
+        this.memorySummaryExecutor = memorySummaryExecutor;
+    }
 
     @Override
     public List<ChatMessage> load(String conversationId, String userId, int maxMessages) {
@@ -161,6 +181,17 @@ public class RedisConversationMemoryService implements ConversationMemoryService
         if (message.getRole() != ChatMessage.Role.ASSISTANT) {
             return;
         }
+        CompletableFuture.runAsync(() -> doCompressIfNeeded(conversationId, userId), memorySummaryExecutor)
+                .exceptionally(ex -> {
+                    log.error("对话记忆摘要异步任务失败", ex);
+                    return null;
+                });
+    }
+
+    private void doCompressIfNeeded(String conversationId, String userId) {
+        if (StrUtil.isBlank(conversationId)) {
+            return;
+        }
         int triggerTurns = memoryProperties.getSummaryTriggerTurns();
         int keepTurns = memoryProperties.getSummaryKeepTurns();
         int maxTurns = memoryProperties.getMaxTurns();
@@ -170,57 +201,111 @@ public class RedisConversationMemoryService implements ConversationMemoryService
         if (maxTurns > 0) {
             keepTurns = Math.min(keepTurns, maxTurns);
         }
-        int triggerMessages = triggerTurns * 2;
-        int keepMessages = keepTurns * 2;
-        long total = messageMapper.selectCount(
-                Wrappers.lambdaQuery(ConversationMessageDO.class)
-                        .eq(ConversationMessageDO::getConversationId, conversationId)
-                        .eq(ConversationMessageDO::getUserId, normalizeUserId(userId))
-                        .eq(ConversationMessageDO::getIsSummary, 0)
-                        .eq(ConversationMessageDO::getDeleted, 0)
-        );
-        if (total <= triggerMessages) {
+        String lockKey = buildSummaryLockKey(conversationId, userId);
+        String token = IdUtil.getSnowflakeNextIdStr();
+        if (!tryLock(lockKey, token)) {
             return;
         }
-        ConversationMessageDO latestSummary = loadLatestSummaryRecord(conversationId, userId);
-        if (latestSummary != null) {
-            return;
+        try {
+            int triggerMessages = triggerTurns * 2;
+            int keepMessages = keepTurns * 2;
+            long total = messageMapper.selectCount(
+                    Wrappers.lambdaQuery(ConversationMessageDO.class)
+                            .eq(ConversationMessageDO::getConversationId, conversationId)
+                            .eq(ConversationMessageDO::getUserId, normalizeUserId(userId))
+                            .eq(ConversationMessageDO::getIsSummary, 0)
+                            .eq(ConversationMessageDO::getDeleted, 0)
+            );
+            if (total <= triggerMessages || total <= keepMessages) {
+                return;
+            }
+            ConversationMessageDO latestSummary = loadLatestSummaryRecord(conversationId, userId);
+            int summarizeCount = (int) Math.max(0, total - keepMessages);
+            if (summarizeCount <= 0) {
+                return;
+            }
+            List<ConversationMessageDO> toSummarize = messageMapper.selectList(
+                    Wrappers.lambdaQuery(ConversationMessageDO.class)
+                            .eq(ConversationMessageDO::getConversationId, conversationId)
+                            .eq(ConversationMessageDO::getUserId, normalizeUserId(userId))
+                            .eq(ConversationMessageDO::getIsSummary, 0)
+                            .eq(ConversationMessageDO::getDeleted, 0)
+                            .orderByAsc(ConversationMessageDO::getCreateTime)
+                            .last("limit " + summarizeCount)
+            );
+            if (toSummarize == null || toSummarize.isEmpty()) {
+                return;
+            }
+            List<ConversationMessageDO> rollingMessages = filterRollingMessages(toSummarize, latestSummary);
+            if (rollingMessages.isEmpty()) {
+                return;
+            }
+            if (latestSummary != null && rollingMessages.size() < triggerMessages) {
+                return;
+            }
+            String existingSummary = latestSummary == null ? "" : latestSummary.getContent();
+            String summary = summarizeMessages(rollingMessages, existingSummary);
+            if (StrUtil.isBlank(summary)) {
+                return;
+            }
+            if (latestSummary == null) {
+                ConversationMessageDO first = toSummarize.get(0);
+                ConversationMessageDO summaryRecord = ConversationMessageDO.builder()
+                        .conversationId(conversationId)
+                        .userId(normalizeUserId(userId))
+                        .role(ChatMessage.Role.SYSTEM.name().toLowerCase())
+                        .content(summary)
+                        .isSummary(1)
+                        .createTime(first.getCreateTime())
+                        .build();
+                messageMapper.insert(summaryRecord);
+                refreshCache(conversationId, userId);
+            } else {
+                latestSummary.setContent(summary);
+                messageMapper.updateById(latestSummary);
+            }
+        } finally {
+            unlockIfOwner(lockKey, token);
         }
-        int summarizeCount = (int) Math.max(0, total - keepMessages);
-        if (summarizeCount <= 0) {
-            return;
-        }
-        List<ConversationMessageDO> toSummarize = messageMapper.selectList(
-                Wrappers.lambdaQuery(ConversationMessageDO.class)
-                        .eq(ConversationMessageDO::getConversationId, conversationId)
-                        .eq(ConversationMessageDO::getUserId, normalizeUserId(userId))
-                        .eq(ConversationMessageDO::getIsSummary, 0)
-                        .eq(ConversationMessageDO::getDeleted, 0)
-                        .orderByAsc(ConversationMessageDO::getCreateTime)
-                        .last("limit " + summarizeCount)
-        );
-        if (toSummarize == null || toSummarize.isEmpty()) {
-            return;
-        }
-        String summary = summarizeMessages(toSummarize);
-        if (StrUtil.isBlank(summary)) {
-            return;
-        }
-        ConversationMessageDO first = toSummarize.get(0);
-        ConversationMessageDO summaryRecord = ConversationMessageDO.builder()
-                .conversationId(conversationId)
-                .userId(normalizeUserId(userId))
-                .role(ChatMessage.Role.SYSTEM.name().toLowerCase())
-                .content(summary)
-                .isSummary(1)
-                .createTime(first.getCreateTime())
-                .build();
-        messageMapper.insert(summaryRecord);
-        refreshCache(conversationId, userId);
     }
 
-    private String summarizeMessages(List<ConversationMessageDO> messages) {
-        String content = buildSummaryContent(messages);
+    private String buildSummaryLockKey(String conversationId, String userId) {
+        String safeUserId = normalizeUserId(userId);
+        return SUMMARY_LOCK_PREFIX + safeUserId + ":" + conversationId.trim();
+    }
+
+    private boolean tryLock(String key, String token) {
+        Boolean acquired = stringRedisTemplate.opsForValue().setIfAbsent(key, token, RedisConversationMemoryService.SUMMARY_LOCK_TTL);
+        return Boolean.TRUE.equals(acquired);
+    }
+
+    private void unlockIfOwner(String key, String token) {
+        String current = stringRedisTemplate.opsForValue().get(key);
+        if (token.equals(current)) {
+            stringRedisTemplate.delete(key);
+        }
+    }
+
+    private List<ConversationMessageDO> filterRollingMessages(List<ConversationMessageDO> messages,
+                                                              ConversationMessageDO latestSummary) {
+        if (latestSummary == null) {
+            return messages;
+        }
+        java.util.Date cutoff = latestSummary.getUpdateTime();
+        if (cutoff == null) {
+            cutoff = latestSummary.getCreateTime();
+        }
+        if (cutoff == null) {
+            return messages;
+        }
+        java.util.Date finalCutoff = cutoff;
+        return messages.stream()
+                .filter(item -> item.getCreateTime() != null && item.getCreateTime().after(finalCutoff))
+                .toList();
+    }
+
+    private String summarizeMessages(List<ConversationMessageDO> messages, String existingSummary) {
+        String content = buildSummaryContent(messages, existingSummary);
         if (StrUtil.isBlank(content)) {
             return "";
         }
@@ -240,8 +325,13 @@ public class RedisConversationMemoryService implements ConversationMemoryService
         }
     }
 
-    private String buildSummaryContent(List<ConversationMessageDO> messages) {
+    private String buildSummaryContent(List<ConversationMessageDO> messages, String existingSummary) {
         StringBuilder sb = new StringBuilder();
+        if (StrUtil.isNotBlank(existingSummary)) {
+            sb.append("已有摘要：")
+                    .append(existingSummary.trim())
+                    .append("\n");
+        }
         for (ConversationMessageDO item : messages) {
             if (item == null || StrUtil.isBlank(item.getContent())) {
                 continue;
