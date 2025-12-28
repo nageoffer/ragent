@@ -28,4 +28,9 @@ public class MemoryProperties {
      * 触发摘要的轮数阈值
      */
     private int summaryTriggerTurns = 12;
+
+    /**
+     * 会话标题最大长度（用于提示词约束）
+     */
+    private int titleMaxLength = 30;
 }

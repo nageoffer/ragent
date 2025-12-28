@@ -28,6 +28,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import static com.nageoffer.ai.ragent.constant.RAGEnterpriseConstant.CONVERSATION_SUMMARY_PROMPT;
+import static com.nageoffer.ai.ragent.constant.RAGEnterpriseConstant.CONVERSATION_TITLE_PROMPT;
 
 @Slf4j
 @Service
@@ -457,7 +458,7 @@ public class RedisConversationMemoryService implements ConversationMemoryService
         if (existing == null) {
             String title = null;
             if (message.getRole() == ChatMessage.Role.USER && StrUtil.isNotBlank(content)) {
-                title = limitLength(content, 30);
+                title = generateTitleFromQuestion(content);
             }
             if (StrUtil.isBlank(title)) {
                 title = "新会话";
@@ -473,18 +474,28 @@ public class RedisConversationMemoryService implements ConversationMemoryService
         }
         existing.setLastTime(new java.util.Date());
         if (StrUtil.isBlank(existing.getTitle()) && message.getRole() == ChatMessage.Role.USER) {
-            existing.setTitle(limitLength(content, 30));
+            String title = generateTitleFromQuestion(content);
+            if (StrUtil.isNotBlank(title)) {
+                existing.setTitle(title);
+            }
         }
         conversationMapper.updateById(existing);
     }
 
-    private String limitLength(String text, int maxLen) {
-        if (StrUtil.isBlank(text)) {
-            return text;
+    private String generateTitleFromQuestion(String question) {
+        if (StrUtil.isBlank(question)) {
+            return "";
         }
-        if (text.length() <= maxLen) {
-            return text;
+        int maxLen = memoryProperties.getTitleMaxLength();
+        if (maxLen <= 0) {
+            maxLen = 30;
         }
-        return text.substring(0, maxLen);
+        String prompt = CONVERSATION_TITLE_PROMPT.formatted(maxLen, question.trim());
+        try {
+            return llmService.chat(prompt);
+        } catch (Exception ex) {
+            log.warn("生成会话标题失败", ex);
+            return "";
+        }
     }
 }

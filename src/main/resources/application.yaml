@@ -46,6 +46,7 @@ rag:
     ttl-minutes: 60
     summary-enabled: true
     summary-trigger-turns: 4
+    title-max-length: 30
 
 ai:
   embedding:
