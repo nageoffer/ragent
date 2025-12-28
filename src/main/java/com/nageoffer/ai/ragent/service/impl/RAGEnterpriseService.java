@@ -124,7 +124,7 @@ public class RAGEnterpriseService implements RAGService {
 
     @Override
     public void streamAnswer(String question, int topK, String conversationId, StreamCallback callback) {
-        List<ChatMessage> history = loadMemory(conversationId);
+        List<ChatMessage> history = memoryService.load(conversationId, UserContext.getUserId());
         RewriteResult rewriteResult = queryRewriteService.rewriteWithSplit(question, history);
         String rewriteQuestion = rewriteResult.rewrittenQuestion();
 
@@ -440,14 +440,6 @@ public class RAGEnterpriseService implements RAGService {
                 .userQuestion(question)
                 .parameters(params)
                 .build();
-    }
-
-    private List<ChatMessage> loadMemory(String conversationId) {
-        if (StrUtil.isBlank(conversationId) || memoryMaxTurns <= 0) {
-            return List.of();
-        }
-        int maxMessages = memoryMaxTurns * ROLE_HISTORY_MULTIPLIER;
-        return memoryService.load(conversationId, UserContext.getUserId(), maxMessages);
     }
 
     private StreamCallback wrapWithMemory(String conversationId, StreamCallback delegate) {

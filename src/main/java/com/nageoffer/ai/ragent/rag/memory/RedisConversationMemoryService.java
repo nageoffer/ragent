@@ -60,14 +60,11 @@ public class RedisConversationMemoryService implements ConversationMemoryService
     }
 
     @Override
-    public List<ChatMessage> load(String conversationId, String userId, int maxMessages) {
+    public List<ChatMessage> load(String conversationId, String userId) {
         String key = buildKey(conversationId, userId);
-        long size = Math.max(maxMessages, 0);
-        if (size == 0) {
-            return List.of();
-        }
+        int maxTurns = memoryProperties.getMaxTurns();
         ChatMessage summary = loadLatestSummary(conversationId, userId);
-        List<String> raw = stringRedisTemplate.opsForList().range(key, -size, -1);
+        List<String> raw = stringRedisTemplate.opsForList().range(key, -maxTurns, -1);
         if (raw != null && !raw.isEmpty()) {
             List<ChatMessage> cached = filterUserMessages(parseMessages(raw));
             if (!cached.isEmpty()) {
@@ -78,7 +75,7 @@ public class RedisConversationMemoryService implements ConversationMemoryService
         List<ConversationMessageDO> dbMessages = conversationGroupService.listLatestUserMessages(
                 conversationId,
                 userId,
-                (int) size
+                maxTurns
         );
         if (dbMessages == null || dbMessages.isEmpty()) {
             return attachSummary(summary, List.of());
