@@ -182,14 +182,12 @@ public class RedisConversationMemoryService implements ConversationMemoryService
             return;
         }
         try {
-            int triggerMessages = triggerTurns * 2;
-            int keepMessages = maxTurns * 2;
             long total = conversationGroupService.countUserMessages(conversationId, userId);
-            if (total <= triggerMessages || total <= keepMessages) {
+            if (total <= triggerTurns || total <= maxTurns) {
                 return;
             }
             ConversationMessageDO latestSummary = loadLatestSummaryRecord(conversationId, userId);
-            int summarizeCount = (int) Math.max(0, total - keepMessages);
+            int summarizeCount = (int) Math.max(0, total - maxTurns);
             if (summarizeCount <= 0) {
                 return;
             }
@@ -205,7 +203,7 @@ public class RedisConversationMemoryService implements ConversationMemoryService
             if (rollingMessages.isEmpty()) {
                 return;
             }
-            if (latestSummary != null && rollingMessages.size() < triggerMessages) {
+            if (latestSummary != null && rollingMessages.size() < triggerTurns) {
                 return;
             }
             String existingSummary = latestSummary == null ? "" : latestSummary.getContent();
@@ -324,7 +322,7 @@ public class RedisConversationMemoryService implements ConversationMemoryService
     private void refreshCache(String conversationId, String userId) {
         String key = buildKey(conversationId, userId);
         stringRedisTemplate.delete(key);
-        int maxMessages = memoryProperties.getMaxTurns() * 2;
+        int maxMessages = memoryProperties.getMaxTurns();
         if (maxMessages <= 0) {
             return;
         }
@@ -441,7 +439,7 @@ public class RedisConversationMemoryService implements ConversationMemoryService
             return llmService.chat(prompt);
         } catch (Exception ex) {
             log.warn("生成会话标题失败", ex);
-            return "";
+            return "新的问题会话";
         }
     }
 }
