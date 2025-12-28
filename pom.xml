@@ -22,6 +22,7 @@
         <mockito-core.version>5.20.0</mockito-core.version>
         <sa-token.version>1.43.0</sa-token.version>
         <transmittable-thread-local.version>2.14.5</transmittable-thread-local.version>
+        <redisson.version>3.39.0</redisson.version>
     </properties>
 
     <dependencyManagement>
@@ -151,6 +152,12 @@
             <groupId>com.alibaba</groupId>
             <artifactId>transmittable-thread-local</artifactId>
             <version>${transmittable-thread-local.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.redisson</groupId>
+            <artifactId>redisson-spring-boot-starter</artifactId>
+            <version>${redisson.version}</version>
         </dependency>
     </dependencies>
 

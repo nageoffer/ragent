@@ -1,6 +1,5 @@
 package com.nageoffer.ai.ragent.rag.memory;
 
-import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.google.gson.Gson;
@@ -13,6 +12,8 @@ import com.nageoffer.ai.ragent.dao.mapper.ConversationMapper;
 import com.nageoffer.ai.ragent.dao.mapper.ConversationMessageMapper;
 import com.nageoffer.ai.ragent.rag.chat.LLMService;
 import lombok.extern.slf4j.Slf4j;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
@@ -23,6 +24,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import static com.nageoffer.ai.ragent.constant.RAGEnterpriseConstant.CONVERSATION_SUMMARY_PROMPT;
@@ -41,6 +43,7 @@ public class RedisConversationMemoryService implements ConversationMemoryService
     private final MemoryProperties memoryProperties;
     private final LLMService llmService;
     private final Executor memorySummaryExecutor;
+    private final RedissonClient redissonClient;
     private final Gson gson = new Gson();
 
     public RedisConversationMemoryService(
@@ -49,13 +52,15 @@ public class RedisConversationMemoryService implements ConversationMemoryService
             ConversationMapper conversationMapper,
             MemoryProperties memoryProperties,
             LLMService llmService,
-            @Qualifier("memorySummaryThreadPoolExecutor") Executor memorySummaryExecutor) {
+            @Qualifier("memorySummaryThreadPoolExecutor") Executor memorySummaryExecutor,
+            RedissonClient redissonClient) {
         this.stringRedisTemplate = stringRedisTemplate;
         this.messageMapper = messageMapper;
         this.conversationMapper = conversationMapper;
         this.memoryProperties = memoryProperties;
         this.llmService = llmService;
         this.memorySummaryExecutor = memorySummaryExecutor;
+        this.redissonClient = redissonClient;
     }
 
     @Override
@@ -197,15 +202,14 @@ public class RedisConversationMemoryService implements ConversationMemoryService
         if (triggerTurns <= 0 || maxTurns < 0) {
             return;
         }
-        int keepTurns = Math.max(0, maxTurns);
         String lockKey = buildSummaryLockKey(conversationId, userId);
-        String token = IdUtil.getSnowflakeNextIdStr();
-        if (!tryLock(lockKey, token)) {
+        RLock lock = redissonClient.getLock(lockKey);
+        if (!tryLock(lock)) {
             return;
         }
         try {
             int triggerMessages = triggerTurns * 2;
-            int keepMessages = keepTurns * 2;
+            int keepMessages = maxTurns * 2;
             long total = messageMapper.selectCount(
                     Wrappers.lambdaQuery(ConversationMessageDO.class)
                             .eq(ConversationMessageDO::getConversationId, conversationId)
@@ -262,7 +266,7 @@ public class RedisConversationMemoryService implements ConversationMemoryService
                 messageMapper.updateById(latestSummary);
             }
         } finally {
-            unlockIfOwner(lockKey, token);
+            unlockIfOwner(lock);
         }
     }
 
@@ -271,15 +275,17 @@ public class RedisConversationMemoryService implements ConversationMemoryService
         return SUMMARY_LOCK_PREFIX + safeUserId + ":" + conversationId.trim();
     }
 
-    private boolean tryLock(String key, String token) {
-        Boolean acquired = stringRedisTemplate.opsForValue().setIfAbsent(key, token, RedisConversationMemoryService.SUMMARY_LOCK_TTL);
-        return Boolean.TRUE.equals(acquired);
+    private boolean tryLock(RLock lock) {
+        try {
+            return lock.tryLock(0, SUMMARY_LOCK_TTL.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (InterruptedException ex) {
+            return false;
+        }
     }
 
-    private void unlockIfOwner(String key, String token) {
-        String current = stringRedisTemplate.opsForValue().get(key);
-        if (token.equals(current)) {
-            stringRedisTemplate.delete(key);
+    private void unlockIfOwner(RLock lock) {
+        if (lock.isHeldByCurrentThread()) {
+            lock.unlock();
         }
     }
 
