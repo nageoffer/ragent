@@ -193,14 +193,11 @@ public class RedisConversationMemoryService implements ConversationMemoryService
             return;
         }
         int triggerTurns = memoryProperties.getSummaryTriggerTurns();
-        int keepTurns = memoryProperties.getSummaryKeepTurns();
         int maxTurns = memoryProperties.getMaxTurns();
-        if (triggerTurns <= 0 || keepTurns < 0) {
+        if (triggerTurns <= 0 || maxTurns < 0) {
             return;
         }
-        if (maxTurns > 0) {
-            keepTurns = Math.min(keepTurns, maxTurns);
-        }
+        int keepTurns = Math.max(0, maxTurns);
         String lockKey = buildSummaryLockKey(conversationId, userId);
         String token = IdUtil.getSnowflakeNextIdStr();
         if (!tryLock(lockKey, token)) {

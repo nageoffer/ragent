@@ -28,9 +28,4 @@ public class MemoryProperties {
      * 触发摘要的轮数阈值
      */
     private int summaryTriggerTurns = 12;
-
-    /**
-     * 摘要后保留的最近轮数
-     */
-    private int summaryKeepTurns = 4;
 }
