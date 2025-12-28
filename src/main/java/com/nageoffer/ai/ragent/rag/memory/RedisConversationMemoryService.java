@@ -1,16 +1,14 @@
 package com.nageoffer.ai.ragent.rag.memory;
 
 import cn.hutool.core.util.StrUtil;
-import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.google.gson.Gson;
 import com.nageoffer.ai.ragent.config.MemoryProperties;
 import com.nageoffer.ai.ragent.convention.ChatMessage;
 import com.nageoffer.ai.ragent.convention.ChatRequest;
 import com.nageoffer.ai.ragent.dao.entity.ConversationDO;
 import com.nageoffer.ai.ragent.dao.entity.ConversationMessageDO;
-import com.nageoffer.ai.ragent.dao.mapper.ConversationMapper;
-import com.nageoffer.ai.ragent.dao.mapper.ConversationMessageMapper;
 import com.nageoffer.ai.ragent.rag.chat.LLMService;
+import com.nageoffer.ai.ragent.service.ConversationGroupService;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
@@ -39,8 +37,7 @@ public class RedisConversationMemoryService implements ConversationMemoryService
     private static final Duration SUMMARY_LOCK_TTL = Duration.ofMinutes(5);
 
     private final StringRedisTemplate stringRedisTemplate;
-    private final ConversationMessageMapper messageMapper;
-    private final ConversationMapper conversationMapper;
+    private final ConversationGroupService conversationGroupService;
     private final MemoryProperties memoryProperties;
     private final LLMService llmService;
     private final Executor memorySummaryExecutor;
@@ -49,15 +46,13 @@ public class RedisConversationMemoryService implements ConversationMemoryService
 
     public RedisConversationMemoryService(
             StringRedisTemplate stringRedisTemplate,
-            ConversationMessageMapper messageMapper,
-            ConversationMapper conversationMapper,
+            ConversationGroupService conversationGroupService,
             MemoryProperties memoryProperties,
             LLMService llmService,
             @Qualifier("memorySummaryThreadPoolExecutor") Executor memorySummaryExecutor,
             RedissonClient redissonClient) {
         this.stringRedisTemplate = stringRedisTemplate;
-        this.messageMapper = messageMapper;
-        this.conversationMapper = conversationMapper;
+        this.conversationGroupService = conversationGroupService;
         this.memoryProperties = memoryProperties;
         this.llmService = llmService;
         this.memorySummaryExecutor = memorySummaryExecutor;
@@ -67,9 +62,6 @@ public class RedisConversationMemoryService implements ConversationMemoryService
     @Override
     public List<ChatMessage> load(String conversationId, String userId, int maxMessages) {
         String key = buildKey(conversationId, userId);
-        if (key == null) {
-            return List.of();
-        }
         long size = Math.max(maxMessages, 0);
         if (size == 0) {
             return List.of();
@@ -83,14 +75,10 @@ public class RedisConversationMemoryService implements ConversationMemoryService
             }
         }
 
-        List<ConversationMessageDO> dbMessages = messageMapper.selectList(
-                Wrappers.lambdaQuery(ConversationMessageDO.class)
-                        .eq(ConversationMessageDO::getConversationId, conversationId)
-                        .eq(ConversationMessageDO::getUserId, normalizeUserId(userId))
-                        .eq(ConversationMessageDO::getIsSummary, 0)
-                        .eq(ConversationMessageDO::getDeleted, 0)
-                        .orderByDesc(ConversationMessageDO::getCreateTime)
-                        .last("limit " + size)
+        List<ConversationMessageDO> dbMessages = conversationGroupService.listLatestMessages(
+                conversationId,
+                userId,
+                (int) size
         );
         if (dbMessages == null || dbMessages.isEmpty()) {
             return attachSummary(summary, List.of());
@@ -113,10 +101,7 @@ public class RedisConversationMemoryService implements ConversationMemoryService
     @Override
     public void append(String conversationId, String userId, ChatMessage message) {
         String key = buildKey(conversationId, userId);
-        if (key == null || message == null) {
-            return;
-        }
-        persistToDb(conversationId, userId, message);
+        persistToDB(conversationId, userId, message);
         String payload = gson.toJson(message);
         stringRedisTemplate.opsForList().rightPush(key, payload);
         trimToMaxSize(key);
@@ -139,15 +124,7 @@ public class RedisConversationMemoryService implements ConversationMemoryService
     }
 
     private String buildKey(String conversationId, String userId) {
-        if (StrUtil.isBlank(conversationId)) {
-            return null;
-        }
-        String safeUserId = normalizeUserId(userId);
-        return KEY_PREFIX + safeUserId + ":" + conversationId.trim();
-    }
-
-    private String normalizeUserId(String userId) {
-        return StrUtil.isBlank(userId) ? "anon" : userId.trim();
+        return KEY_PREFIX + userId + ":" + conversationId.trim();
     }
 
     private List<ChatMessage> parseMessages(List<String> raw) {
@@ -168,15 +145,15 @@ public class RedisConversationMemoryService implements ConversationMemoryService
         }
     }
 
-    private void persistToDb(String conversationId, String userId, ChatMessage message) {
+    private void persistToDB(String conversationId, String userId, ChatMessage message) {
         ConversationMessageDO record = ConversationMessageDO.builder()
                 .conversationId(conversationId)
-                .userId(normalizeUserId(userId))
+                .userId(userId)
                 .role(message.getRole() == null ? null : message.getRole().name().toLowerCase())
                 .content(message.getContent())
                 .isSummary(0)
                 .build();
-        messageMapper.insert(record);
+        conversationGroupService.saveMessage(record);
         upsertConversation(conversationId, userId, message);
     }
 
@@ -203,7 +180,7 @@ public class RedisConversationMemoryService implements ConversationMemoryService
         if (triggerTurns <= 0 || maxTurns < 0) {
             return;
         }
-        String lockKey = buildSummaryLockKey(conversationId, userId);
+        String lockKey = SUMMARY_LOCK_PREFIX + userId + ":" + conversationId.trim();
         RLock lock = redissonClient.getLock(lockKey);
         if (!tryLock(lock)) {
             return;
@@ -211,13 +188,7 @@ public class RedisConversationMemoryService implements ConversationMemoryService
         try {
             int triggerMessages = triggerTurns * 2;
             int keepMessages = maxTurns * 2;
-            long total = messageMapper.selectCount(
-                    Wrappers.lambdaQuery(ConversationMessageDO.class)
-                            .eq(ConversationMessageDO::getConversationId, conversationId)
-                            .eq(ConversationMessageDO::getUserId, normalizeUserId(userId))
-                            .eq(ConversationMessageDO::getIsSummary, 0)
-                            .eq(ConversationMessageDO::getDeleted, 0)
-            );
+            long total = conversationGroupService.countMessages(conversationId, userId);
             if (total <= triggerMessages || total <= keepMessages) {
                 return;
             }
@@ -226,14 +197,10 @@ public class RedisConversationMemoryService implements ConversationMemoryService
             if (summarizeCount <= 0) {
                 return;
             }
-            List<ConversationMessageDO> toSummarize = messageMapper.selectList(
-                    Wrappers.lambdaQuery(ConversationMessageDO.class)
-                            .eq(ConversationMessageDO::getConversationId, conversationId)
-                            .eq(ConversationMessageDO::getUserId, normalizeUserId(userId))
-                            .eq(ConversationMessageDO::getIsSummary, 0)
-                            .eq(ConversationMessageDO::getDeleted, 0)
-                            .orderByAsc(ConversationMessageDO::getCreateTime)
-                            .last("limit " + summarizeCount)
+            List<ConversationMessageDO> toSummarize = conversationGroupService.listEarliestMessages(
+                    conversationId,
+                    userId,
+                    summarizeCount
             );
             if (toSummarize == null || toSummarize.isEmpty()) {
                 return;
@@ -254,32 +221,28 @@ public class RedisConversationMemoryService implements ConversationMemoryService
                 ConversationMessageDO first = toSummarize.get(0);
                 ConversationMessageDO summaryRecord = ConversationMessageDO.builder()
                         .conversationId(conversationId)
-                        .userId(normalizeUserId(userId))
+                        .userId(userId)
                         .role(ChatMessage.Role.SYSTEM.name().toLowerCase())
                         .content(summary)
                         .isSummary(1)
                         .createTime(first.getCreateTime())
                         .build();
-                messageMapper.insert(summaryRecord);
+                conversationGroupService.upsertSummary(summaryRecord);
                 refreshCache(conversationId, userId);
             } else {
                 latestSummary.setContent(summary);
-                messageMapper.updateById(latestSummary);
+                conversationGroupService.upsertSummary(latestSummary);
             }
         } finally {
             unlockIfOwner(lock);
         }
     }
 
-    private String buildSummaryLockKey(String conversationId, String userId) {
-        String safeUserId = normalizeUserId(userId);
-        return SUMMARY_LOCK_PREFIX + safeUserId + ":" + conversationId.trim();
-    }
-
     private boolean tryLock(RLock lock) {
         try {
             return lock.tryLock(0, SUMMARY_LOCK_TTL.toMillis(), TimeUnit.MILLISECONDS);
         } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
             return false;
         }
     }
@@ -364,22 +327,15 @@ public class RedisConversationMemoryService implements ConversationMemoryService
 
     private void refreshCache(String conversationId, String userId) {
         String key = buildKey(conversationId, userId);
-        if (key == null) {
-            return;
-        }
         stringRedisTemplate.delete(key);
         int maxMessages = memoryProperties.getMaxTurns() * 2;
         if (maxMessages <= 0) {
             return;
         }
-        List<ConversationMessageDO> dbMessages = messageMapper.selectList(
-                Wrappers.lambdaQuery(ConversationMessageDO.class)
-                        .eq(ConversationMessageDO::getConversationId, conversationId)
-                        .eq(ConversationMessageDO::getUserId, normalizeUserId(userId))
-                        .eq(ConversationMessageDO::getIsSummary, 0)
-                        .eq(ConversationMessageDO::getDeleted, 0)
-                        .orderByAsc(ConversationMessageDO::getCreateTime)
-                        .last("limit " + maxMessages)
+        List<ConversationMessageDO> dbMessages = conversationGroupService.listMessagesAsc(
+                conversationId,
+                userId,
+                maxMessages
         );
         if (dbMessages == null || dbMessages.isEmpty()) {
             return;
@@ -411,19 +367,7 @@ public class RedisConversationMemoryService implements ConversationMemoryService
     }
 
     private ConversationMessageDO loadLatestSummaryRecord(String conversationId, String userId) {
-        List<ConversationMessageDO> summaries = messageMapper.selectList(
-                Wrappers.lambdaQuery(ConversationMessageDO.class)
-                        .eq(ConversationMessageDO::getConversationId, conversationId)
-                        .eq(ConversationMessageDO::getUserId, normalizeUserId(userId))
-                        .eq(ConversationMessageDO::getIsSummary, 1)
-                        .eq(ConversationMessageDO::getDeleted, 0)
-                        .orderByDesc(ConversationMessageDO::getCreateTime)
-                        .last("limit 1")
-        );
-        if (summaries == null || summaries.isEmpty()) {
-            return null;
-        }
-        return summaries.get(0);
+        return conversationGroupService.findLatestSummary(conversationId, userId);
     }
 
     private ChatMessage toChatMessage(ConversationMessageDO record) {
@@ -447,13 +391,7 @@ public class RedisConversationMemoryService implements ConversationMemoryService
     }
 
     private void upsertConversation(String conversationId, String userId, ChatMessage message) {
-        String safeUserId = normalizeUserId(userId);
-        ConversationDO existing = conversationMapper.selectOne(
-                Wrappers.lambdaQuery(ConversationDO.class)
-                        .eq(ConversationDO::getConversationId, conversationId)
-                        .eq(ConversationDO::getUserId, safeUserId)
-                        .eq(ConversationDO::getDeleted, 0)
-        );
+        ConversationDO existing = conversationGroupService.findConversation(conversationId, userId);
         String content = message.getContent() == null ? "" : message.getContent().trim();
         if (existing == null) {
             String title = null;
@@ -462,11 +400,11 @@ public class RedisConversationMemoryService implements ConversationMemoryService
             }
             ConversationDO record = ConversationDO.builder()
                     .conversationId(conversationId)
-                    .userId(safeUserId)
+                    .userId(userId)
                     .title(title)
                     .lastTime(new java.util.Date())
                     .build();
-            conversationMapper.insert(record);
+            conversationGroupService.upsertConversation(record);
             return;
         }
         existing.setLastTime(new java.util.Date());
@@ -476,7 +414,7 @@ public class RedisConversationMemoryService implements ConversationMemoryService
                 existing.setTitle(title);
             }
         }
-        conversationMapper.updateById(existing);
+        conversationGroupService.upsertConversation(existing);
     }
 
     private String generateTitleFromQuestion(String question) {
