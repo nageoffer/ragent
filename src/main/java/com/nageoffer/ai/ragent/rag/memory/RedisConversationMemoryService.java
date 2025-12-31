@@ -137,7 +137,7 @@ public class RedisConversationMemoryService implements ConversationMemoryService
     private void applyExpire(String key) {
         int ttlMinutes = memoryProperties.getTtlMinutes();
         if (ttlMinutes > 0) {
-            stringRedisTemplate.expire(key, Duration.ofMinutes(ttlMinutes));
+            stringRedisTemplate.expire(key, ttlMinutes, TimeUnit.MINUTES);
         }
     }
 
