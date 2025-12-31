@@ -20,7 +20,7 @@ public class MultiQuestionRewriteServiceTests {
     public void shouldReturnRewriteAndSubQuestions() {
         String question = "你好呀，淘宝和天猫数据安全怎么做的？";
 
-        QueryRewriteService.RewriteResult result = multiQuestionRewriteService.rewriteAndSplit(question);
+        RewriteResult result = multiQuestionRewriteService.rewriteAndSplit(question);
 
         Assertions.assertNotNull(result);
         Assertions.assertNotNull(result.rewrittenQuestion());
