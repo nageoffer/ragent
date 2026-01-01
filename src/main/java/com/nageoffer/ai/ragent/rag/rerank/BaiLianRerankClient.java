@@ -7,13 +7,18 @@ import com.google.gson.JsonObject;
 import com.nageoffer.ai.ragent.config.AIModelProperties;
 import com.nageoffer.ai.ragent.rag.model.ModelTarget;
 import com.nageoffer.ai.ragent.rag.retrieve.RetrievedChunk;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
+import okhttp3.ResponseBody;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
+import com.nageoffer.ai.ragent.rag.http.HttpMediaTypes;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -21,10 +26,12 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
+@Slf4j
+@RequiredArgsConstructor
 public class BaiLianRerankClient implements RerankClient {
 
     private final Gson gson = new Gson();
-    private final RestTemplate restTemplate = new RestTemplate();
+    private final OkHttpClient httpClient;
 
     @Override
     public String provider() {
@@ -78,15 +85,24 @@ public class BaiLianRerankClient implements RerankClient {
         reqBody.add("input", input);
         reqBody.add("parameters", parameters);
 
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.setBearerAuth(provider.getApiKey());
+        Request request = new Request.Builder()
+                .url(provider.getUrl())
+                .post(RequestBody.create(reqBody.toString(), HttpMediaTypes.JSON))
+                .addHeader("Content-Type", HttpMediaTypes.JSON_UTF8_HEADER)
+                .addHeader("Authorization", "Bearer " + provider.getApiKey())
+                .build();
 
-        HttpEntity<String> httpEntity = new HttpEntity<>(reqBody.toString(), headers);
-        ResponseEntity<String> response =
-                restTemplate.postForEntity(provider.getUrl(), httpEntity, String.class);
-
-        JsonObject respJson = gson.fromJson(response.getBody(), JsonObject.class);
+        JsonObject respJson;
+        try (Response response = httpClient.newCall(request).execute()) {
+            if (!response.isSuccessful()) {
+                String body = readBody(response.body());
+                log.warn("百炼 rerank 请求失败: status={}, body={}", response.code(), body);
+                throw new IllegalStateException("百炼 rerank 请求失败: HTTP " + response.code());
+            }
+            respJson = parseJsonBody(response.body());
+        } catch (IOException e) {
+            throw new IllegalStateException("百炼 rerank 请求失败: " + e.getMessage(), e);
+        }
         JsonObject output = respJson.getAsJsonObject("output");
         if (output == null || !output.has("results")) {
             return candidates.stream().limit(topN).collect(Collectors.toList());
@@ -161,5 +177,20 @@ public class BaiLianRerankClient implements RerankClient {
             throw new IllegalStateException("BaiLian rerank model name is missing");
         }
         return target.candidate().getModel();
+    }
+
+    private JsonObject parseJsonBody(ResponseBody body) throws IOException {
+        if (body == null) {
+            throw new IllegalStateException("百炼 rerank 响应为空");
+        }
+        String content = body.string();
+        return gson.fromJson(content, JsonObject.class);
+    }
+
+    private String readBody(ResponseBody body) throws IOException {
+        if (body == null) {
+            return "";
+        }
+        return new String(body.bytes(), StandardCharsets.UTF_8);
     }
 }

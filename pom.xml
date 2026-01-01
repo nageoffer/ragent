@@ -23,6 +23,7 @@
         <sa-token.version>1.43.0</sa-token.version>
         <transmittable-thread-local.version>2.14.5</transmittable-thread-local.version>
         <redisson.version>4.0.0</redisson.version>
+        <okhttp.version>4.12.0</okhttp.version>
     </properties>
 
     <dependencyManagement>
@@ -158,6 +159,12 @@
             <groupId>org.redisson</groupId>
             <artifactId>redisson-spring-boot-starter</artifactId>
             <version>${redisson.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.squareup.okhttp3</groupId>
+            <artifactId>okhttp</artifactId>
+            <version>${okhttp.version}</version>
         </dependency>
     </dependencies>
 

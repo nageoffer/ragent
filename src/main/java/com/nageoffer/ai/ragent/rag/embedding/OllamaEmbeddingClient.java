@@ -4,20 +4,27 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.nageoffer.ai.ragent.config.AIModelProperties;
 import com.nageoffer.ai.ragent.rag.model.ModelTarget;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
+import okhttp3.ResponseBody;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
+import com.nageoffer.ai.ragent.rag.http.HttpMediaTypes;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
 @Service
+@Slf4j
+@RequiredArgsConstructor
 public class OllamaEmbeddingClient implements EmbeddingClient {
 
-    private final RestTemplate restTemplate = new RestTemplate();
+    private final OkHttpClient httpClient;
     private final Gson gson = new Gson();
 
     @Override
@@ -34,15 +41,23 @@ public class OllamaEmbeddingClient implements EmbeddingClient {
         body.addProperty("model", requireModel(target));
         body.addProperty("input", text);
 
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
+        Request request = new Request.Builder()
+                .url(url)
+                .post(RequestBody.create(body.toString(), HttpMediaTypes.JSON))
+                .addHeader("Content-Type", HttpMediaTypes.JSON_UTF8_HEADER)
+                .build();
 
-        HttpEntity<String> entity = new HttpEntity<>(body.toString(), headers);
-
-        ResponseEntity<String> resp =
-                restTemplate.postForEntity(url, entity, String.class);
-
-        JsonObject json = gson.fromJson(resp.getBody(), JsonObject.class);
+        JsonObject json;
+        try (Response response = httpClient.newCall(request).execute()) {
+            if (!response.isSuccessful()) {
+                String errBody = readBody(response.body());
+                log.warn("Ollama embedding 请求失败: status={}, body={}", response.code(), errBody);
+                throw new IllegalStateException("Ollama embedding 请求失败: HTTP " + response.code());
+            }
+            json = parseJsonBody(response.body());
+        } catch (IOException e) {
+            throw new IllegalStateException("Ollama embedding 请求失败: " + e.getMessage(), e);
+        }
 
         var embeddings = json.getAsJsonArray("embeddings");
 
@@ -79,5 +94,20 @@ public class OllamaEmbeddingClient implements EmbeddingClient {
             throw new IllegalStateException("Ollama model name is missing");
         }
         return target.candidate().getModel();
+    }
+
+    private JsonObject parseJsonBody(ResponseBody body) throws IOException {
+        if (body == null) {
+            throw new IllegalStateException("Ollama embedding 响应为空");
+        }
+        String content = body.string();
+        return gson.fromJson(content, JsonObject.class);
+    }
+
+    private String readBody(ResponseBody body) throws IOException {
+        if (body == null) {
+            return "";
+        }
+        return new String(body.bytes(), StandardCharsets.UTF_8);
     }
 }

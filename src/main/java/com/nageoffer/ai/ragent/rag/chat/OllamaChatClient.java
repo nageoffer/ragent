@@ -8,28 +8,31 @@ import com.nageoffer.ai.ragent.config.AIModelProperties;
 import com.nageoffer.ai.ragent.convention.ChatMessage;
 import com.nageoffer.ai.ragent.convention.ChatRequest;
 import com.nageoffer.ai.ragent.rag.model.ModelTarget;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import okhttp3.Call;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
+import okhttp3.ResponseBody;
+import okio.BufferedSource;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
+import com.nageoffer.ai.ragent.rag.http.HttpMediaTypes;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URL;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @Service
+@Slf4j
+@RequiredArgsConstructor
 public class OllamaChatClient implements ChatClient {
 
     private final Gson gson = new GsonBuilder()
             .disableHtmlEscaping()
             .create();
-
-    private final RestTemplate restTemplate = new RestTemplate();
+    private final OkHttpClient httpClient;
 
     @Override
     public String provider() {
@@ -58,15 +61,23 @@ public class OllamaChatClient implements ChatClient {
             body.addProperty("num_predict", request.getMaxTokens());
         }
 
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
+        Request requestHttp = new Request.Builder()
+                .url(url)
+                .post(RequestBody.create(body.toString(), HttpMediaTypes.JSON))
+                .addHeader("Content-Type", HttpMediaTypes.JSON_UTF8_HEADER)
+                .build();
 
-        HttpEntity<String> req = new HttpEntity<>(body.toString(), headers);
-
-        ResponseEntity<String> resp =
-                restTemplate.postForEntity(url, req, String.class);
-
-        JsonObject json = gson.fromJson(resp.getBody(), JsonObject.class);
+        JsonObject json;
+        try (Response response = httpClient.newCall(requestHttp).execute()) {
+            if (!response.isSuccessful()) {
+                String errBody = readBody(response.body());
+                log.warn("Ollama chat 请求失败: status={}, body={}", response.code(), errBody);
+                throw new IllegalStateException("Ollama chat 请求失败: HTTP " + response.code());
+            }
+            json = parseJsonBody(response.body());
+        } catch (IOException e) {
+            throw new IllegalStateException("Ollama chat 请求失败: " + e.getMessage(), e);
+        }
 
         return json
                 .getAsJsonObject("message")
@@ -77,73 +88,82 @@ public class OllamaChatClient implements ChatClient {
     @Override
     public StreamHandle streamChat(ChatRequest request, StreamCallback callback, ModelTarget target) {
         AtomicBoolean cancelled = new AtomicBoolean(false);
-        doStream(request, callback, cancelled, target);
-        return () -> cancelled.set(true);
+        Call call = httpClient.newCall(buildStreamRequest(request, target));
+        doStream(call, callback, cancelled);
+        return () -> {
+            cancelled.set(true);
+            call.cancel();
+        };
     }
 
-    private void doStream(ChatRequest request, StreamCallback callback, AtomicBoolean cancelled, ModelTarget target) {
-        AIModelProperties.ProviderConfig provider = requireProvider(target);
-        HttpURLConnection conn = null;
-        try {
-            JsonObject body = new JsonObject();
-            body.addProperty("model", requireModel(target));
-            body.addProperty("stream", true);
-
-            JsonArray messages = buildMessages(request);
-            body.add("messages", messages);
-
-            if (request.getTemperature() != null) {
-                body.addProperty("temperature", request.getTemperature());
+    private void doStream(Call call, StreamCallback callback, AtomicBoolean cancelled) {
+        try (Response response = call.execute()) {
+            if (!response.isSuccessful()) {
+                String body = readBody(response.body());
+                throw new IllegalStateException("Ollama 流式请求失败: HTTP " + response.code() + " - " + body);
             }
-            if (request.getTopP() != null) {
-                body.addProperty("top_p", request.getTopP());
+            ResponseBody body = response.body();
+            if (body == null) {
+                throw new IllegalStateException("Ollama 流式响应为空");
             }
-            if (request.getMaxTokens() != null) {
-                body.addProperty("num_predict", request.getMaxTokens());
-            }
+            BufferedSource source = body.source();
+            while (!cancelled.get()) {
+                String line = source.readUtf8Line();
+                if (line == null) {
+                    break;
+                }
+                if (line.trim().isEmpty()) {
+                    continue;
+                }
 
-            URL url = new URL(provider.getUrl() + "/api/chat");
-            conn = (HttpURLConnection) url.openConnection();
-            conn.setDoOutput(true);
-            conn.setRequestMethod("POST");
-            conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
-            conn.setConnectTimeout(10000);
-            conn.setReadTimeout(60000);
+                JsonObject obj = gson.fromJson(line, JsonObject.class);
 
-            String jsonBody = gson.toJson(body);
-            conn.getOutputStream().write(jsonBody.getBytes(StandardCharsets.UTF_8));
-            conn.getOutputStream().flush();
+                if (obj.has("done") && obj.get("done").getAsBoolean()) {
+                    callback.onComplete();
+                    break;
+                }
 
-            try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
-
-                String line;
-                while (!cancelled.get() && (line = reader.readLine()) != null) {
-                    if (line.trim().isEmpty()) continue;
-
-                    JsonObject obj = gson.fromJson(line, JsonObject.class);
-
-                    if (obj.has("done") && obj.get("done").getAsBoolean()) {
-                        callback.onComplete();
-                        break;
-                    }
-
-                    if (obj.has("message")) {
-                        JsonObject msg = obj.getAsJsonObject("message");
-                        if (msg.has("content")) {
-                            String chunk = msg.get("content").getAsString();
-                            if (!chunk.isEmpty()) {
-                                callback.onContent(chunk);
-                            }
+                if (obj.has("message")) {
+                    JsonObject msg = obj.getAsJsonObject("message");
+                    if (msg.has("content")) {
+                        String chunk = msg.get("content").getAsString();
+                        if (!chunk.isEmpty()) {
+                            callback.onContent(chunk);
                         }
                     }
                 }
             }
         } catch (Exception e) {
             callback.onError(e);
-        } finally {
-            if (conn != null) conn.disconnect();
         }
+    }
+
+    private Request buildStreamRequest(ChatRequest request, ModelTarget target) {
+        AIModelProperties.ProviderConfig provider = requireProvider(target);
+        String url = provider.getUrl() + "/api/chat";
+
+        JsonObject body = new JsonObject();
+        body.addProperty("model", requireModel(target));
+        body.addProperty("stream", true);
+
+        JsonArray messages = buildMessages(request);
+        body.add("messages", messages);
+
+        if (request.getTemperature() != null) {
+            body.addProperty("temperature", request.getTemperature());
+        }
+        if (request.getTopP() != null) {
+            body.addProperty("top_p", request.getTopP());
+        }
+        if (request.getMaxTokens() != null) {
+            body.addProperty("num_predict", request.getMaxTokens());
+        }
+
+        return new Request.Builder()
+                .url(url)
+                .post(RequestBody.create(body.toString(), HttpMediaTypes.JSON))
+                .addHeader("Content-Type", HttpMediaTypes.JSON_UTF8_HEADER)
+                .build();
     }
 
     private JsonArray buildMessages(ChatRequest request) {
@@ -201,5 +221,20 @@ public class OllamaChatClient implements ChatClient {
             throw new IllegalStateException("Ollama model name is missing");
         }
         return target.candidate().getModel();
+    }
+
+    private JsonObject parseJsonBody(ResponseBody body) throws IOException {
+        if (body == null) {
+            throw new IllegalStateException("Ollama 响应为空");
+        }
+        String content = body.string();
+        return gson.fromJson(content, JsonObject.class);
+    }
+
+    private String readBody(ResponseBody body) throws IOException {
+        if (body == null) {
+            return "";
+        }
+        return new String(body.bytes(), StandardCharsets.UTF_8);
     }
 }

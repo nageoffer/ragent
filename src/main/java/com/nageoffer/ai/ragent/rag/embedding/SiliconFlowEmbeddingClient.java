@@ -7,16 +7,18 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.nageoffer.ai.ragent.config.AIModelProperties;
 import com.nageoffer.ai.ragent.rag.model.ModelTarget;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
+import okhttp3.ResponseBody;
 import org.apache.commons.collections4.CollectionUtils;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestClientResponseException;
-import org.springframework.web.client.RestTemplate;
+import com.nageoffer.ai.ragent.rag.http.HttpMediaTypes;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -26,9 +28,10 @@ import java.util.Map;
 
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class SiliconFlowEmbeddingClient implements EmbeddingClient {
 
-    private final RestTemplate restTemplate = new RestTemplate();
+    private final OkHttpClient httpClient;
     private final Gson gson = new Gson();
 
     @Override
@@ -57,10 +60,6 @@ public class SiliconFlowEmbeddingClient implements EmbeddingClient {
                 for (int k = 0; k < part.size(); k++) {
                     results.set(i + k, part.get(k));
                 }
-            } catch (RestClientResponseException e) {
-                String body = e.getResponseBodyAsString();
-                log.error("SiliconFlow embeddings HTTP error: status={}, body={}", e.getStatusCode(), body);
-                throw new RuntimeException("调用 SiliconFlow Embedding 失败: HTTP " + e.getStatusCode() + " - " + body, e);
             } catch (Exception e) {
                 log.error("SiliconFlow embeddings 调用失败", e);
                 throw new RuntimeException("调用 SiliconFlow Embedding 失败: " + e.getMessage(), e);
@@ -85,18 +84,24 @@ public class SiliconFlowEmbeddingClient implements EmbeddingClient {
         }
         req.put("encoding_format", "float");
 
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(new MediaType("application", "json", StandardCharsets.UTF_8));
-        headers.setBearerAuth(provider.getApiKey());
+        Request request = new Request.Builder()
+                .url(provider.getUrl())
+                .post(RequestBody.create(gson.toJson(req), HttpMediaTypes.JSON))
+                .addHeader("Content-Type", HttpMediaTypes.JSON_UTF8_HEADER)
+                .addHeader("Authorization", "Bearer " + provider.getApiKey())
+                .build();
 
-        HttpEntity<String> entity = new HttpEntity<>(gson.toJson(req), headers);
-        ResponseEntity<String> resp = restTemplate.postForEntity(provider.getUrl(), entity, String.class);
-
-        if (!resp.getStatusCode().is2xxSuccessful() || resp.getBody() == null) {
-            throw new RuntimeException("SiliconFlow Embedding 非 2xx 响应: " + resp.getStatusCode());
+        JsonObject root;
+        try (Response response = httpClient.newCall(request).execute()) {
+            if (!response.isSuccessful()) {
+                String errBody = readBody(response.body());
+                log.error("SiliconFlow embeddings HTTP error: status={}, body={}", response.code(), errBody);
+                throw new RuntimeException("调用 SiliconFlow Embedding 失败: HTTP " + response.code() + " - " + errBody);
+            }
+            root = parseJsonBody(response.body());
+        } catch (IOException e) {
+            throw new RuntimeException("调用 SiliconFlow Embedding 失败: " + e.getMessage(), e);
         }
-
-        JsonObject root = JsonParser.parseString(resp.getBody()).getAsJsonObject();
 
         if (root.has("error")) {
             JsonObject err = root.getAsJsonObject("error");
@@ -138,5 +143,20 @@ public class SiliconFlowEmbeddingClient implements EmbeddingClient {
             throw new IllegalStateException("SiliconFlow model name is missing");
         }
         return target.candidate().getModel();
+    }
+
+    private JsonObject parseJsonBody(ResponseBody body) throws IOException {
+        if (body == null) {
+            throw new RuntimeException("SiliconFlow Embedding 响应为空");
+        }
+        String content = body.string();
+        return JsonParser.parseString(content).getAsJsonObject();
+    }
+
+    private String readBody(ResponseBody body) throws IOException {
+        if (body == null) {
+            return "";
+        }
+        return new String(body.bytes(), StandardCharsets.UTF_8);
     }
 }
