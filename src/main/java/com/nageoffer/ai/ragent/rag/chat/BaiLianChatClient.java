@@ -7,6 +7,8 @@ import com.google.gson.JsonObject;
 import com.nageoffer.ai.ragent.config.AIModelProperties;
 import com.nageoffer.ai.ragent.convention.ChatMessage;
 import com.nageoffer.ai.ragent.convention.ChatRequest;
+import com.nageoffer.ai.ragent.enums.ModelCapability;
+import com.nageoffer.ai.ragent.rag.http.ModelUrlResolver;
 import com.nageoffer.ai.ragent.rag.model.ModelTarget;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -43,7 +45,7 @@ public class BaiLianChatClient implements ChatClient {
 
         JsonObject reqBody = buildRequestBody(request, target, false);
         Request requestHttp = new Request.Builder()
-                .url(provider.getUrl())
+                .url(resolveUrl(provider, target))
                 .post(RequestBody.create(reqBody.toString(), HttpMediaTypes.JSON))
                 .addHeader("Content-Type", HttpMediaTypes.JSON_UTF8_HEADER)
                 .addHeader("Authorization", "Bearer " + provider.getApiKey())
@@ -229,7 +231,7 @@ public class BaiLianChatClient implements ChatClient {
     }
 
     private AIModelProperties.ProviderConfig requireProvider(ModelTarget target) {
-        if (target == null || target.provider() == null || target.provider().getUrl() == null) {
+        if (target == null || target.provider() == null) {
             throw new IllegalStateException("BaiLian provider config is missing");
         }
         if (target.provider().getApiKey() == null || target.provider().getApiKey().isBlank()) {
@@ -249,7 +251,7 @@ public class BaiLianChatClient implements ChatClient {
         AIModelProperties.ProviderConfig provider = requireProvider(target);
         JsonObject reqBody = buildRequestBody(request, target, true);
         return new Request.Builder()
-                .url(provider.getUrl())
+                .url(resolveUrl(provider, target))
                 .post(RequestBody.create(reqBody.toString(), HttpMediaTypes.JSON))
                 .addHeader("Content-Type", HttpMediaTypes.JSON_UTF8_HEADER)
                 .addHeader("Accept", "text/event-stream")
@@ -270,5 +272,9 @@ public class BaiLianChatClient implements ChatClient {
             return "";
         }
         return new String(body.bytes(), StandardCharsets.UTF_8);
+    }
+
+    private String resolveUrl(AIModelProperties.ProviderConfig provider, ModelTarget target) {
+        return ModelUrlResolver.resolveUrl(provider, target.candidate(), ModelCapability.CHAT);
     }
 }

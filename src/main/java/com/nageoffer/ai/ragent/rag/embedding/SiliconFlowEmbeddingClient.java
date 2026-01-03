@@ -7,6 +7,8 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.nageoffer.ai.ragent.config.AIModelProperties;
 import com.nageoffer.ai.ragent.rag.model.ModelTarget;
+import com.nageoffer.ai.ragent.enums.ModelCapability;
+import com.nageoffer.ai.ragent.rag.http.ModelUrlResolver;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.OkHttpClient;
@@ -85,7 +87,7 @@ public class SiliconFlowEmbeddingClient implements EmbeddingClient {
         req.put("encoding_format", "float");
 
         Request request = new Request.Builder()
-                .url(provider.getUrl())
+                .url(resolveUrl(provider, target))
                 .post(RequestBody.create(gson.toJson(req), HttpMediaTypes.JSON))
                 .addHeader("Content-Type", HttpMediaTypes.JSON_UTF8_HEADER)
                 .addHeader("Authorization", "Bearer " + provider.getApiKey())
@@ -132,7 +134,7 @@ public class SiliconFlowEmbeddingClient implements EmbeddingClient {
     }
 
     private AIModelProperties.ProviderConfig requireProvider(ModelTarget target) {
-        if (target == null || target.provider() == null || target.provider().getUrl() == null) {
+        if (target == null || target.provider() == null) {
             throw new IllegalStateException("SiliconFlow provider config is missing");
         }
         return target.provider();
@@ -143,6 +145,10 @@ public class SiliconFlowEmbeddingClient implements EmbeddingClient {
             throw new IllegalStateException("SiliconFlow model name is missing");
         }
         return target.candidate().getModel();
+    }
+
+    private String resolveUrl(AIModelProperties.ProviderConfig provider, ModelTarget target) {
+        return ModelUrlResolver.resolveUrl(provider, target.candidate(), ModelCapability.EMBEDDING);
     }
 
     private JsonObject parseJsonBody(ResponseBody body) throws IOException {

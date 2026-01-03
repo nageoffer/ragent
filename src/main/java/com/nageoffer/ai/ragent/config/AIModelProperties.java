@@ -45,6 +45,7 @@ public class AIModelProperties {
     public static class ProviderConfig {
         private String url;
         private String apiKey;
+        private Map<String, String> endpoints = new HashMap<>();
     }
 
     @Data

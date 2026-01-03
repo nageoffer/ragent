@@ -6,6 +6,8 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.nageoffer.ai.ragent.config.AIModelProperties;
 import com.nageoffer.ai.ragent.rag.model.ModelTarget;
+import com.nageoffer.ai.ragent.enums.ModelCapability;
+import com.nageoffer.ai.ragent.rag.http.ModelUrlResolver;
 import com.nageoffer.ai.ragent.rag.retrieve.RetrievedChunk;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -86,7 +88,7 @@ public class BaiLianRerankClient implements RerankClient {
         reqBody.add("parameters", parameters);
 
         Request request = new Request.Builder()
-                .url(provider.getUrl())
+                .url(resolveUrl(provider, target))
                 .post(RequestBody.create(reqBody.toString(), HttpMediaTypes.JSON))
                 .addHeader("Content-Type", HttpMediaTypes.JSON_UTF8_HEADER)
                 .addHeader("Authorization", "Bearer " + provider.getApiKey())
@@ -166,7 +168,7 @@ public class BaiLianRerankClient implements RerankClient {
     }
 
     private AIModelProperties.ProviderConfig requireProvider(ModelTarget target) {
-        if (target == null || target.provider() == null || target.provider().getUrl() == null) {
+        if (target == null || target.provider() == null) {
             throw new IllegalStateException("BaiLian rerank provider config is missing");
         }
         return target.provider();
@@ -177,6 +179,10 @@ public class BaiLianRerankClient implements RerankClient {
             throw new IllegalStateException("BaiLian rerank model name is missing");
         }
         return target.candidate().getModel();
+    }
+
+    private String resolveUrl(AIModelProperties.ProviderConfig provider, ModelTarget target) {
+        return ModelUrlResolver.resolveUrl(provider, target.candidate(), ModelCapability.RERANK);
     }
 
     private JsonObject parseJsonBody(ResponseBody body) throws IOException {

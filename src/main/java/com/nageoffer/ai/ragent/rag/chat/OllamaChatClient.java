@@ -7,6 +7,8 @@ import com.google.gson.JsonObject;
 import com.nageoffer.ai.ragent.config.AIModelProperties;
 import com.nageoffer.ai.ragent.convention.ChatMessage;
 import com.nageoffer.ai.ragent.convention.ChatRequest;
+import com.nageoffer.ai.ragent.enums.ModelCapability;
+import com.nageoffer.ai.ragent.rag.http.ModelUrlResolver;
 import com.nageoffer.ai.ragent.rag.model.ModelTarget;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -42,7 +44,7 @@ public class OllamaChatClient implements ChatClient {
     @Override
     public String chat(ChatRequest request, ModelTarget target) {
         AIModelProperties.ProviderConfig provider = requireProvider(target);
-        String url = provider.getUrl() + "/api/chat";
+        String url = resolveUrl(provider, target);
 
         JsonObject body = new JsonObject();
         body.addProperty("model", requireModel(target));
@@ -140,7 +142,7 @@ public class OllamaChatClient implements ChatClient {
 
     private Request buildStreamRequest(ChatRequest request, ModelTarget target) {
         AIModelProperties.ProviderConfig provider = requireProvider(target);
-        String url = provider.getUrl() + "/api/chat";
+        String url = resolveUrl(provider, target);
 
         JsonObject body = new JsonObject();
         body.addProperty("model", requireModel(target));
@@ -210,7 +212,7 @@ public class OllamaChatClient implements ChatClient {
     }
 
     private AIModelProperties.ProviderConfig requireProvider(ModelTarget target) {
-        if (target == null || target.provider() == null || target.provider().getUrl() == null) {
+        if (target == null || target.provider() == null) {
             throw new IllegalStateException("Ollama provider config is missing");
         }
         return target.provider();
@@ -221,6 +223,10 @@ public class OllamaChatClient implements ChatClient {
             throw new IllegalStateException("Ollama model name is missing");
         }
         return target.candidate().getModel();
+    }
+
+    private String resolveUrl(AIModelProperties.ProviderConfig provider, ModelTarget target) {
+        return ModelUrlResolver.resolveUrl(provider, target.candidate(), ModelCapability.CHAT);
     }
 
     private JsonObject parseJsonBody(ResponseBody body) throws IOException {

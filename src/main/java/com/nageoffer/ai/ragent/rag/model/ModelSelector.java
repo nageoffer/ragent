@@ -73,7 +73,7 @@ public class ModelSelector {
                 log.warn("Model provider config missing: provider={}, modelId={}", candidate.getProvider(), id);
                 continue;
             }
-            targets.add(new ModelTarget(id, candidate, resolveProvider(candidate, provider)));
+            targets.add(new ModelTarget(id, candidate, provider));
         }
 
         return targets;
@@ -91,17 +91,4 @@ public class ModelSelector {
                 Objects.toString(candidate.getModel(), "unknown");
     }
 
-    private AIModelProperties.ProviderConfig resolveProvider(
-            AIModelProperties.ModelCandidate candidate,
-            AIModelProperties.ProviderConfig provider) {
-        if (candidate == null || candidate.getUrl() == null || candidate.getUrl().isBlank()) {
-            return provider;
-        }
-        AIModelProperties.ProviderConfig resolved = new AIModelProperties.ProviderConfig();
-        resolved.setUrl(candidate.getUrl());
-        if (provider != null) {
-            resolved.setApiKey(provider.getApiKey());
-        }
-        return resolved;
-    }
 }

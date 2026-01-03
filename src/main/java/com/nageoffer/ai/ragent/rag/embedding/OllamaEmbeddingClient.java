@@ -4,6 +4,8 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.nageoffer.ai.ragent.config.AIModelProperties;
 import com.nageoffer.ai.ragent.rag.model.ModelTarget;
+import com.nageoffer.ai.ragent.enums.ModelCapability;
+import com.nageoffer.ai.ragent.rag.http.ModelUrlResolver;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.OkHttpClient;
@@ -35,7 +37,7 @@ public class OllamaEmbeddingClient implements EmbeddingClient {
     @Override
     public List<Float> embed(String text, ModelTarget target) {
         AIModelProperties.ProviderConfig provider = requireProvider(target);
-        String url = provider.getUrl() + "/api/embed";
+        String url = resolveUrl(provider, target);
 
         JsonObject body = new JsonObject();
         body.addProperty("model", requireModel(target));
@@ -83,7 +85,7 @@ public class OllamaEmbeddingClient implements EmbeddingClient {
     }
 
     private AIModelProperties.ProviderConfig requireProvider(ModelTarget target) {
-        if (target == null || target.provider() == null || target.provider().getUrl() == null) {
+        if (target == null || target.provider() == null) {
             throw new IllegalStateException("Ollama provider config is missing");
         }
         return target.provider();
@@ -94,6 +96,10 @@ public class OllamaEmbeddingClient implements EmbeddingClient {
             throw new IllegalStateException("Ollama model name is missing");
         }
         return target.candidate().getModel();
+    }
+
+    private String resolveUrl(AIModelProperties.ProviderConfig provider, ModelTarget target) {
+        return ModelUrlResolver.resolveUrl(provider, target.candidate(), ModelCapability.EMBEDDING);
     }
 
     private JsonObject parseJsonBody(ResponseBody body) throws IOException {

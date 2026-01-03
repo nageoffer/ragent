@@ -52,12 +52,20 @@ ai:
   providers:
     ollama:
       url: http://localhost:11434
+      endpoints:
+        chat: /api/chat
+        embedding: /api/embed
     bailian:
-      url: https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions
+      url: https://dashscope.aliyuncs.com
       api-key: ${BAILIAN_API_KEY:}
+      endpoints:
+        chat: /compatible-mode/v1/chat/completions
+        rerank: /api/v1/services/rerank/text-rerank/text-rerank
     siliconflow:
-      url: https://api.siliconflow.cn/v1/embeddings
+      url: https://api.siliconflow.cn
       api-key: ${SILICONFLOW_API_KEY:}
+      endpoints:
+        embedding: /v1/embeddings
 
   selection:
     failure-threshold: 2
@@ -94,7 +102,6 @@ ai:
     candidates:
       - id: qwen3-rerank
         provider: bailian
-        url: https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank
         model: qwen3-rerank
         priority: 1
       - id: rerank-noop
