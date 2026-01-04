@@ -36,6 +36,7 @@ public class RedisConversationMemoryService implements ConversationMemoryService
     private static final String KEY_PREFIX = "ragent:memory:";
     private static final String SUMMARY_LOCK_PREFIX = "ragent:memory:summary:lock:";
     private static final Duration SUMMARY_LOCK_TTL = Duration.ofMinutes(5);
+    private static final String SUMMARY_PREFIX = "对话摘要：";
 
     private final StringRedisTemplate stringRedisTemplate;
     private final ConversationGroupService conversationGroupService;
@@ -67,7 +68,7 @@ public class RedisConversationMemoryService implements ConversationMemoryService
         ChatMessage summary = loadLatestSummary(conversationId, userId);
         List<String> raw = stringRedisTemplate.opsForList().range(key, -maxMessages, -1);
         if (raw != null && !raw.isEmpty()) {
-            List<ChatMessage> cached = filterHistoryMessages(parseMessages(raw));
+            List<ChatMessage> cached = normalizeHistory(filterHistoryMessages(parseMessages(raw)));
             if (!cached.isEmpty()) {
                 return attachSummary(summary, cached);
             }
@@ -86,6 +87,7 @@ public class RedisConversationMemoryService implements ConversationMemoryService
                 .map(this::toChatMessage)
                 .filter(this::isHistoryMessage)
                 .collect(Collectors.toList());
+        result = normalizeHistory(result);
         if (CollUtil.isNotEmpty(result)) {
             List<String> payloads = result.stream()
                     .map(gson::toJson)
@@ -354,7 +356,7 @@ public class RedisConversationMemoryService implements ConversationMemoryService
             return messages;
         }
         List<ChatMessage> result = new ArrayList<>();
-        result.add(summary);
+        result.add(decorateSummary(summary));
         result.addAll(messages);
         return result;
     }
@@ -494,5 +496,36 @@ public class RedisConversationMemoryService implements ConversationMemoryService
             }
         }
         return result;
+    }
+
+    private ChatMessage decorateSummary(ChatMessage summary) {
+        if (summary == null || StrUtil.isBlank(summary.getContent())) {
+            return summary;
+        }
+        String content = summary.getContent().trim();
+        if (content.startsWith(SUMMARY_PREFIX) || content.startsWith("摘要：")) {
+            return summary;
+        }
+        return ChatMessage.system(SUMMARY_PREFIX + content);
+    }
+
+    private List<ChatMessage> normalizeHistory(List<ChatMessage> messages) {
+        if (messages == null || messages.isEmpty()) {
+            return List.of();
+        }
+        List<ChatMessage> cleaned = messages.stream()
+                .filter(this::isHistoryMessage)
+                .toList();
+        if (cleaned.isEmpty()) {
+            return List.of();
+        }
+        int start = 0;
+        while (start < cleaned.size() && cleaned.get(start).getRole() == ChatMessage.Role.ASSISTANT) {
+            start++;
+        }
+        if (start >= cleaned.size()) {
+            return List.of();
+        }
+        return cleaned.subList(start, cleaned.size());
     }
 }
