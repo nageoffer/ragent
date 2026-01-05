@@ -143,12 +143,12 @@ public class DefaultIntentClassifier implements IntentClassifier {
             // 降序排序
             scores.sort(Comparator.comparingDouble(NodeScore::getScore).reversed());
 
-            log.info("意图识别树如下所示:\n{}",
+            log.info("当前问题：{}\n意图识别树如下所示：{}\n",
+                    question,
                     JSONUtil.toJsonPrettyStr(
-                            scores.stream().map(each -> {
+                            scores.stream().peek(each -> {
                                 IntentNode node = each.getNode();
                                 node.setChildren(null);
-                                return each;
                             }).collect(Collectors.toList())
                     )
             );
