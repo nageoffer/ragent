@@ -121,28 +121,34 @@ public class RAGEnterpriseService implements RAGService {
         List<ChatMessage> history = memoryService.load(conversationId, UserContext.getUserId());
         RewriteResult rewriteResult = queryRewriteService.rewriteWithSplit(question, history);
 
+        ChatMessage userMessage = ChatMessage.user(question);
+        if (StrUtil.isNotBlank(conversationId)) {
+            memoryService.append(conversationId, UserContext.getUserId(), userMessage);
+        }
+
         List<SubQuestionIntent> subIntents = buildSubQuestionIntents(rewriteResult);
 
         boolean allSystemOnly = subIntents.stream()
                 .allMatch(si -> isSystemOnly(si.nodeScores));
         if (allSystemOnly) {
-            streamSystemResponse(rewriteResult.rewrittenQuestion(), callback);
+            StreamCallback wrapped = wrapWithMemory(conversationId, callback);
+            streamSystemResponse(rewriteResult.rewrittenQuestion(), wrapped);
             return;
         }
 
         RetrievalContext ctx = buildPerQuestionContext(subIntents, topK);
         if (ctx.isEmpty()) {
-            callback.onContent("未检索到与问题相关的文档内容。");
+            String emptyReply = "未检索到与问题相关的文档内容。";
+            if (StrUtil.isNotBlank(conversationId)) {
+                memoryService.append(conversationId, UserContext.getUserId(), ChatMessage.assistant(emptyReply));
+            }
+            callback.onContent(emptyReply);
             return;
         }
 
         // 聚合所有意图用于 prompt 规划
         IntentGroup mergedGroup = mergeIntentGroup(subIntents);
 
-        ChatMessage userMessage = ChatMessage.user(question);
-        if (StrUtil.isNotBlank(conversationId)) {
-            memoryService.append(conversationId, UserContext.getUserId(), userMessage);
-        }
         StreamCallback wrapped = wrapWithMemory(conversationId, callback);
         streamLLMResponse(rewriteResult, ctx, mergedGroup, history, wrapped);
     }
