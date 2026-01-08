@@ -13,8 +13,6 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -52,7 +50,7 @@ public class RoutingLLMService implements LLMService {
     }
 
     @Override
-    public StreamHandle streamChat(ChatRequest request, StreamCallback callback) {
+    public StreamSession streamChat(ChatRequest request, StreamCallback callback) {
         List<ModelTarget> targets = selector.selectChatCandidates();
         if (targets.isEmpty()) {
             throw new RemoteException("No chat model candidates available");
@@ -65,21 +63,22 @@ public class RoutingLLMService implements LLMService {
             if (client == null) {
                 continue;
             }
-            TrackingCallback tracking = new TrackingCallback(callback);
+            StreamSession session = StreamSession.create(callback);
             try {
-                StreamHandle handle = client.streamChat(request, tracking, target);
-                if (tracking.hasError() && !tracking.hasContent()) {
+                StreamHandle handle = client.streamChat(request, session.callback(), target);
+                session.setHandle(handle);
+                if (session.hasError() && !session.hasContent()) {
                     healthStore.markFailure(target.id());
-                    last = tracking.getError();
+                    last = session.getError();
                     continue;
                 }
-                if (tracking.hasError()) {
+                if (session.hasError()) {
                     healthStore.markFailure(target.id());
-                    tracking.forwardError();
+                    session.forwardError();
                 } else {
                     healthStore.markSuccess(target.id());
                 }
-                return handle;
+                return session;
             } catch (Exception e) {
                 last = e;
                 healthStore.markFailure(target.id());
@@ -92,51 +91,6 @@ public class RoutingLLMService implements LLMService {
                 last,
                 com.nageoffer.ai.ragent.framework.errorcode.BaseErrorCode.REMOTE_ERROR
         );
-    }
-
-    private static class TrackingCallback implements StreamCallback {
-        private final StreamCallback delegate;
-        private final AtomicBoolean hasContent = new AtomicBoolean(false);
-        private final AtomicReference<Throwable> error = new AtomicReference<>();
-
-        private TrackingCallback(StreamCallback delegate) {
-            this.delegate = delegate;
-        }
-
-        @Override
-        public void onContent(String content) {
-            hasContent.set(true);
-            delegate.onContent(content);
-        }
-
-        @Override
-        public void onComplete() {
-            delegate.onComplete();
-        }
-
-        @Override
-        public void onError(Throwable ex) {
-            error.set(ex);
-        }
-
-        public boolean hasContent() {
-            return hasContent.get();
-        }
-
-        public boolean hasError() {
-            return error.get() != null;
-        }
-
-        public Throwable getError() {
-            return error.get();
-        }
-
-        public void forwardError() {
-            Throwable ex = error.get();
-            if (ex != null) {
-                delegate.onError(ex);
-            }
-        }
     }
 
     private ChatClient resolveClient(ModelTarget target, String label) {

@@ -74,13 +74,13 @@ public interface LLMService {
      * 说明：
      * - 仅传入 prompt，不指定上下文或生成参数
      * - 模型回答将通过 StreamCallback.onContent() 分段推送
-     * - 返回一个 StreamHandle，可随时 cancel() 终止生成
+     * - 返回一个 StreamSession，可随时通过 handle.cancel() 终止生成
      *
      * @param prompt   用户输入内容
      * @param callback 流式回调处理器
-     * @return StreamHandle 可用于取消推理
+     * @return StreamSession 可用于取消推理
      */
-    default StreamHandle streamChat(String prompt, StreamCallback callback) {
+    default StreamSession streamChat(String prompt, StreamCallback callback) {
         ChatRequest req = ChatRequest.builder()
                 .messages(List.of(ChatMessage.user(prompt)))
                 .build();
@@ -102,7 +102,7 @@ public interface LLMService {
      *
      * @param request  ChatRequest 完整配置的请求
      * @param callback 流式回调接口
-     * @return StreamHandle 用于控制流式执行
+     * @return StreamSession 用于控制流式执行
      */
-    StreamHandle streamChat(ChatRequest request, StreamCallback callback);
+    StreamSession streamChat(ChatRequest request, StreamCallback callback);
 }
