@@ -12,16 +12,12 @@ public interface ConversationGroupService {
 
     List<ConversationMessageDO> listLatestUserOnlyMessages(String conversationId, String userId, int limit);
 
-    List<ConversationMessageDO> listUserMessagesAsc(String conversationId, String userId, int limit);
-
     List<ConversationMessageDO> listMessagesBetween(String conversationId,
                                                     String userId,
                                                     java.util.Date after,
                                                     java.util.Date before);
 
     long countUserMessages(String conversationId, String userId);
-
-    List<ConversationMessageDO> listEarliestUserMessages(String conversationId, String userId, int limit);
 
     ConversationSummaryDO findLatestSummary(String conversationId, String userId);
 

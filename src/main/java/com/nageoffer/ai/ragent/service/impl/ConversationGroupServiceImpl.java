@@ -55,23 +55,6 @@ public class ConversationGroupServiceImpl implements ConversationGroupService {
     }
 
     @Override
-    public List<ConversationMessageDO> listUserMessagesAsc(String conversationId, String userId, int limit) {
-        if (StrUtil.isBlank(conversationId) || StrUtil.isBlank(userId) || limit <= 0) {
-            return List.of();
-        }
-        String safeUserId = userId.trim();
-        return messageMapper.selectList(
-                Wrappers.lambdaQuery(ConversationMessageDO.class)
-                        .eq(ConversationMessageDO::getConversationId, conversationId)
-                        .eq(ConversationMessageDO::getUserId, safeUserId)
-                        .in(ConversationMessageDO::getRole, "user", "assistant")
-                        .eq(ConversationMessageDO::getDeleted, 0)
-                        .orderByAsc(ConversationMessageDO::getCreateTime)
-                        .last("limit " + limit)
-        );
-    }
-
-    @Override
     public List<ConversationMessageDO> listMessagesBetween(String conversationId,
                                                            String userId,
                                                            java.util.Date after,
@@ -107,11 +90,6 @@ public class ConversationGroupServiceImpl implements ConversationGroupService {
                         .eq(ConversationMessageDO::getRole, "user")
                         .eq(ConversationMessageDO::getDeleted, 0)
         );
-    }
-
-    @Override
-    public List<ConversationMessageDO> listEarliestUserMessages(String conversationId, String userId, int limit) {
-        return listUserMessagesAsc(conversationId, userId, limit);
     }
 
     @Override
