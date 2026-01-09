@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
-import java.io.PrintWriter;
+import java.util.Map;
 
 /**
  * RAGStandardController + MCP工具调用 + 记忆系统 + 上下文管理
@@ -38,8 +38,7 @@ public class RAGEnterpriseController {
                 @Override
                 public void onContent(String chunk) {
                     try {
-                        // 使用 SSE 格式发送，前端需要用 EventSource 解析
-                        emitter.send(chunk);
+                        sendChunked(emitter, chunk);
                     } catch (Exception e) {
                         log.error("SSE 发送失败", e);
                         emitter.completeWithError(e);
@@ -48,6 +47,12 @@ public class RAGEnterpriseController {
 
                 @Override
                 public void onComplete() {
+                    try {
+                        emitter.send(SseEmitter.event().name("done").data("[DONE]"));
+                    } catch (IOException e) {
+                        log.error("SSE 发送失败", e);
+                        emitter.completeWithError(e);
+                    }
                     emitter.complete();
                 }
 
@@ -63,50 +68,26 @@ public class RAGEnterpriseController {
         return emitter;
     }
 
-    @GetMapping(value = "/rag/v3/stream-text")
-    public void streamText(@RequestParam String question,
-                           @RequestParam(defaultValue = "3") Integer topK,
-                           @RequestParam(required = false) String conversationId,
-                           HttpServletResponse response) throws IOException {
-        String actualConversationId = resolveConversationId(conversationId);
-        response.setHeader("X-Conversation-Id", actualConversationId);
-        // 设置响应头
-        response.setContentType("text/plain;charset=UTF-8");
-        response.setCharacterEncoding("UTF-8");
-        response.setHeader("Cache-Control", "no-cache");
-        response.setHeader("Connection", "keep-alive");
-
-        PrintWriter writer = response.getWriter();
-
-        try {
-            ragEnterpriseService.streamAnswer(question, topK, actualConversationId, new StreamCallback() {
-                @Override
-                public void onContent(String chunk) {
-                    writer.write(chunk);
-                    writer.flush();
-                }
-
-                @Override
-                public void onComplete() {
-                    writer.close();
-                }
-
-                @Override
-                public void onError(Throwable t) {
-                    log.error("流式输出异常", t);
-                    writer.close();
-                }
-            });
-        } catch (Exception e) {
-            log.error("流式处理失败", e);
-            writer.close();
-        }
-    }
-
     private String resolveConversationId(String conversationId) {
         if (StrUtil.isBlank(conversationId)) {
             return IdUtil.getSnowflakeNextIdStr();
         }
         return conversationId.trim();
+    }
+
+    private void sendChunked(SseEmitter emitter, String chunk) throws IOException {
+        if (StrUtil.isBlank(chunk)) {
+            return;
+        }
+        try {
+            int[] codePoints = chunk.codePoints().toArray();
+            for (int codePoint : codePoints) {
+                String character = new String(new int[]{codePoint}, 0, 1);
+                emitter.send(SseEmitter.event().name("message").data(Map.of("delta", character)));
+            }
+        } catch (Exception e) {
+            log.error("UTF-8 字符分割发送失败，回退到原始文本发送", e);
+            emitter.send(SseEmitter.event().name("message").data(Map.of("delta", chunk)));
+        }
     }
 }
