@@ -25,12 +25,12 @@ public class RAGQuickController {
 
     private final RAGService ragQuickService;
 
-    @GetMapping(value = "/stream", produces = "text/event-stream;charset=UTF-8")
-    public SseEmitter stream(@RequestParam String question,
-                             @RequestParam(defaultValue = "3") Integer topK) {
+    @GetMapping(value = "/chat", produces = "text/event-stream;charset=UTF-8")
+    public SseEmitter chat(@RequestParam String question,
+                           @RequestParam(defaultValue = "3") Integer topK) {
         SseEmitter emitter = new SseEmitter(0L);
         try {
-            ragQuickService.streamAnswer(question, topK, new StreamCallback() {
+            ragQuickService.streamChat(question, topK, new StreamCallback() {
                 @Override
                 public void onContent(String chunk) {
                     try {
@@ -60,9 +60,9 @@ public class RAGQuickController {
     }
 
     @GetMapping(value = "/stream-text")
-    public void streamText(@RequestParam String question,
-                           @RequestParam(defaultValue = "3") Integer topK,
-                           HttpServletResponse response) throws IOException {
+    public void chatText(@RequestParam String question,
+                         @RequestParam(defaultValue = "3") Integer topK,
+                         HttpServletResponse response) throws IOException {
         // 设置响应头
         response.setContentType("text/plain;charset=UTF-8");
         response.setCharacterEncoding("UTF-8");
@@ -72,7 +72,7 @@ public class RAGQuickController {
         PrintWriter writer = response.getWriter();
 
         try {
-            ragQuickService.streamAnswer(question, topK, new StreamCallback() {
+            ragQuickService.streamChat(question, topK, new StreamCallback() {
                 @Override
                 public void onContent(String chunk) {
                     writer.write(chunk);

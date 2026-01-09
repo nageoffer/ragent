@@ -25,7 +25,7 @@ public class RAGQuickServiceImpl implements RAGService {
     private final RerankService rerankService;
 
     @Override
-    public void streamAnswer(String question, int topK, StreamCallback callback) {
+    public void streamChat(String question, int topK, StreamCallback callback) {
         long tStart = System.nanoTime();
 
         // ==================== 1. search ====================
@@ -85,7 +85,7 @@ public class RAGQuickServiceImpl implements RAGService {
         double total = (tEnd - tStart) / 1_000_000.0;
 
         System.out.println("================================");
-        System.out.println("[Perf Summary - streamAnswer]");
+        System.out.println("[Perf Summary - streamChat]");
         System.out.println("  search:          " + ((tSearchEnd - tSearchStart) / 1_000_000.0) + " ms");
         System.out.println("  build context:   " + ((tContextEnd - tContextStart) / 1_000_000.0) + " ms");
         System.out.println("  build prompt:    " + ((tPromptEnd - tPromptStart) / 1_000_000.0) + " ms");

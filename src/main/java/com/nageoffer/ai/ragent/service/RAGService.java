@@ -41,5 +41,5 @@ public interface RAGService {
      * @param topK     检索返回的 chunk 数量
      * @param callback 用于接收流式增量内容的回调接口
      */
-    void streamAnswer(String question, int topK, StreamCallback callback);
+    void streamChat(String question, int topK, StreamCallback callback);
 }

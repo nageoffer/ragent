@@ -16,5 +16,5 @@ public interface RAGEnterpriseService {
      * @param response       HTTP 响应
      * @param emitter        SSE 发射器
      */
-    void streamAnswer(String question, String conversationId, HttpServletResponse response, SseEmitter emitter);
+    void streamChat(String question, String conversationId, HttpServletResponse response, SseEmitter emitter);
 }

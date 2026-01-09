@@ -17,12 +17,12 @@ public class RAGEnterpriseController {
 
     private final RAGEnterpriseService ragEnterpriseService;
 
-    @GetMapping(value = "/rag/v3/stream", produces = "text/event-stream;charset=UTF-8")
-    public SseEmitter stream(@RequestParam String question,
-                             @RequestParam(required = false) String conversationId,
-                             HttpServletResponse response) {
+    @GetMapping(value = "/rag/v3/chat", produces = "text/event-stream;charset=UTF-8")
+    public SseEmitter chat(@RequestParam String question,
+                           @RequestParam(required = false) String conversationId,
+                           HttpServletResponse response) {
         SseEmitter emitter = new SseEmitter(0L);
-        ragEnterpriseService.streamAnswer(question, conversationId, response, emitter);
+        ragEnterpriseService.streamChat(question, conversationId, response, emitter);
         return emitter;
     }
 }

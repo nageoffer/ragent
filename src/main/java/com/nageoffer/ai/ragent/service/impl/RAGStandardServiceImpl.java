@@ -48,7 +48,7 @@ public class RAGStandardServiceImpl implements RAGService {
     private final RAGStandardPromptService ragStandardPromptService;
 
     @Override
-    public void streamAnswer(String question, int topK, StreamCallback callback) {
+    public void streamChat(String question, int topK, StreamCallback callback) {
         String rewriteQuestion = defaultQueryRewriteService.rewrite(question);
 
         List<NodeScore> nodeScores = defaultIntentClassifier.classifyTargets(rewriteQuestion);

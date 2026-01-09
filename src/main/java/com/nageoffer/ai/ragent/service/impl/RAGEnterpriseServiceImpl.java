@@ -114,7 +114,7 @@ public class RAGEnterpriseServiceImpl implements RAGEnterpriseService {
     }
 
     @Override
-    public void streamAnswer(String question, String conversationId, HttpServletResponse response, SseEmitter emitter) {
+    public void streamChat(String question, String conversationId, HttpServletResponse response, SseEmitter emitter) {
         String actualConversationId = resolveConversationId(conversationId);
         response.setHeader("X-Conversation-Id", actualConversationId);
 
