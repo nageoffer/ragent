@@ -19,7 +19,7 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
-public class LocalFileStorageService implements FileStorageService {
+public class LocalFileStorageServiceImpl implements FileStorageService {
 
     private final S3Client s3Client;
 

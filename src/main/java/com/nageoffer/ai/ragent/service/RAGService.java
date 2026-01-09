@@ -1,8 +1,6 @@
 package com.nageoffer.ai.ragent.service;
 
 import com.nageoffer.ai.ragent.rag.chat.StreamCallback;
-import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
  * RAG（Retrieval-Augmented Generation）问答服务接口
@@ -43,19 +41,5 @@ public interface RAGService {
      * @param topK     检索返回的 chunk 数量
      * @param callback 用于接收流式增量内容的回调接口
      */
-    default void streamAnswer(String question, int topK, StreamCallback callback) {
-        throw new UnsupportedOperationException("Not implemented.");
-    }
-
-    /**
-     * 流式 RAG 调用
-     *
-     * @param question       用户问题
-     * @param conversationId 会话 ID（可选）
-     * @param response       HTTP 响应
-     * @param emitter        SSE 发射器
-     */
-    default void streamAnswer(String question, String conversationId, HttpServletResponse response, SseEmitter emitter) {
-        throw new UnsupportedOperationException("Not implemented.");
-    }
+    void streamAnswer(String question, int topK, StreamCallback callback);
 }

@@ -38,7 +38,7 @@ import static com.nageoffer.ai.ragent.enums.IntentKind.SYSTEM;
 @Slf4j
 @Service("ragStandardService")
 @RequiredArgsConstructor
-public class RAGStandardService implements RAGService {
+public class RAGStandardServiceImpl implements RAGService {
 
     private final RetrieverService retrieverService;
     private final LLMService llmService;

@@ -18,7 +18,7 @@ import java.util.stream.Collectors;
 @Slf4j
 @Service("ragQuickService")
 @RequiredArgsConstructor
-public class RAGQuickService implements RAGService {
+public class RAGQuickServiceImpl implements RAGService {
 
     private final RetrieverService retrieverService;
     private final LLMService llmService;
@@ -30,14 +30,13 @@ public class RAGQuickService implements RAGService {
 
         // ==================== 1. search ====================
         long tSearchStart = System.nanoTime();
-        int finalTopK = topK;
-        int searchTopK = finalTopK * 3;
+        int searchTopK = topK * 3;
 
         List<RetrievedChunk> roughRetrievedChunks = retrieverService.retrieve(question, searchTopK);
         long tSearchEnd = System.nanoTime();
         System.out.println("[Perf] search(question, topK) 耗时: " + ((tSearchEnd - tSearchStart) / 1_000_000.0) + " ms");
 
-        List<RetrievedChunk> retrievedChunks = rerankService.rerank(question, roughRetrievedChunks, finalTopK);
+        List<RetrievedChunk> retrievedChunks = rerankService.rerank(question, roughRetrievedChunks, topK);
 
         // ==================== 2. 构建 context ====================
         long tContextStart = System.nanoTime();

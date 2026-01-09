@@ -1,6 +1,6 @@
 package com.nageoffer.ai.ragent.controller;
 
-import com.nageoffer.ai.ragent.service.impl.RAGEnterpriseService;
+import com.nageoffer.ai.ragent.service.RAGEnterpriseService;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;

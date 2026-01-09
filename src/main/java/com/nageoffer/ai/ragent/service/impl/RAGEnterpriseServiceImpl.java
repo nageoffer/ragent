@@ -30,7 +30,7 @@ import com.nageoffer.ai.ragent.rag.retrieve.RetrievedChunk;
 import com.nageoffer.ai.ragent.rag.retrieve.RetrieverService;
 import com.nageoffer.ai.ragent.rag.rewrite.QueryRewriteService;
 import com.nageoffer.ai.ragent.rag.rewrite.RewriteResult;
-import com.nageoffer.ai.ragent.service.RAGService;
+import com.nageoffer.ai.ragent.service.RAGEnterpriseService;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.Builder;
 import lombok.Data;
@@ -64,8 +64,8 @@ import static com.nageoffer.ai.ragent.enums.IntentKind.SYSTEM;
  * 支持三种意图类型：SYSTEM / KB / MCP，以及 KB + MCP 混合场景
  */
 @Slf4j
-@Service("ragEnterpriseService")
-public class RAGEnterpriseService implements RAGService {
+@Service
+public class RAGEnterpriseServiceImpl implements RAGEnterpriseService {
 
     private final RetrieverService retrieverService;
     private final LLMService llmService;
@@ -82,7 +82,7 @@ public class RAGEnterpriseService implements RAGService {
     private final Executor ragContextExecutor;
     private final Executor ragRetrievalExecutor;
 
-    public RAGEnterpriseService(
+    public RAGEnterpriseServiceImpl(
             RetrieverService retrieverService,
             LLMService llmService,
             RerankService rerankService,
