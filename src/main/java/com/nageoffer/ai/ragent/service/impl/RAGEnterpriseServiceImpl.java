@@ -6,6 +6,8 @@ import cn.hutool.core.util.StrUtil;
 import com.nageoffer.ai.ragent.constant.RAGConstant;
 import com.nageoffer.ai.ragent.convention.ChatMessage;
 import com.nageoffer.ai.ragent.convention.ChatRequest;
+import com.nageoffer.ai.ragent.dto.MessageDelta;
+import com.nageoffer.ai.ragent.dto.MetaPayload;
 import com.nageoffer.ai.ragent.enums.IntentKind;
 import com.nageoffer.ai.ragent.enums.SSEEventType;
 import com.nageoffer.ai.ragent.framework.context.UserContext;
@@ -117,10 +119,8 @@ public class RAGEnterpriseServiceImpl implements RAGEnterpriseService {
     public void streamChat(String question, String conversationId, SseEmitter emitter) {
         String actualConversationId = StrUtil.isEmpty(conversationId) ? IdUtil.getSnowflakeNextIdStr() : conversationId;
         SseEmitterSender sender = new SseEmitterSender(emitter);
-        sender.sendEvent(SSEEventType.META.value(), Map.of(
-                "conversationId", actualConversationId,
-                "taskId", IdUtil.getSnowflakeNextIdStr()
-        ));
+        sender.sendEvent(SSEEventType.META.value(),
+                new MetaPayload(actualConversationId, IdUtil.getSnowflakeNextIdStr()));
 
         StreamCallback callback = new StreamCallback() {
             @Override
@@ -128,15 +128,10 @@ public class RAGEnterpriseServiceImpl implements RAGEnterpriseService {
                 if (StrUtil.isBlank(chunk)) {
                     return;
                 }
-                try {
-                    int[] codePoints = chunk.codePoints().toArray();
-                    for (int codePoint : codePoints) {
-                        String character = new String(new int[]{codePoint}, 0, 1);
-                        sender.sendEvent(SSEEventType.MESSAGE.value(), Map.of("delta", character));
-                    }
-                } catch (Exception e) {
-                    log.error("UTF-8 字符分割发送失败，回退到原始文本发送", e);
-                    sender.sendEvent(SSEEventType.MESSAGE.value(), Map.of("delta", chunk));
+                int[] codePoints = chunk.codePoints().toArray();
+                for (int codePoint : codePoints) {
+                    String character = new String(new int[]{codePoint}, 0, 1);
+                    sender.sendEvent(SSEEventType.MESSAGE.value(), new MessageDelta(character));
                 }
             }
 
