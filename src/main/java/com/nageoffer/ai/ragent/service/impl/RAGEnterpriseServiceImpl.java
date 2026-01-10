@@ -15,7 +15,7 @@ import com.nageoffer.ai.ragent.enums.IntentKind;
 import com.nageoffer.ai.ragent.framework.context.UserContext;
 import com.nageoffer.ai.ragent.rag.chat.LLMService;
 import com.nageoffer.ai.ragent.rag.chat.StreamCallback;
-import com.nageoffer.ai.ragent.rag.chat.StreamSession;
+import com.nageoffer.ai.ragent.rag.chat.StreamCancellationHandle;
 import com.nageoffer.ai.ragent.rag.intent.IntentClassifier;
 import com.nageoffer.ai.ragent.rag.intent.IntentNode;
 import com.nageoffer.ai.ragent.rag.intent.NodeScore;
@@ -136,8 +136,8 @@ public class RAGEnterpriseServiceImpl implements RAGEnterpriseService {
         boolean allSystemOnly = subIntents.stream()
                 .allMatch(si -> isSystemOnly(si.nodeScores()));
         if (allSystemOnly) {
-            StreamSession session = streamSystemResponse(rewriteResult.rewrittenQuestion(), callback);
-            taskManager.bindHandle(taskId, session.getHandle());
+            StreamCancellationHandle handle = streamSystemResponse(rewriteResult.rewrittenQuestion(), callback);
+            taskManager.bindHandle(taskId, handle);
             return;
         }
 
@@ -153,8 +153,8 @@ public class RAGEnterpriseServiceImpl implements RAGEnterpriseService {
         // 聚合所有意图用于 prompt 规划
         IntentGroup mergedGroup = mergeIntentGroup(subIntents);
 
-        StreamSession session = streamLLMResponse(rewriteResult, ctx, mergedGroup, history, callback);
-        taskManager.bindHandle(taskId, session.getHandle());
+        StreamCancellationHandle handle = streamLLMResponse(rewriteResult, ctx, mergedGroup, history, callback);
+        taskManager.bindHandle(taskId, handle);
     }
 
     @Override
@@ -381,7 +381,7 @@ public class RAGEnterpriseServiceImpl implements RAGEnterpriseService {
 
     // ==================== LLM 响应 ====================
 
-    private StreamSession streamSystemResponse(String question, StreamCallback callback) {
+    private StreamCancellationHandle streamSystemResponse(String question, StreamCallback callback) {
         String prompt = CHAT_SYSTEM_PROMPT.formatted(question);
         ChatRequest req = ChatRequest.builder()
                 .messages(List.of(ChatMessage.user(prompt)))
@@ -392,7 +392,7 @@ public class RAGEnterpriseServiceImpl implements RAGEnterpriseService {
         return llmService.streamChat(req, callback);
     }
 
-    private StreamSession streamLLMResponse(RewriteResult rewriteResult, RetrievalContext ctx,
+    private StreamCancellationHandle streamLLMResponse(RewriteResult rewriteResult, RetrievalContext ctx,
                                             IntentGroup intentGroup, List<ChatMessage> history, StreamCallback callback) {
         PromptContext promptContext = PromptContext.builder()
                 .question(rewriteResult.joinSubQuestions())

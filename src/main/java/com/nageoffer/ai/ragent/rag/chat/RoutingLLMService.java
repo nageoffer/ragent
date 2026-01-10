@@ -2,6 +2,7 @@ package com.nageoffer.ai.ragent.rag.chat;
 
 import com.nageoffer.ai.ragent.convention.ChatRequest;
 import com.nageoffer.ai.ragent.enums.ModelCapability;
+import com.nageoffer.ai.ragent.framework.errorcode.BaseErrorCode;
 import com.nageoffer.ai.ragent.framework.exception.RemoteException;
 import com.nageoffer.ai.ragent.rag.model.ModelHealthStore;
 import com.nageoffer.ai.ragent.rag.model.ModelRoutingExecutor;
@@ -13,6 +14,10 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -49,46 +54,83 @@ public class RoutingLLMService implements LLMService {
     }
 
     @Override
-    public StreamSession streamChat(ChatRequest request, StreamCallback callback) {
+    public StreamCancellationHandle streamChat(ChatRequest request, StreamCallback callback) {
         List<ModelTarget> targets = selector.selectChatCandidates();
         if (targets.isEmpty()) {
             throw new RemoteException("没有可用的Chat模型候选者");
         }
 
         String label = ModelCapability.CHAT.getDisplayName();
-        Throwable last = null;
+        Throwable lastError = null;
+
         for (ModelTarget target : targets) {
             ChatClient client = resolveClient(target, label);
             if (client == null) {
                 continue;
             }
-            StreamSession session = StreamSession.create(callback);
+
+            CountDownLatch latch = new CountDownLatch(1);
+            AtomicBoolean hasContent = new AtomicBoolean(false);
+            AtomicReference<Throwable> error = new AtomicReference<>();
+
+            StreamCallback wrapper = new StreamCallback() {
+                @Override
+                public void onContent(String content) {
+                    hasContent.set(true);
+                    latch.countDown();
+                    callback.onContent(content);
+                }
+
+                @Override
+                public void onComplete() {
+                    latch.countDown();
+                    callback.onComplete();
+                }
+
+                @Override
+                public void onError(Throwable t) {
+                    error.set(t);
+                    latch.countDown();
+                }
+            };
+
+            StreamCancellationHandle handle = client.streamChat(request, wrapper, target);
+
+            boolean completed;
             try {
-                StreamCancellationHandle handle = client.streamChat(request, session.callback(), target);
-                session.setHandle(handle);
-                if (session.hasError() && !session.hasContent()) {
-                    healthStore.markFailure(target.id());
-                    last = session.getError();
-                    continue;
-                }
-                if (session.hasError()) {
-                    healthStore.markFailure(target.id());
-                    session.forwardError();
-                } else {
-                    healthStore.markSuccess(target.id());
-                }
-                return session;
-            } catch (Exception e) {
-                last = e;
-                healthStore.markFailure(target.id());
-                log.warn("{} 流式传输在内容之前失败，回退到下一个。modelId：{}，provider：{}",
-                        label, target.id(), target.candidate().getProvider(), e);
+                completed = latch.await(10, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                handle.cancel();
+                throw new RemoteException("流式请求被中断", e, BaseErrorCode.REMOTE_ERROR);
             }
+
+            if (hasContent.get()) {
+                healthStore.markSuccess(target.id());
+                return handle;
+            }
+
+            if (error.get() != null) {
+                lastError = error.get();
+                healthStore.markFailure(target.id());
+                handle.cancel();
+                log.warn("{} 流式请求失败，切换下一个模型。modelId：{}，provider：{}",
+                        label, target.id(), target.candidate().getProvider(), lastError);
+                continue;
+            }
+
+            // 超时未收到内容也视为成功启动（模型响应较慢但已建立连接）
+            if (!completed) {
+                log.debug("{} 流式请求超时未收到首内容，继续等待。modelId：{}", label, target.id());
+            }
+            healthStore.markSuccess(target.id());
+            return handle;
         }
+
         throw new RemoteException(
-                "所有Chat模型候选者都失败了: " + (last == null ? "未知" : last.getMessage()),
-                last,
-                com.nageoffer.ai.ragent.framework.errorcode.BaseErrorCode.REMOTE_ERROR
+                "所有Chat模型候选者都失败了: " + (lastError == null ? "未知" : lastError.getMessage()),
+                lastError,
+                BaseErrorCode.REMOTE_ERROR
         );
     }
 
