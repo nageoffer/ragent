@@ -1,5 +1,6 @@
 package com.nageoffer.ai.ragent.rag.chat;
 
+import lombok.Getter;
 import lombok.Setter;
 
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -10,6 +11,7 @@ public class StreamSession {
     private final StreamCallback delegate;
     private final AtomicBoolean hasContent = new AtomicBoolean(false);
     private final AtomicReference<Throwable> error = new AtomicReference<>();
+    @Getter
     @Setter
     private volatile StreamHandle handle;
 

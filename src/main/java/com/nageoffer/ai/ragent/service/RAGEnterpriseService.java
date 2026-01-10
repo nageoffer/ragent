@@ -15,4 +15,11 @@ public interface RAGEnterpriseService {
      * @param emitter        SSE 发射器
      */
     void streamChat(String question, String conversationId, SseEmitter emitter);
+
+    /**
+     * 停止指定 taskId 的流式会话
+     *
+     * @param taskId 任务 ID
+     */
+    void stopTask(String taskId);
 }

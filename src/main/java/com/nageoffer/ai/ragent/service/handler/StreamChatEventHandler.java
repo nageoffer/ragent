@@ -1,6 +1,5 @@
 package com.nageoffer.ai.ragent.service.handler;
 
-import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
 import com.nageoffer.ai.ragent.convention.ChatMessage;
 import com.nageoffer.ai.ragent.dto.MessageDelta;
@@ -12,25 +11,35 @@ import com.nageoffer.ai.ragent.rag.chat.StreamCallback;
 import com.nageoffer.ai.ragent.rag.memory.ConversationMemoryService;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-public class StreamChatCallbackHandler implements StreamCallback {
+public class StreamChatEventHandler implements StreamCallback {
 
     private final SseEmitterSender sender;
     private final String conversationId;
     private final ConversationMemoryService memoryService;
+    private final String taskId;
+    private final StreamTaskManager taskManager;
     private final StringBuilder answer = new StringBuilder();
 
-    public StreamChatCallbackHandler(SseEmitter emitter,
-                                     String conversationId,
-                                     ConversationMemoryService memoryService) {
+    public StreamChatEventHandler(SseEmitter emitter,
+                                  String conversationId,
+                                  String taskId,
+                                  ConversationMemoryService memoryService,
+                                  StreamTaskManager taskManager) {
         this.sender = new SseEmitterSender(emitter);
         this.conversationId = conversationId;
+        this.taskId = taskId;
         this.memoryService = memoryService;
-        sender.sendEvent(SSEEventType.META.value(),
-                new MetaPayload(conversationId, IdUtil.getSnowflakeNextIdStr()));
+        this.taskManager = taskManager;
+        sender.sendEvent(SSEEventType.META.value(), new MetaPayload(conversationId, taskId));
+        taskManager.register(taskId, emitter);
     }
 
     @Override
     public void onContent(String chunk) {
+        if (taskManager.isCancelled(taskId)) {
+            sender.complete();
+            return;
+        }
         if (StrUtil.isBlank(chunk)) {
             return;
         }
@@ -44,14 +53,25 @@ public class StreamChatCallbackHandler implements StreamCallback {
 
     @Override
     public void onComplete() {
+        if (taskManager.isCancelled(taskId)) {
+            taskManager.unregister(taskId);
+            sender.complete();
+            return;
+        }
         memoryService.append(conversationId, UserContext.getUserId(),
                 ChatMessage.assistant(answer.toString()));
         sender.sendEvent(SSEEventType.DONE.value(), "[DONE]");
+        taskManager.unregister(taskId);
         sender.complete();
     }
 
     @Override
     public void onError(Throwable t) {
+        if (taskManager.isCancelled(taskId)) {
+            sender.complete();
+            return;
+        }
+        taskManager.unregister(taskId);
         sender.fail(t);
     }
 }

@@ -10,6 +10,7 @@ import com.nageoffer.ai.ragent.enums.IntentKind;
 import com.nageoffer.ai.ragent.framework.context.UserContext;
 import com.nageoffer.ai.ragent.rag.chat.LLMService;
 import com.nageoffer.ai.ragent.rag.chat.StreamCallback;
+import com.nageoffer.ai.ragent.rag.chat.StreamSession;
 import com.nageoffer.ai.ragent.rag.intent.IntentClassifier;
 import com.nageoffer.ai.ragent.rag.intent.IntentNode;
 import com.nageoffer.ai.ragent.rag.intent.NodeScore;
@@ -31,7 +32,8 @@ import com.nageoffer.ai.ragent.rag.retrieve.RetrieverService;
 import com.nageoffer.ai.ragent.rag.rewrite.QueryRewriteService;
 import com.nageoffer.ai.ragent.rag.rewrite.RewriteResult;
 import com.nageoffer.ai.ragent.service.RAGEnterpriseService;
-import com.nageoffer.ai.ragent.service.handler.StreamChatCallbackHandler;
+import com.nageoffer.ai.ragent.service.handler.StreamChatEventHandler;
+import com.nageoffer.ai.ragent.service.handler.StreamTaskManager;
 import lombok.Builder;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
@@ -77,6 +79,7 @@ public class RAGEnterpriseServiceImpl implements RAGEnterpriseService {
     private final MCPParameterExtractor mcpParameterExtractor;
     private final MCPToolRegistry mcpToolRegistry;
     private final ConversationMemoryService memoryService;
+    private final StreamTaskManager taskManager;
     private final Executor intentClassifyExecutor;
     private final Executor ragContextExecutor;
     private final Executor ragRetrievalExecutor;
@@ -91,6 +94,7 @@ public class RAGEnterpriseServiceImpl implements RAGEnterpriseService {
             RAGEnterprisePromptService promptBuilder,
             ContextFormatter contextFormatter,
             ConversationMemoryService memoryService,
+            StreamTaskManager taskManager,
             @Qualifier("defaultIntentClassifier") IntentClassifier intentClassifier,
             @Qualifier("multiQuestionRewriteService") QueryRewriteService queryRewriteService,
             @Qualifier("intentClassifyThreadPoolExecutor") Executor intentClassifyExecutor,
@@ -105,6 +109,7 @@ public class RAGEnterpriseServiceImpl implements RAGEnterpriseService {
         this.mcpParameterExtractor = mcpParameterExtractor;
         this.mcpToolRegistry = mcpToolRegistry;
         this.memoryService = memoryService;
+        this.taskManager = taskManager;
         this.intentClassifier = intentClassifier;
         this.queryRewriteService = queryRewriteService;
         this.intentClassifyExecutor = intentClassifyExecutor;
@@ -115,7 +120,9 @@ public class RAGEnterpriseServiceImpl implements RAGEnterpriseService {
     @Override
     public void streamChat(String question, String conversationId, SseEmitter emitter) {
         String actualConversationId = StrUtil.isBlank(conversationId) ? IdUtil.getSnowflakeNextIdStr() : conversationId;
-        StreamCallback callback = new StreamChatCallbackHandler(emitter, conversationId, memoryService);
+        String taskId = IdUtil.getSnowflakeNextIdStr();
+        log.info("打印会话消息参数，会话ID：{}，单次消息ID：{}", conversationId, taskId);
+        StreamCallback callback = new StreamChatEventHandler(emitter, conversationId, taskId, memoryService, taskManager);
 
         List<ChatMessage> history = memoryService.load(actualConversationId, UserContext.getUserId());
         RewriteResult rewriteResult = queryRewriteService.rewriteWithSplit(question, history);
@@ -126,7 +133,8 @@ public class RAGEnterpriseServiceImpl implements RAGEnterpriseService {
         boolean allSystemOnly = subIntents.stream()
                 .allMatch(si -> isSystemOnly(si.nodeScores()));
         if (allSystemOnly) {
-            streamSystemResponse(rewriteResult.rewrittenQuestion(), callback);
+            StreamSession session = streamSystemResponse(rewriteResult.rewrittenQuestion(), callback);
+            taskManager.bindHandle(taskId, session.getHandle());
             return;
         }
 
@@ -135,13 +143,20 @@ public class RAGEnterpriseServiceImpl implements RAGEnterpriseService {
             String emptyReply = "未检索到与问题相关的文档内容。";
             memoryService.append(actualConversationId, UserContext.getUserId(), ChatMessage.assistant(emptyReply));
             callback.onContent(emptyReply);
+            taskManager.unregister(taskId);
             return;
         }
 
         // 聚合所有意图用于 prompt 规划
         IntentGroup mergedGroup = mergeIntentGroup(subIntents);
 
-        streamLLMResponse(rewriteResult, ctx, mergedGroup, history, callback);
+        StreamSession session = streamLLMResponse(rewriteResult, ctx, mergedGroup, history, callback);
+        taskManager.bindHandle(taskId, session.getHandle());
+    }
+
+    @Override
+    public void stopTask(String taskId) {
+        taskManager.cancel(taskId);
     }
 
     // ==================== 意图分离 ====================
@@ -363,7 +378,7 @@ public class RAGEnterpriseServiceImpl implements RAGEnterpriseService {
 
     // ==================== LLM 响应 ====================
 
-    private void streamSystemResponse(String question, StreamCallback callback) {
+    private StreamSession streamSystemResponse(String question, StreamCallback callback) {
         String prompt = CHAT_SYSTEM_PROMPT.formatted(question);
         ChatRequest req = ChatRequest.builder()
                 .messages(List.of(ChatMessage.user(prompt)))
@@ -371,11 +386,11 @@ public class RAGEnterpriseServiceImpl implements RAGEnterpriseService {
                 .topP(0.8D)
                 .thinking(false)
                 .build();
-        llmService.streamChat(req, callback);
+        return llmService.streamChat(req, callback);
     }
 
-    private void streamLLMResponse(RewriteResult rewriteResult, RetrievalContext ctx,
-                                   IntentGroup intentGroup, List<ChatMessage> history, StreamCallback callback) {
+    private StreamSession streamLLMResponse(RewriteResult rewriteResult, RetrievalContext ctx,
+                                            IntentGroup intentGroup, List<ChatMessage> history, StreamCallback callback) {
         PromptContext promptContext = PromptContext.builder()
                 .question(rewriteResult.joinSubQuestions())
                 .mcpContext(ctx.getMcpContext())
@@ -397,7 +412,7 @@ public class RAGEnterpriseServiceImpl implements RAGEnterpriseService {
                 .topP(0.7D)
                 .build();
 
-        llmService.streamChat(chatRequest, callback);
+        return llmService.streamChat(chatRequest, callback);
     }
 
     // ==================== MCP 工具执行 ====================

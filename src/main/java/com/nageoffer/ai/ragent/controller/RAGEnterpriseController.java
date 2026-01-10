@@ -1,8 +1,11 @@
 package com.nageoffer.ai.ragent.controller;
 
+import com.nageoffer.ai.ragent.framework.convention.Result;
+import com.nageoffer.ai.ragent.framework.web.Results;
 import com.nageoffer.ai.ragent.service.RAGEnterpriseService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -22,5 +25,11 @@ public class RAGEnterpriseController {
         SseEmitter emitter = new SseEmitter(0L);
         ragEnterpriseService.streamChat(question, conversationId, emitter);
         return emitter;
+    }
+
+    @PostMapping(value = "/rag/v3/stop")
+    public Result<Void> stop(@RequestParam String taskId) {
+        ragEnterpriseService.stopTask(taskId);
+        return Results.success();
     }
 }

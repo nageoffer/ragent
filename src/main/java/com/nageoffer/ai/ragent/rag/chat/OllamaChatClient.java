@@ -29,6 +29,7 @@ import com.nageoffer.ai.ragent.rag.http.HttpMediaTypes;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @Service
@@ -97,7 +98,7 @@ public class OllamaChatClient implements ChatClient {
     public StreamHandle streamChat(ChatRequest request, StreamCallback callback, ModelTarget target) {
         AtomicBoolean cancelled = new AtomicBoolean(false);
         Call call = httpClient.newCall(buildStreamRequest(request, target));
-        doStream(call, callback, cancelled);
+        CompletableFuture.runAsync(() -> doStream(call, callback, cancelled));
         return () -> {
             cancelled.set(true);
             call.cancel();
