@@ -9,6 +9,7 @@ import com.nageoffer.ai.ragent.convention.ChatRequest;
 import com.nageoffer.ai.ragent.enums.IntentKind;
 import com.nageoffer.ai.ragent.enums.SSEEventType;
 import com.nageoffer.ai.ragent.framework.context.UserContext;
+import com.nageoffer.ai.ragent.framework.web.SseEmitterSender;
 import com.nageoffer.ai.ragent.rag.chat.LLMService;
 import com.nageoffer.ai.ragent.rag.chat.StreamCallback;
 import com.nageoffer.ai.ragent.rag.intent.IntentClassifier;
@@ -39,7 +40,6 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -116,56 +116,39 @@ public class RAGEnterpriseServiceImpl implements RAGEnterpriseService {
     @Override
     public void streamChat(String question, String conversationId, SseEmitter emitter) {
         String actualConversationId = StrUtil.isEmpty(conversationId) ? IdUtil.getSnowflakeNextIdStr() : conversationId;
-        try {
-            emitter.send(SseEmitter.event().name(SSEEventType.META.value()).data(
-                    Map.of(
-                            "conversationId", actualConversationId,
-                            "taskId", IdUtil.getSnowflakeNextIdStr()
-                    )
-            ));
-        } catch (IOException e) {
-            log.error("SSE meta 发送失败", e);
-            emitter.completeWithError(e);
-            return;
-        }
+        SseEmitterSender sender = new SseEmitterSender(emitter);
+        sender.sendEvent(SSEEventType.META.value(), Map.of(
+                "conversationId", actualConversationId,
+                "taskId", IdUtil.getSnowflakeNextIdStr()
+        ));
 
         StreamCallback callback = new StreamCallback() {
             @Override
             public void onContent(String chunk) {
+                if (StrUtil.isBlank(chunk)) {
+                    return;
+                }
                 try {
-                    if (StrUtil.isBlank(chunk)) {
-                        return;
-                    }
-                    try {
-                        int[] codePoints = chunk.codePoints().toArray();
-                        for (int codePoint : codePoints) {
-                            String character = new String(new int[]{codePoint}, 0, 1);
-                            emitter.send(SseEmitter.event().name(SSEEventType.MESSAGE.value()).data(Map.of("delta", character)));
-                        }
-                    } catch (Exception e) {
-                        log.error("UTF-8 字符分割发送失败，回退到原始文本发送", e);
-                        emitter.send(SseEmitter.event().name(SSEEventType.MESSAGE.value()).data(Map.of("delta", chunk)));
+                    int[] codePoints = chunk.codePoints().toArray();
+                    for (int codePoint : codePoints) {
+                        String character = new String(new int[]{codePoint}, 0, 1);
+                        sender.sendEvent(SSEEventType.MESSAGE.value(), Map.of("delta", character));
                     }
                 } catch (Exception e) {
-                    log.error("SSE 发送失败", e);
-                    emitter.completeWithError(e);
+                    log.error("UTF-8 字符分割发送失败，回退到原始文本发送", e);
+                    sender.sendEvent(SSEEventType.MESSAGE.value(), Map.of("delta", chunk));
                 }
             }
 
             @Override
             public void onComplete() {
-                try {
-                    emitter.send(SseEmitter.event().name(SSEEventType.DONE.value()).data("[DONE]"));
-                } catch (IOException e) {
-                    log.error("SSE 发送失败", e);
-                    emitter.completeWithError(e);
-                }
-                emitter.complete();
+                sender.sendEvent(SSEEventType.DONE.value(), "[DONE]");
+                sender.complete();
             }
 
             @Override
             public void onError(Throwable t) {
-                emitter.completeWithError(t);
+                sender.fail(t);
             }
         };
 
