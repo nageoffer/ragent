@@ -101,4 +101,20 @@ public class ThreadPoolExecutorConfig {
         );
         return TtlExecutors.getTtlExecutor(executor);
     }
+
+    @Bean
+    public Executor modelStreamExecutor() {
+        ThreadPoolExecutor executor = new ThreadPoolExecutor(
+                Math.max(2, CPU_COUNT >> 1),
+                Math.max(4, CPU_COUNT),
+                60,
+                TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>(200),
+                ThreadFactoryBuilder.create()
+                        .setNamePrefix("model_stream_executor_")
+                        .build(),
+                new ThreadPoolExecutor.CallerRunsPolicy()
+        );
+        return TtlExecutors.getTtlExecutor(executor);
+    }
 }

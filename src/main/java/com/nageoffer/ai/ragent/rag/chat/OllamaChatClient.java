@@ -14,7 +14,6 @@ import com.nageoffer.ai.ragent.rag.http.ModelClientErrorType;
 import com.nageoffer.ai.ragent.rag.http.ModelClientException;
 import com.nageoffer.ai.ragent.rag.http.ModelUrlResolver;
 import com.nageoffer.ai.ragent.rag.model.ModelTarget;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.Call;
 import okhttp3.OkHttpClient;
@@ -30,17 +29,27 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Autowired;
 
 @Service
 @Slf4j
-@RequiredArgsConstructor
 public class OllamaChatClient implements ChatClient {
 
     private final Gson gson = new GsonBuilder()
             .disableHtmlEscaping()
             .create();
     private final OkHttpClient httpClient;
+    private final Executor modelStreamExecutor;
+
+    @Autowired
+    public OllamaChatClient(OkHttpClient httpClient,
+                            @Qualifier("modelStreamExecutor") Executor modelStreamExecutor) {
+        this.httpClient = httpClient;
+        this.modelStreamExecutor = modelStreamExecutor;
+    }
 
     @Override
     public String provider() {
@@ -98,7 +107,7 @@ public class OllamaChatClient implements ChatClient {
     public StreamCancellationHandle streamChat(ChatRequest request, StreamCallback callback, ModelTarget target) {
         AtomicBoolean cancelled = new AtomicBoolean(false);
         Call call = httpClient.newCall(buildStreamRequest(request, target));
-        CompletableFuture.runAsync(() -> doStream(call, callback, cancelled));
+        CompletableFuture.runAsync(() -> doStream(call, callback, cancelled), modelStreamExecutor);
         return () -> {
             cancelled.set(true);
             call.cancel();
