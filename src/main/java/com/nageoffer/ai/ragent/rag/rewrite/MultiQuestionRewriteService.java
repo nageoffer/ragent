@@ -7,7 +7,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.nageoffer.ai.ragent.config.RAGConfigProperties;
-import com.nageoffer.ai.ragent.constant.RAGConstant;
+import com.nageoffer.ai.ragent.constant.RAGEnterpriseConstant;
 import com.nageoffer.ai.ragent.convention.ChatMessage;
 import com.nageoffer.ai.ragent.convention.ChatRequest;
 import com.nageoffer.ai.ragent.rag.chat.LLMService;
@@ -88,7 +88,7 @@ public class MultiQuestionRewriteService implements QueryRewriteService {
     private RewriteResult callLLMRewriteAndSplit(String normalizedQuestion,
                                                  String originalQuestion,
                                                  List<ChatMessage> history) {
-        String prompt = RAGConstant.QUERY_REWRITE_AND_SPLIT_PROMPT;
+        String prompt = RAGEnterpriseConstant.QUERY_REWRITE_AND_SPLIT_PROMPT;
         boolean useHistory = CollUtil.isNotEmpty(history);
         ChatRequest req = buildRewriteRequest(prompt, normalizedQuestion, history, useHistory);
 
