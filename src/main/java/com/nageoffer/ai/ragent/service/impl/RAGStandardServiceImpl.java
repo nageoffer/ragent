@@ -9,6 +9,7 @@ import com.nageoffer.ai.ragent.rag.chat.StreamCallback;
 import com.nageoffer.ai.ragent.rag.intent.IntentNode;
 import com.nageoffer.ai.ragent.rag.intent.IntentClassifier;
 import com.nageoffer.ai.ragent.rag.intent.NodeScore;
+import com.nageoffer.ai.ragent.rag.prompt.PromptTemplateLoader;
 import com.nageoffer.ai.ragent.rag.prompt.RAGStandardPromptService;
 import com.nageoffer.ai.ragent.rag.rerank.RerankService;
 import com.nageoffer.ai.ragent.rag.retrieve.RetrieveRequest;
@@ -25,7 +26,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
-import static com.nageoffer.ai.ragent.constant.RAGConstant.CHAT_SYSTEM_PROMPT;
+import static com.nageoffer.ai.ragent.constant.RAGConstant.CHAT_SYSTEM_PROMPT_PATH;
 import static com.nageoffer.ai.ragent.constant.RAGConstant.DEFAULT_TOP_K;
 import static com.nageoffer.ai.ragent.constant.RAGConstant.INTENT_MIN_SCORE;
 import static com.nageoffer.ai.ragent.constant.RAGConstant.MAX_INTENT_COUNT;
@@ -46,6 +47,7 @@ public class RAGStandardServiceImpl implements RAGService {
     private final IntentClassifier defaultIntentClassifier;
     private final QueryRewriteService defaultQueryRewriteService;
     private final RAGStandardPromptService ragStandardPromptService;
+    private final PromptTemplateLoader promptTemplateLoader;
 
     @Override
     public void streamChat(String question, int topK, StreamCallback callback) {
@@ -55,9 +57,12 @@ public class RAGStandardServiceImpl implements RAGService {
 
         // 如果只有一个 SYSTEM 意图，走系统打招呼的流式输出
         if (nodeScores.size() == 1 && Objects.equals(nodeScores.get(0).getNode().getKind(), SYSTEM)) {
-            String prompt = CHAT_SYSTEM_PROMPT.formatted(rewriteQuestion);
+            String prompt = promptTemplateLoader.load(CHAT_SYSTEM_PROMPT_PATH);
             ChatRequest req = ChatRequest.builder()
-                    .messages(List.of(ChatMessage.user(prompt)))
+                    .messages(List.of(
+                            ChatMessage.system(prompt),
+                            ChatMessage.user(rewriteQuestion))
+                    )
                     .temperature(0.7D)
                     .topP(0.8D)
                     .thinking(false)

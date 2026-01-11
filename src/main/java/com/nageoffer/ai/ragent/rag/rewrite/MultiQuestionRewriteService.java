@@ -7,10 +7,10 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.nageoffer.ai.ragent.config.RAGConfigProperties;
-import com.nageoffer.ai.ragent.constant.RAGEnterpriseConstant;
 import com.nageoffer.ai.ragent.convention.ChatMessage;
 import com.nageoffer.ai.ragent.convention.ChatRequest;
 import com.nageoffer.ai.ragent.rag.chat.LLMService;
+import com.nageoffer.ai.ragent.rag.prompt.PromptTemplateLoader;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -20,6 +20,8 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
+
+import static com.nageoffer.ai.ragent.constant.RAGConstant.QUERY_REWRITE_AND_SPLIT_PROMPT_PATH;
 
 /**
  * 查询预处理：改写 + 拆分多问句
@@ -32,6 +34,7 @@ public class MultiQuestionRewriteService implements QueryRewriteService {
     private final LLMService llmService;
     private final RAGConfigProperties ragConfigProperties;
     private final QueryTermMappingService queryTermMappingService;
+    private final PromptTemplateLoader promptTemplateLoader;
 
     @Override
     public String rewrite(String userQuestion) {
@@ -88,7 +91,7 @@ public class MultiQuestionRewriteService implements QueryRewriteService {
     private RewriteResult callLLMRewriteAndSplit(String normalizedQuestion,
                                                  String originalQuestion,
                                                  List<ChatMessage> history) {
-        String prompt = RAGEnterpriseConstant.QUERY_REWRITE_AND_SPLIT_PROMPT;
+        String prompt = promptTemplateLoader.load(QUERY_REWRITE_AND_SPLIT_PROMPT_PATH);
         boolean useHistory = CollUtil.isNotEmpty(history);
         ChatRequest req = buildRewriteRequest(prompt, normalizedQuestion, history, useHistory);
 

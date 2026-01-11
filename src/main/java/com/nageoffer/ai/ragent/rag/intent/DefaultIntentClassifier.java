@@ -12,6 +12,7 @@ import com.nageoffer.ai.ragent.dao.mapper.IntentNodeMapper;
 import com.nageoffer.ai.ragent.convention.ChatMessage;
 import com.nageoffer.ai.ragent.convention.ChatRequest;
 import com.nageoffer.ai.ragent.rag.chat.LLMService;
+import com.nageoffer.ai.ragent.rag.prompt.PromptTemplateLoader;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,7 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-import static com.nageoffer.ai.ragent.constant.RAGConstant.INTENT_CLASSIFIER_PROMPT;
+import static com.nageoffer.ai.ragent.constant.RAGConstant.INTENT_CLASSIFIER_PROMPT_PATH;
 
 /**
  * LLM 树形意图分类器（串行实现）
@@ -40,6 +41,7 @@ public class DefaultIntentClassifier implements IntentClassifier {
 
     private final LLMService llmService;
     private final IntentNodeMapper intentNodeMapper;
+    private final PromptTemplateLoader promptTemplateLoader;
 
     /**
      * 整棵树所有节点（可选，用于调试）
@@ -207,7 +209,10 @@ public class DefaultIntentClassifier implements IntentClassifier {
             sb.append("\n");
         }
 
-        return INTENT_CLASSIFIER_PROMPT.formatted(sb.toString());
+        return promptTemplateLoader.render(
+                INTENT_CLASSIFIER_PROMPT_PATH,
+                Map.of("intent_list", sb.toString())
+        );
     }
 
     private List<IntentNode> loadIntentTreeFromDB() {

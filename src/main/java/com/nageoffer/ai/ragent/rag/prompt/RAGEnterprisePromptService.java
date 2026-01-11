@@ -13,15 +13,21 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
-import static com.nageoffer.ai.ragent.constant.RAGEnterpriseConstant.MCP_KB_MIXED_PROMPT;
-import static com.nageoffer.ai.ragent.constant.RAGEnterpriseConstant.MCP_ONLY_PROMPT;
-import static com.nageoffer.ai.ragent.constant.RAGEnterpriseConstant.RAG_ENTERPRISE_PROMPT;
+import static com.nageoffer.ai.ragent.constant.RAGConstant.MCP_KB_MIXED_PROMPT_PATH;
+import static com.nageoffer.ai.ragent.constant.RAGConstant.MCP_ONLY_PROMPT_PATH;
+import static com.nageoffer.ai.ragent.constant.RAGConstant.RAG_ENTERPRISE_PROMPT_PATH;
 
 @Service
 public class RAGEnterprisePromptService {
 
     private static final String MCP_CONTEXT_HEADER = "## 动态数据片段";
     private static final String KB_CONTEXT_HEADER = "## 文档内容";
+
+    private final PromptTemplateLoader promptTemplateLoader;
+
+    public RAGEnterprisePromptService(PromptTemplateLoader promptTemplateLoader) {
+        this.promptTemplateLoader = promptTemplateLoader;
+    }
 
     /**
      * 允许 2+ 个连续换行被压成 2 个，成品更干净
@@ -148,9 +154,9 @@ public class RAGEnterprisePromptService {
 
     private String defaultTemplate(PromptScene scene) {
         return switch (scene) {
-            case KB_ONLY -> RAG_ENTERPRISE_PROMPT;
-            case MCP_ONLY -> MCP_ONLY_PROMPT;
-            case MIXED -> MCP_KB_MIXED_PROMPT;
+            case KB_ONLY -> promptTemplateLoader.load(RAG_ENTERPRISE_PROMPT_PATH);
+            case MCP_ONLY -> promptTemplateLoader.load(MCP_ONLY_PROMPT_PATH);
+            case MIXED -> promptTemplateLoader.load(MCP_KB_MIXED_PROMPT_PATH);
             case EMPTY -> "";
         };
     }

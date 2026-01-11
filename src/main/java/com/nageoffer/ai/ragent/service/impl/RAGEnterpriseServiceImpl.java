@@ -29,6 +29,7 @@ import com.nageoffer.ai.ragent.rag.mcp.MCPToolRegistry;
 import com.nageoffer.ai.ragent.rag.memory.ConversationMemoryService;
 import com.nageoffer.ai.ragent.rag.prompt.ContextFormatter;
 import com.nageoffer.ai.ragent.rag.prompt.PromptContext;
+import com.nageoffer.ai.ragent.rag.prompt.PromptTemplateLoader;
 import com.nageoffer.ai.ragent.rag.prompt.RAGEnterprisePromptService;
 import com.nageoffer.ai.ragent.rag.rerank.RerankService;
 import com.nageoffer.ai.ragent.rag.retrieve.RetrieveRequest;
@@ -53,7 +54,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 
-import static com.nageoffer.ai.ragent.constant.RAGConstant.CHAT_SYSTEM_PROMPT;
+import static com.nageoffer.ai.ragent.constant.RAGConstant.CHAT_SYSTEM_PROMPT_PATH;
 import static com.nageoffer.ai.ragent.constant.RAGConstant.DEFAULT_TOP_K;
 import static com.nageoffer.ai.ragent.constant.RAGConstant.INTENT_MIN_SCORE;
 import static com.nageoffer.ai.ragent.constant.RAGConstant.MAX_INTENT_COUNT;
@@ -81,6 +82,7 @@ public class RAGEnterpriseServiceImpl implements RAGEnterpriseService {
     private final MCPService mcpService;
     private final MCPParameterExtractor mcpParameterExtractor;
     private final MCPToolRegistry mcpToolRegistry;
+    private final PromptTemplateLoader promptTemplateLoader;
     private final ConversationMemoryService memoryService;
     private final StreamTaskManager taskManager;
     private final Executor intentClassifyExecutor;
@@ -94,6 +96,7 @@ public class RAGEnterpriseServiceImpl implements RAGEnterpriseService {
             MCPService mcpService,
             MCPParameterExtractor mcpParameterExtractor,
             MCPToolRegistry mcpToolRegistry,
+            PromptTemplateLoader promptTemplateLoader,
             RAGEnterprisePromptService promptBuilder,
             ContextFormatter contextFormatter,
             ConversationMemoryService memoryService,
@@ -111,6 +114,7 @@ public class RAGEnterpriseServiceImpl implements RAGEnterpriseService {
         this.mcpService = mcpService;
         this.mcpParameterExtractor = mcpParameterExtractor;
         this.mcpToolRegistry = mcpToolRegistry;
+        this.promptTemplateLoader = promptTemplateLoader;
         this.memoryService = memoryService;
         this.taskManager = taskManager;
         this.intentClassifier = intentClassifier;
@@ -383,9 +387,12 @@ public class RAGEnterpriseServiceImpl implements RAGEnterpriseService {
     // ==================== LLM 响应 ====================
 
     private StreamCancellationHandle streamSystemResponse(String question, StreamCallback callback) {
-        String prompt = CHAT_SYSTEM_PROMPT.formatted(question);
+        String systemPrompt = promptTemplateLoader.load(CHAT_SYSTEM_PROMPT_PATH);
         ChatRequest req = ChatRequest.builder()
-                .messages(List.of(ChatMessage.user(prompt)))
+                .messages(List.of(
+                        ChatMessage.system(systemPrompt),
+                        ChatMessage.user(question)
+                ))
                 .temperature(0.7D)
                 .topP(0.8D)
                 .thinking(false)
@@ -394,7 +401,7 @@ public class RAGEnterpriseServiceImpl implements RAGEnterpriseService {
     }
 
     private StreamCancellationHandle streamLLMResponse(RewriteResult rewriteResult, RetrievalContext ctx,
-                                            IntentGroup intentGroup, List<ChatMessage> history, StreamCallback callback) {
+                                                       IntentGroup intentGroup, List<ChatMessage> history, StreamCallback callback) {
         PromptContext promptContext = PromptContext.builder()
                 .question(rewriteResult.joinSubQuestions())
                 .mcpContext(ctx.getMcpContext())

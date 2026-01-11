@@ -8,15 +8,17 @@ import com.nageoffer.ai.ragent.convention.ChatRequest;
 import com.nageoffer.ai.ragent.dao.entity.ConversationDO;
 import com.nageoffer.ai.ragent.dao.entity.ConversationMessageDO;
 import com.nageoffer.ai.ragent.rag.chat.LLMService;
+import com.nageoffer.ai.ragent.rag.prompt.PromptTemplateLoader;
 import com.nageoffer.ai.ragent.service.ConversationGroupService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
-import static com.nageoffer.ai.ragent.constant.RAGEnterpriseConstant.CONVERSATION_TITLE_PROMPT;
+import static com.nageoffer.ai.ragent.constant.RAGConstant.CONVERSATION_TITLE_PROMPT_PATH;
 
 @Slf4j
 @Service
@@ -25,13 +27,16 @@ public class MySQLConversationMemoryStore implements ConversationMemoryStore {
     private final ConversationGroupService conversationGroupService;
     private final MemoryProperties memoryProperties;
     private final LLMService llmService;
+    private final PromptTemplateLoader promptTemplateLoader;
 
     public MySQLConversationMemoryStore(ConversationGroupService conversationGroupService,
                                         MemoryProperties memoryProperties,
-                                        LLMService llmService) {
+                                        LLMService llmService,
+                                        PromptTemplateLoader promptTemplateLoader) {
         this.conversationGroupService = conversationGroupService;
         this.memoryProperties = memoryProperties;
         this.llmService = llmService;
+        this.promptTemplateLoader = promptTemplateLoader;
     }
 
     @Override
@@ -155,7 +160,13 @@ public class MySQLConversationMemoryStore implements ConversationMemoryStore {
         if (maxLen <= 0) {
             maxLen = 30;
         }
-        String prompt = CONVERSATION_TITLE_PROMPT.formatted(maxLen, question.trim());
+        String prompt = promptTemplateLoader.render(
+                CONVERSATION_TITLE_PROMPT_PATH,
+                Map.of(
+                        "title_max_chars", String.valueOf(maxLen),
+                        "question", question.trim()
+                )
+        );
         try {
             ChatRequest request = ChatRequest.builder()
                     .messages(List.of(ChatMessage.user(prompt)))

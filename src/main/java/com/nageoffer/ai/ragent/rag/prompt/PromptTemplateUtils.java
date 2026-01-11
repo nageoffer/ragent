@@ -25,7 +25,7 @@ public final class PromptTemplateUtils {
         String result = template;
         for (Map.Entry<String, String> entry : slots.entrySet()) {
             String value = StrUtil.emptyIfNull(entry.getValue());
-            result = result.replace("{{" + entry.getKey() + "}}", value);
+            result = result.replace("{" + entry.getKey() + "}", value);
         }
         return result;
     }

@@ -10,6 +10,7 @@ import com.google.gson.JsonSyntaxException;
 import com.nageoffer.ai.ragent.convention.ChatMessage;
 import com.nageoffer.ai.ragent.convention.ChatRequest;
 import com.nageoffer.ai.ragent.rag.chat.LLMService;
+import com.nageoffer.ai.ragent.rag.prompt.PromptTemplateLoader;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -21,7 +22,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import static com.nageoffer.ai.ragent.constant.RAGEnterpriseConstant.MCP_PARAMETER_EXTRACT_PROMPT;
+import static com.nageoffer.ai.ragent.constant.RAGConstant.MCP_PARAMETER_EXTRACT_PROMPT_PATH;
 
 /**
  * 基于 LLM 的 MCP 参数提取器实现（V3 Enterprise 专用）
@@ -35,6 +36,7 @@ import static com.nageoffer.ai.ragent.constant.RAGEnterpriseConstant.MCP_PARAMET
 public class LLMMCPParameterExtractor implements MCPParameterExtractor {
 
     private final LLMService llmService;
+    private final PromptTemplateLoader promptTemplateLoader;
     private final Gson gson = new Gson();
 
     @Override
@@ -52,7 +54,7 @@ public class LLMMCPParameterExtractor implements MCPParameterExtractor {
         List<ChatMessage> messages = new ArrayList<>(3);
         String systemPrompt = StrUtil.isNotBlank(customPromptTemplate)
                 ? customPromptTemplate
-                : MCP_PARAMETER_EXTRACT_PROMPT;
+                : promptTemplateLoader.load(MCP_PARAMETER_EXTRACT_PROMPT_PATH);
 
         messages.add(ChatMessage.system(systemPrompt));
         messages.add(ChatMessage.user("工具定义如下：\n" + buildToolDefinition(tool)));

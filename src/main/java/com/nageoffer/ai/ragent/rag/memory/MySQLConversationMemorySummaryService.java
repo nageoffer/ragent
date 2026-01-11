@@ -8,6 +8,7 @@ import com.nageoffer.ai.ragent.convention.ChatRequest;
 import com.nageoffer.ai.ragent.dao.entity.ConversationMessageDO;
 import com.nageoffer.ai.ragent.dao.entity.ConversationSummaryDO;
 import com.nageoffer.ai.ragent.rag.chat.LLMService;
+import com.nageoffer.ai.ragent.rag.prompt.PromptTemplateLoader;
 import com.nageoffer.ai.ragent.service.ConversationGroupService;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
@@ -19,12 +20,13 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 
-import static com.nageoffer.ai.ragent.constant.RAGEnterpriseConstant.CONVERSATION_SUMMARY_PROMPT;
+import static com.nageoffer.ai.ragent.constant.RAGConstant.CONVERSATION_SUMMARY_PROMPT_PATH;
 
 @Slf4j
 @Service
@@ -38,6 +40,7 @@ public class MySQLConversationMemorySummaryService implements ConversationMemory
     private final MemoryProperties memoryProperties;
     private final LLMService llmService;
     private final Executor memorySummaryExecutor;
+    private final PromptTemplateLoader promptTemplateLoader;
     private final ConversationMemoryStore memoryStore;
     private final RedissonClient redissonClient;
 
@@ -45,12 +48,14 @@ public class MySQLConversationMemorySummaryService implements ConversationMemory
                                                  MemoryProperties memoryProperties,
                                                  LLMService llmService,
                                                  @Qualifier("memorySummaryThreadPoolExecutor") Executor memorySummaryExecutor,
+                                                 PromptTemplateLoader promptTemplateLoader,
                                                  ConversationMemoryStore memoryStore,
                                                  RedissonClient redissonClient) {
         this.conversationGroupService = conversationGroupService;
         this.memoryProperties = memoryProperties;
         this.llmService = llmService;
         this.memorySummaryExecutor = memorySummaryExecutor;
+        this.promptTemplateLoader = promptTemplateLoader;
         this.memoryStore = memoryStore;
         this.redissonClient = redissonClient;
     }
@@ -174,9 +179,9 @@ public class MySQLConversationMemorySummaryService implements ConversationMemory
         }
 
         List<ChatMessage> summaryMessages = new ArrayList<>();
-        String summaryPrompt = CONVERSATION_SUMMARY_PROMPT.replace(
-                "{summary_max_chars}",
-                String.valueOf(memoryProperties.getSummaryMaxChars())
+        String summaryPrompt = promptTemplateLoader.render(
+                CONVERSATION_SUMMARY_PROMPT_PATH,
+                Map.of("summary_max_chars", String.valueOf(memoryProperties.getSummaryMaxChars()))
         );
         summaryMessages.add(ChatMessage.system(summaryPrompt));
 
