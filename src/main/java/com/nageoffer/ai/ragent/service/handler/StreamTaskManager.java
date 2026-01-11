@@ -57,9 +57,10 @@ public class StreamTaskManager {
         redissonClient.getTopic(CANCEL_TOPIC).removeListener(listenerId);
     }
 
-    public void register(String taskId, SseEmitterSender sender) {
+    public void register(String taskId, SseEmitterSender sender, Runnable onCancelCallback) {
         StreamTaskInfo taskInfo = getOrCreate(taskId);
         taskInfo.sender = sender;
+        taskInfo.onCancelCallback = onCancelCallback;
         if (isTaskCancelledInRedis(taskId, taskInfo)) {
             sendCancelAndDone(sender);
             sender.complete();
@@ -80,11 +81,12 @@ public class StreamTaskManager {
     }
 
     public void cancel(String taskId) {
-        cancelLocal(taskId);
-
+        // 先设置 Redis 标记，再发布消息
         RBucket<Boolean> bucket = redissonClient.getBucket(cancelKey(taskId));
         bucket.set(Boolean.TRUE, CANCEL_TTL);
 
+        // 发布消息通知所有节点（包括本地）
+        // 本地节点也通过监听器统一处理，避免重复调用 cancelLocal
         redissonClient.getTopic(CANCEL_TOPIC).publish(taskId);
     }
 
@@ -120,9 +122,22 @@ public class StreamTaskManager {
         if (taskInfo.handle != null) {
             taskInfo.handle.cancel();
         }
+
+        // 在取消时执行回调，保存已累积的内容
+        executeOnCancelCallback(taskInfo);
         if (taskInfo.sender != null) {
             sendCancelAndDone(taskInfo.sender);
             taskInfo.sender.complete();
+        }
+    }
+
+    private void executeOnCancelCallback(StreamTaskInfo taskInfo) {
+        if (taskInfo.onCancelCallback != null) {
+            try {
+                taskInfo.onCancelCallback.run();
+            } catch (Exception e) {
+                log.warn("执行取消回调失败", e);
+            }
         }
     }
 
@@ -152,5 +167,6 @@ public class StreamTaskManager {
         private final AtomicBoolean cancelled = new AtomicBoolean(false);
         private volatile StreamCancellationHandle handle;
         private volatile SseEmitterSender sender;
+        private volatile Runnable onCancelCallback;
     }
 }

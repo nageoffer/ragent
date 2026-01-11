@@ -17,6 +17,7 @@ public class StreamChatEventHandler implements StreamCallback {
     private final String conversationId;
     private final ConversationMemoryService memoryService;
     private final String taskId;
+    private final String userId;
     private final StreamTaskManager taskManager;
     private final StringBuilder answer = new StringBuilder();
 
@@ -30,14 +31,25 @@ public class StreamChatEventHandler implements StreamCallback {
         this.taskId = taskId;
         this.memoryService = memoryService;
         this.taskManager = taskManager;
+        this.userId = UserContext.getUserId();
         sender.sendEvent(SSEEventType.META.value(), new MetaPayload(conversationId, taskId));
-        taskManager.register(taskId, sender);
+        // 注册时传入取消回调，用于在取消时保存已累积的回复
+        taskManager.register(taskId, sender, this::saveAnswerIfNotEmpty);
+    }
+
+    /**
+     * 保存已累积的回复内容（如果不为空）
+     */
+    private void saveAnswerIfNotEmpty() {
+        String content = answer.toString();
+        if (StrUtil.isNotBlank(content)) {
+            memoryService.append(conversationId, userId, ChatMessage.assistant(content));
+        }
     }
 
     @Override
     public void onContent(String chunk) {
         if (taskManager.isCancelled(taskId)) {
-            sender.complete();
             return;
         }
         if (StrUtil.isBlank(chunk)) {
@@ -54,8 +66,6 @@ public class StreamChatEventHandler implements StreamCallback {
     @Override
     public void onComplete() {
         if (taskManager.isCancelled(taskId)) {
-            taskManager.unregister(taskId);
-            sender.complete();
             return;
         }
         memoryService.append(conversationId, UserContext.getUserId(),
@@ -68,7 +78,6 @@ public class StreamChatEventHandler implements StreamCallback {
     @Override
     public void onError(Throwable t) {
         if (taskManager.isCancelled(taskId)) {
-            sender.complete();
             return;
         }
         taskManager.unregister(taskId);
