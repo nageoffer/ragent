@@ -1,23 +1,21 @@
-package com.nageoffer.ai.ragent.controller.request;
+package com.nageoffer.ai.ragent.service.bo;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.Date;
-
 /**
- * 会话创建请求
+ * 对话消息业务对象
  */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class ConversationCreateRequest {
+public class ConversationMessageBO {
 
     /**
-     * 会话ID
+     * 对话ID
      */
     private String conversationId;
 
@@ -27,13 +25,12 @@ public class ConversationCreateRequest {
     private String userId;
 
     /**
-     * 用户问题
+     * 角色：system/user/assistant
      */
-    private String question;
+    private String role;
 
     /**
-     * 最后更新时间
+     * 消息内容
      */
-    private Date lastTime;
-
+    private String content;
 }

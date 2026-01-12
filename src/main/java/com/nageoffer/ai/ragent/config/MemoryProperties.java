@@ -16,6 +16,8 @@ public class MemoryProperties {
     /**
      * 短期记忆最大轮数（user+assistant 视为一轮）
      */
+    @Min(1)
+    @Max(100)
     private int maxTurns = 5;
 
     /**

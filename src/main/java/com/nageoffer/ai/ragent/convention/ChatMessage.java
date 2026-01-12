@@ -39,7 +39,23 @@ public class ChatMessage {
         /**
          * 助手机器人角色，表示大模型返回的回复内容
          */
-        ASSISTANT
+        ASSISTANT;
+
+        /**
+         * 根据字符串值匹配对应的角色枚举
+         *
+         * @param value 角色字符串值，不区分大小写
+         * @return 匹配到的 {@link Role} 枚举值
+         * @throws IllegalArgumentException 当传入的字符串无法匹配任何角色时抛出异常
+         */
+        public static Role fromString(String value) {
+            for (Role role : Role.values()) {
+                if (role.name().equalsIgnoreCase(value)) {
+                    return role;
+                }
+            }
+            throw new IllegalArgumentException("无效的角色类型: " + value);
+        }
     }
 
     /**

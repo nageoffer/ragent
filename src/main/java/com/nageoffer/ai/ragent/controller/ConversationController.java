@@ -1,6 +1,5 @@
 package com.nageoffer.ai.ragent.controller;
 
-import com.nageoffer.ai.ragent.controller.request.ConversationCreateRequest;
 import com.nageoffer.ai.ragent.controller.request.ConversationUpdateRequest;
 import com.nageoffer.ai.ragent.controller.vo.ConversationMessageVO;
 import com.nageoffer.ai.ragent.controller.vo.ConversationVO;
@@ -13,10 +12,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -28,16 +25,17 @@ public class ConversationController {
     private final ConversationHistoryService conversationHistoryService;
     private final ConversationService conversationService;
 
+    /**
+     * 获取会话列表
+     */
     @GetMapping("/conversations")
     public Result<List<ConversationVO>> listConversations() {
         return Results.success(conversationHistoryService.listConversations(UserContext.getUserId()));
     }
 
-    @PostMapping("/conversations")
-    public Result<ConversationVO> create(@RequestBody(required = false) ConversationCreateRequest request) {
-        return Results.success(conversationService.create(UserContext.getUserId(), request));
-    }
-
+    /**
+     * 重命名会话
+     */
     @PutMapping("/conversations/{conversationId}")
     public Result<Void> rename(@PathVariable String conversationId,
                                @RequestBody ConversationUpdateRequest request) {
@@ -45,12 +43,18 @@ public class ConversationController {
         return Results.success();
     }
 
+    /**
+     * 删除会话
+     */
     @DeleteMapping("/conversations/{conversationId}")
     public Result<Void> delete(@PathVariable String conversationId) {
         conversationService.delete(conversationId, UserContext.getUserId());
         return Results.success();
     }
 
+    /**
+     * 获取会话消息列表
+     */
     @GetMapping("/conversations/{conversationId}/messages")
     public Result<List<ConversationMessageVO>> listMessages(@PathVariable String conversationId) {
         return Results.success(conversationHistoryService.listMessages(conversationId, UserContext.getUserId()));

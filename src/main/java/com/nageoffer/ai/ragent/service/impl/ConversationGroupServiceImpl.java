@@ -23,22 +23,6 @@ public class ConversationGroupServiceImpl implements ConversationGroupService {
     private final ConversationMapper conversationMapper;
 
     @Override
-    public List<ConversationMessageDO> listLatestUserMessages(String conversationId, String userId, int limit) {
-        if (StrUtil.isBlank(conversationId) || StrUtil.isBlank(userId) || limit <= 0) {
-            return List.of();
-        }
-        return messageMapper.selectList(
-                Wrappers.lambdaQuery(ConversationMessageDO.class)
-                        .eq(ConversationMessageDO::getConversationId, conversationId)
-                        .eq(ConversationMessageDO::getUserId, userId)
-                        .in(ConversationMessageDO::getRole, "user", "assistant")
-                        .eq(ConversationMessageDO::getDeleted, 0)
-                        .orderByDesc(ConversationMessageDO::getCreateTime)
-                        .last("limit " + limit)
-        );
-    }
-
-    @Override
     public List<ConversationMessageDO> listLatestUserOnlyMessages(String conversationId, String userId, int limit) {
         if (StrUtil.isBlank(conversationId) || StrUtil.isBlank(userId) || limit <= 0) {
             return List.of();
@@ -108,11 +92,6 @@ public class ConversationGroupServiceImpl implements ConversationGroupService {
     }
 
     @Override
-    public void saveMessage(ConversationMessageDO record) {
-        messageMapper.insert(record);
-    }
-
-    @Override
     public void upsertSummary(ConversationSummaryDO record) {
         if (record.getId() == null) {
             summaryMapper.insert(record);
@@ -132,14 +111,5 @@ public class ConversationGroupServiceImpl implements ConversationGroupService {
                         .eq(ConversationDO::getUserId, userId)
                         .eq(ConversationDO::getDeleted, 0)
         );
-    }
-
-    @Override
-    public void upsertConversation(ConversationDO record) {
-        if (record.getId() == null) {
-            conversationMapper.insert(record);
-        } else {
-            conversationMapper.updateById(record);
-        }
     }
 }

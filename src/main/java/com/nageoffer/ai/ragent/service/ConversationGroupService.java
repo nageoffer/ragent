@@ -9,7 +9,7 @@ import java.util.List;
 
 public interface ConversationGroupService {
 
-    List<ConversationMessageDO> listLatestUserMessages(String conversationId, String userId, int limit);
+
 
     List<ConversationMessageDO> listLatestUserOnlyMessages(String conversationId, String userId, int limit);
 
@@ -19,11 +19,7 @@ public interface ConversationGroupService {
 
     ConversationSummaryDO findLatestSummary(String conversationId, String userId);
 
-    void saveMessage(ConversationMessageDO record);
-
     void upsertSummary(ConversationSummaryDO record);
 
     ConversationDO findConversation(String conversationId, String userId);
-
-    void upsertConversation(ConversationDO record);
 }
