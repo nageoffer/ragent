@@ -32,6 +32,11 @@ public class ConversationSummaryBO {
     private String content;
 
     /**
+     * 摘要覆盖的最后一条消息 ID
+     */
+    private Long lastMessageId;
+
+    /**
      * 摘要时间
      */
     private Date summaryTime;

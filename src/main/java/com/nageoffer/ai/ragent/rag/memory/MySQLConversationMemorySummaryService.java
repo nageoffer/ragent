@@ -12,6 +12,7 @@ import com.nageoffer.ai.ragent.rag.prompt.PromptTemplateLoader;
 import com.nageoffer.ai.ragent.service.ConversationGroupService;
 import com.nageoffer.ai.ragent.service.ConversationMessageService;
 import com.nageoffer.ai.ragent.service.bo.ConversationSummaryBO;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
@@ -27,11 +28,13 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 import static com.nageoffer.ai.ragent.constant.RAGConstant.CONVERSATION_SUMMARY_PROMPT_PATH;
 
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class MySQLConversationMemorySummaryService implements ConversationMemorySummaryService {
 
     private static final String SUMMARY_PREFIX = "对话摘要：";
@@ -42,25 +45,11 @@ public class MySQLConversationMemorySummaryService implements ConversationMemory
     private final ConversationMessageService conversationMessageService;
     private final MemoryProperties memoryProperties;
     private final LLMService llmService;
-    private final Executor memorySummaryExecutor;
     private final PromptTemplateLoader promptTemplateLoader;
     private final RedissonClient redissonClient;
 
-    public MySQLConversationMemorySummaryService(ConversationGroupService conversationGroupService,
-                                                 ConversationMessageService conversationMessageService,
-                                                 MemoryProperties memoryProperties,
-                                                 LLMService llmService,
-                                                 PromptTemplateLoader promptTemplateLoader,
-                                                 RedissonClient redissonClient,
-                                                 @Qualifier("memorySummaryThreadPoolExecutor") Executor memorySummaryExecutor) {
-        this.conversationGroupService = conversationGroupService;
-        this.conversationMessageService = conversationMessageService;
-        this.memoryProperties = memoryProperties;
-        this.llmService = llmService;
-        this.promptTemplateLoader = promptTemplateLoader;
-        this.redissonClient = redissonClient;
-        this.memorySummaryExecutor = memorySummaryExecutor;
-    }
+    @Qualifier("memorySummaryThreadPoolExecutor")
+    private final Executor memorySummaryExecutor;
 
     @Override
     public void compressIfNeeded(String conversationId, String userId, ChatMessage message) {
@@ -126,20 +115,20 @@ public class MySQLConversationMemorySummaryService implements ConversationMemory
             if (latestUserTurns.isEmpty()) {
                 return;
             }
-            Date cutoff = resolveCutoff(latestUserTurns);
-            if (cutoff == null) {
+            Long cutoffId = resolveCutoffId(latestUserTurns);
+            if (cutoffId == null) {
                 return;
             }
-            Date after = resolveSummaryStart(latestSummary);
-            if (after != null && !after.before(cutoff)) {
+            Long afterId = resolveSummaryStartId(conversationId, userId, latestSummary);
+            if (afterId != null && afterId >= cutoffId) {
                 return;
             }
 
-            List<ConversationMessageDO> toSummarize = conversationGroupService.listMessagesBetween(
+            List<ConversationMessageDO> toSummarize = conversationGroupService.listMessagesBetweenIds(
                     conversationId,
                     userId,
-                    after,
-                    cutoff
+                    afterId,
+                    cutoffId
             );
             if (CollUtil.isEmpty(toSummarize)) {
                 return;
@@ -149,6 +138,10 @@ public class MySQLConversationMemorySummaryService implements ConversationMemory
             if (summaryTime == null) {
                 return;
             }
+            Long lastMessageId = resolveLastMessageId(toSummarize);
+            if (lastMessageId == null) {
+                return;
+            }
 
             String existingSummary = latestSummary == null ? "" : latestSummary.getContent();
             String summary = summarizeMessages(toSummarize, existingSummary);
@@ -156,11 +149,12 @@ public class MySQLConversationMemorySummaryService implements ConversationMemory
                 return;
             }
 
-            createSummary(conversationId, userId, summary, summaryTime);
-            log.info("摘要成功 - conversationId: {}, 消息数: {}, 耗时: {}ms",
-                    conversationId, toSummarize.size(), System.currentTimeMillis() - startTime);
+            createSummary(conversationId, userId, summary, summaryTime, lastMessageId);
+            log.info("摘要成功 - conversationId：{}，userId：{}，消息数：{}，耗时：{}ms",
+                    conversationId, userId, toSummarize.size(),
+                    System.currentTimeMillis() - startTime);
         } catch (Exception e) {
-            log.error("摘要失败 - conversationId: {}, userId: {}", conversationId, userId, e);
+            log.error("摘要失败 - conversationId：{}，userId：{}", conversationId, userId, e);
         } finally {
             if (lock.isHeldByCurrentThread()) {
                 lock.unlock();
@@ -178,8 +172,8 @@ public class MySQLConversationMemorySummaryService implements ConversationMemory
     }
 
     private String summarizeMessages(List<ConversationMessageDO> messages, String existingSummary) {
-        List<ChatMessage> historys = toHistoryMessages(messages);
-        if (CollUtil.isEmpty(historys)) {
+        List<ChatMessage> histories = toHistoryMessages(messages);
+        if (CollUtil.isEmpty(histories)) {
             return existingSummary;
         }
 
@@ -197,7 +191,7 @@ public class MySQLConversationMemorySummaryService implements ConversationMemory
                             + existingSummary.trim()
             ));
         }
-        summaryMessages.addAll(historys);
+        summaryMessages.addAll(histories);
         summaryMessages.add(ChatMessage.user(
                 "合并以上对话与历史摘要，去重后输出更新摘要。要求：严格≤" + summaryMaxChars + "字符；仅一行。"
         ));
@@ -215,33 +209,31 @@ public class MySQLConversationMemorySummaryService implements ConversationMemory
             return result;
         } catch (Exception e) {
             log.error("对话记忆摘要生成失败, conversationId相关消息数: {}", messages.size(), e);
-            return "";
+            return existingSummary;
         }
     }
 
     private List<ChatMessage> toHistoryMessages(List<ConversationMessageDO> messages) {
-        if (messages == null || messages.isEmpty()) {
+        if (CollUtil.isEmpty(messages)) {
             return List.of();
         }
-        List<ChatMessage> history = new ArrayList<>();
-        for (ConversationMessageDO item : messages) {
-            if (item == null || StrUtil.isBlank(item.getContent())) {
-                continue;
-            }
-            String role = item.getRole();
-            if (role == null) {
-                continue;
-            }
-            if ("user".equalsIgnoreCase(role)) {
-                history.add(ChatMessage.user(item.getContent()));
-                continue;
-            }
-            if ("assistant".equalsIgnoreCase(role)) {
-                history.add(ChatMessage.assistant(item.getContent()));
-            }
-        }
-        return history;
+        return messages.stream()
+                .filter(item -> item != null
+                        && StrUtil.isNotBlank(item.getContent())
+                        && StrUtil.isNotBlank(item.getRole()))
+                .map(item -> {
+                    String role = item.getRole().toLowerCase();
+                    if ("user".equals(role)) {
+                        return ChatMessage.user(item.getContent());
+                    } else if ("assistant".equals(role)) {
+                        return ChatMessage.assistant(item.getContent());
+                    }
+                    return null;
+                })
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
     }
+
 
     private ChatMessage toChatMessage(ConversationSummaryDO record) {
         if (record == null || StrUtil.isBlank(record.getContent())) {
@@ -250,18 +242,33 @@ public class MySQLConversationMemorySummaryService implements ConversationMemory
         return new ChatMessage(ChatMessage.Role.SYSTEM, record.getContent());
     }
 
-    private Date resolveSummaryStart(ConversationSummaryDO summary) {
+    private Long resolveSummaryStartId(String conversationId, String userId, ConversationSummaryDO summary) {
         if (summary == null) {
             return null;
         }
-
+        if (summary.getLastMessageId() != null) {
+            return summary.getLastMessageId();
+        }
         Date after = summary.getUpdateTime();
-        return after == null ? summary.getCreateTime() : after;
+        if (after == null) {
+            after = summary.getCreateTime();
+        }
+        return conversationGroupService.findMaxMessageIdAtOrBefore(conversationId, userId, after);
     }
 
-    private Date resolveCutoff(List<ConversationMessageDO> latestUserTurns) {
-        for (int i = latestUserTurns.size() - 1; i >= 0; i--) {
-            ConversationMessageDO item = latestUserTurns.get(i);
+    private Long resolveCutoffId(List<ConversationMessageDO> latestUserTurns) {
+        if (CollUtil.isEmpty(latestUserTurns)) {
+            return null;
+        }
+
+        // 倒序列表的最后一个就是最早的
+        ConversationMessageDO oldest = latestUserTurns.get(latestUserTurns.size() - 1);
+        return oldest == null ? null : oldest.getId();
+    }
+
+    private Date resolveSummaryTime(List<ConversationMessageDO> toSummarize) {
+        for (int i = toSummarize.size() - 1; i >= 0; i--) {
+            ConversationMessageDO item = toSummarize.get(i);
             if (item != null && item.getCreateTime() != null) {
                 return item.getCreateTime();
             }
@@ -269,19 +276,26 @@ public class MySQLConversationMemorySummaryService implements ConversationMemory
         return null;
     }
 
-    private Date resolveSummaryTime(List<ConversationMessageDO> toSummarize) {
-        return toSummarize.stream()
-                .map(ConversationMessageDO::getCreateTime)
-                .filter(Objects::nonNull)
-                .max(Date::compareTo)
-                .orElse(null);
+    private Long resolveLastMessageId(List<ConversationMessageDO> toSummarize) {
+        for (int i = toSummarize.size() - 1; i >= 0; i--) {
+            ConversationMessageDO item = toSummarize.get(i);
+            if (item != null && item.getId() != null) {
+                return item.getId();
+            }
+        }
+        return null;
     }
 
-    private void createSummary(String conversationId, String userId, String content, Date summaryTime) {
+    private void createSummary(String conversationId,
+                               String userId,
+                               String content,
+                               Date summaryTime,
+                               Long lastMessageId) {
         ConversationSummaryBO summaryRecord = ConversationSummaryBO.builder()
                 .conversationId(conversationId)
                 .userId(userId)
                 .content(content)
+                .lastMessageId(lastMessageId)
                 .summaryTime(summaryTime)
                 .build();
         conversationMessageService.addMessageSummary(summaryRecord);

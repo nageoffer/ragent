@@ -47,6 +47,11 @@ public class ConversationSummaryDO {
     private String content;
 
     /**
+     * 摘要覆盖的最后一条消息 ID
+     */
+    private Long lastMessageId;
+
+    /**
      * 创建时间
      */
     @TableField(fill = FieldFill.INSERT)

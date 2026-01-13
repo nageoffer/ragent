@@ -10,9 +10,8 @@ import com.nageoffer.ai.ragent.dao.entity.ConversationSummaryDO;
 import com.nageoffer.ai.ragent.dao.mapper.ConversationMapper;
 import com.nageoffer.ai.ragent.dao.mapper.ConversationMessageMapper;
 import com.nageoffer.ai.ragent.dao.mapper.ConversationSummaryMapper;
-import com.nageoffer.ai.ragent.framework.context.UserContext;
-import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.enums.ConversationMessageOrder;
+import com.nageoffer.ai.ragent.framework.context.UserContext;
 import com.nageoffer.ai.ragent.service.ConversationMessageService;
 import com.nageoffer.ai.ragent.service.bo.ConversationMessageBO;
 import com.nageoffer.ai.ragent.service.bo.ConversationSummaryBO;
@@ -51,7 +50,7 @@ public class ConversationMessageServiceImpl implements ConversationMessageServic
                         .eq(ConversationDO::getDeleted, 0)
         );
         if (conversation == null) {
-            throw new ClientException("会话不存在");
+            return List.of();
         }
 
         boolean asc = order == null || order == ConversationMessageOrder.ASC;

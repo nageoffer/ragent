@@ -39,10 +39,7 @@ public class ConversationGroupServiceImpl implements ConversationGroupService {
     }
 
     @Override
-    public List<ConversationMessageDO> listMessagesBetween(String conversationId,
-                                                           String userId,
-                                                           java.util.Date after,
-                                                           java.util.Date before) {
+    public List<ConversationMessageDO> listMessagesBetweenIds(String conversationId, String userId, Long afterId, Long beforeId) {
         if (StrUtil.isBlank(conversationId) || StrUtil.isBlank(userId)) {
             return List.of();
         }
@@ -51,15 +48,32 @@ public class ConversationGroupServiceImpl implements ConversationGroupService {
                 .eq(ConversationMessageDO::getUserId, userId)
                 .in(ConversationMessageDO::getRole, "user", "assistant")
                 .eq(ConversationMessageDO::getDeleted, 0);
-        if (after != null) {
-            query.gt(ConversationMessageDO::getCreateTime, after);
+        if (afterId != null) {
+            query.gt(ConversationMessageDO::getId, afterId);
         }
-        if (before != null) {
-            query.lt(ConversationMessageDO::getCreateTime, before);
+        if (beforeId != null) {
+            query.lt(ConversationMessageDO::getId, beforeId);
         }
         return messageMapper.selectList(
-                query.orderByAsc(ConversationMessageDO::getCreateTime)
+                query.orderByAsc(ConversationMessageDO::getId)
         );
+    }
+
+    @Override
+    public Long findMaxMessageIdAtOrBefore(String conversationId, String userId, java.util.Date at) {
+        if (StrUtil.isBlank(conversationId) || StrUtil.isBlank(userId) || at == null) {
+            return null;
+        }
+        ConversationMessageDO record = messageMapper.selectOne(
+                Wrappers.lambdaQuery(ConversationMessageDO.class)
+                        .eq(ConversationMessageDO::getConversationId, conversationId)
+                        .eq(ConversationMessageDO::getUserId, userId)
+                        .eq(ConversationMessageDO::getDeleted, 0)
+                        .le(ConversationMessageDO::getCreateTime, at)
+                        .orderByDesc(ConversationMessageDO::getId)
+                        .last("limit 1")
+        );
+        return record == null ? null : record.getId();
     }
 
     @Override
