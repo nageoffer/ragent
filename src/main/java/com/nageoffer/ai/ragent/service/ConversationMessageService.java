@@ -1,6 +1,6 @@
 package com.nageoffer.ai.ragent.service;
 
-import com.nageoffer.ai.ragent.dao.entity.ConversationMessageDO;
+import com.nageoffer.ai.ragent.controller.vo.ConversationMessageVO;
 import com.nageoffer.ai.ragent.service.bo.ConversationMessageBO;
 import com.nageoffer.ai.ragent.service.bo.ConversationSummaryBO;
 
@@ -16,14 +16,21 @@ public interface ConversationMessageService {
     void addMessage(ConversationMessageBO conversationMessage);
 
     /**
+     * 获取对话消息列表
+     *
+     * @param conversationId 对话ID
+     * @return 对话消息列表
+     */
+    List<ConversationMessageVO> listMessages(String conversationId);
+
+    /**
      * 获取最新的对话消息列表
      *
      * @param conversationId 对话ID
-     * @param userId         用户ID
      * @param limit          限制数量
      * @return 对话消息列表
      */
-    List<ConversationMessageDO> listLatestMessages(String conversationId, String userId, Integer limit);
+    List<ConversationMessageVO> listLatestMessages(String conversationId, Integer limit);
 
     /**
      * 添加对话摘要

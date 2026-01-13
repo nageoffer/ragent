@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.nageoffer.ai.ragent.config.MemoryProperties;
 import com.nageoffer.ai.ragent.controller.request.ConversationCreateRequest;
 import com.nageoffer.ai.ragent.controller.request.ConversationUpdateRequest;
+import com.nageoffer.ai.ragent.controller.vo.ConversationVO;
 import com.nageoffer.ai.ragent.convention.ChatMessage;
 import com.nageoffer.ai.ragent.convention.ChatRequest;
 import com.nageoffer.ai.ragent.dao.entity.ConversationDO;
@@ -13,6 +14,7 @@ import com.nageoffer.ai.ragent.dao.entity.ConversationSummaryDO;
 import com.nageoffer.ai.ragent.dao.mapper.ConversationMapper;
 import com.nageoffer.ai.ragent.dao.mapper.ConversationMessageMapper;
 import com.nageoffer.ai.ragent.dao.mapper.ConversationSummaryMapper;
+import com.nageoffer.ai.ragent.framework.context.UserContext;
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.rag.chat.LLMService;
 import com.nageoffer.ai.ragent.rag.prompt.PromptTemplateLoader;
@@ -20,9 +22,11 @@ import com.nageoffer.ai.ragent.service.ConversationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import static com.nageoffer.ai.ragent.constant.RAGConstant.CONVERSATION_TITLE_PROMPT_PATH;
 
@@ -41,6 +45,31 @@ public class ConversationServiceImpl implements ConversationService {
     private final MemoryProperties memoryProperties;
     private final PromptTemplateLoader promptTemplateLoader;
     private final LLMService llmService;
+
+    @Override
+    public List<ConversationVO> listByUserId(String userId) {
+        if (StrUtil.isBlank(userId)) {
+            return List.of();
+        }
+
+        List<ConversationDO> records = conversationMapper.selectList(
+                Wrappers.lambdaQuery(ConversationDO.class)
+                        .eq(ConversationDO::getUserId, userId)
+                        .eq(ConversationDO::getDeleted, 0)
+                        .orderByDesc(ConversationDO::getLastTime)
+        );
+        if (records == null || records.isEmpty()) {
+            return List.of();
+        }
+
+        return records.stream()
+                .map(item -> ConversationVO.builder()
+                        .conversationId(item.getConversationId())
+                        .title(item.getTitle())
+                        .lastTime(item.getLastTime())
+                        .build())
+                .collect(Collectors.toList());
+    }
 
     @Override
     public void createOrUpdate(ConversationCreateRequest request) {
@@ -75,12 +104,13 @@ public class ConversationServiceImpl implements ConversationService {
     }
 
     @Override
-    public void rename(String conversationId, String userId, ConversationUpdateRequest request) {
+    public void rename(String conversationId, ConversationUpdateRequest request) {
+        String userId = UserContext.getUserId();
         if (StrUtil.isBlank(conversationId) || StrUtil.isBlank(userId)) {
             throw new ClientException("会话信息缺失");
         }
 
-        String title = request == null ? null : request.getTitle();
+        String title = request.getTitle();
         if (StrUtil.isBlank(title)) {
             throw new ClientException("会话名称不能为空");
         }
@@ -94,16 +124,15 @@ public class ConversationServiceImpl implements ConversationService {
         if (record == null) {
             throw new ClientException("会话不存在");
         }
-        if (!record.getUserId().equals(userId)) {
-            throw new ClientException("会话不属于当前用户");
-        }
 
         record.setTitle(title.trim());
         conversationMapper.updateById(record);
     }
 
+    @Transactional(rollbackFor = Exception.class)
     @Override
-    public void delete(String conversationId, String userId) {
+    public void delete(String conversationId) {
+        String userId = UserContext.getUserId();
         if (StrUtil.isBlank(conversationId) || StrUtil.isBlank(userId)) {
             throw new ClientException("会话信息缺失");
         }

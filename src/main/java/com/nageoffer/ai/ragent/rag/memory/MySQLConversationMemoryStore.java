@@ -4,8 +4,8 @@ import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
 import com.nageoffer.ai.ragent.config.MemoryProperties;
 import com.nageoffer.ai.ragent.controller.request.ConversationCreateRequest;
+import com.nageoffer.ai.ragent.controller.vo.ConversationMessageVO;
 import com.nageoffer.ai.ragent.convention.ChatMessage;
-import com.nageoffer.ai.ragent.dao.entity.ConversationMessageDO;
 import com.nageoffer.ai.ragent.service.ConversationMessageService;
 import com.nageoffer.ai.ragent.service.ConversationService;
 import com.nageoffer.ai.ragent.service.bo.ConversationMessageBO;
@@ -36,16 +36,15 @@ public class MySQLConversationMemoryStore implements ConversationMemoryStore {
     @Override
     public List<ChatMessage> loadHistory(String conversationId, String userId) {
         int maxMessages = resolveMaxHistoryMessages();
-        List<ConversationMessageDO> dbMessages = conversationMessageService.listLatestMessages(
+        List<ConversationMessageVO> dbMessages = conversationMessageService.listLatestMessages(
                 conversationId,
-                userId,
                 maxMessages
         );
         if (CollUtil.isEmpty(dbMessages)) {
             return List.of();
         }
 
-        dbMessages.sort(Comparator.comparing(ConversationMessageDO::getCreateTime));
+        dbMessages.sort(Comparator.comparing(ConversationMessageVO::getCreateTime));
         List<ChatMessage> result = dbMessages.stream()
                 .map(this::toChatMessage)
                 .filter(this::isHistoryMessage)
@@ -80,7 +79,7 @@ public class MySQLConversationMemoryStore implements ConversationMemoryStore {
         // MySQL 直读模式，无需刷新缓存
     }
 
-    private ChatMessage toChatMessage(ConversationMessageDO record) {
+    private ChatMessage toChatMessage(ConversationMessageVO record) {
         if (record == null || StrUtil.isBlank(record.getContent())) {
             return null;
         }
