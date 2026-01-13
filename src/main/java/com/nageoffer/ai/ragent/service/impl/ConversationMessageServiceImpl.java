@@ -87,9 +87,7 @@ public class ConversationMessageServiceImpl implements ConversationMessageServic
 
     @Override
     public void addMessageSummary(ConversationSummaryBO conversationSummary) {
-        ConversationSummaryDO conversationSummaryDO = BeanUtil.toBean(conversationSummary, ConversationSummaryDO.class)
-                .setCreateTime(conversationSummary.getSummaryTime())
-                .setUpdateTime(conversationSummary.getSummaryTime());
+        ConversationSummaryDO conversationSummaryDO = BeanUtil.toBean(conversationSummary, ConversationSummaryDO.class);
         conversationSummaryMapper.insert(conversationSummaryDO);
     }
 }

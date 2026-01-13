@@ -5,8 +5,6 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.Date;
-
 /**
  * 会话摘要业务对象
  */
@@ -35,9 +33,4 @@ public class ConversationSummaryBO {
      * 摘要覆盖的最后一条消息 ID
      */
     private Long lastMessageId;
-
-    /**
-     * 摘要时间
-     */
-    private Date summaryTime;
 }

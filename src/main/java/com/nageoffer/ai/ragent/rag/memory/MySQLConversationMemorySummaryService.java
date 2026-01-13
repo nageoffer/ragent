@@ -77,6 +77,7 @@ public class MySQLConversationMemorySummaryService implements ConversationMemory
         if (summary == null || StrUtil.isBlank(summary.getContent())) {
             return summary;
         }
+
         String content = summary.getContent().trim();
         if (content.startsWith(SUMMARY_PREFIX) || content.startsWith("摘要：")) {
             return summary;
@@ -119,6 +120,7 @@ public class MySQLConversationMemorySummaryService implements ConversationMemory
             if (cutoffId == null) {
                 return;
             }
+
             Long afterId = resolveSummaryStartId(conversationId, userId, latestSummary);
             if (afterId != null && afterId >= cutoffId) {
                 return;
@@ -134,10 +136,6 @@ public class MySQLConversationMemorySummaryService implements ConversationMemory
                 return;
             }
 
-            Date summaryTime = resolveSummaryTime(toSummarize);
-            if (summaryTime == null) {
-                return;
-            }
             Long lastMessageId = resolveLastMessageId(toSummarize);
             if (lastMessageId == null) {
                 return;
@@ -149,7 +147,7 @@ public class MySQLConversationMemorySummaryService implements ConversationMemory
                 return;
             }
 
-            createSummary(conversationId, userId, summary, summaryTime, lastMessageId);
+            createSummary(conversationId, userId, summary, lastMessageId);
             log.info("摘要成功 - conversationId：{}，userId：{}，消息数：{}，耗时：{}ms",
                     conversationId, userId, toSummarize.size(),
                     System.currentTimeMillis() - startTime);
@@ -234,7 +232,6 @@ public class MySQLConversationMemorySummaryService implements ConversationMemory
                 .collect(Collectors.toList());
     }
 
-
     private ChatMessage toChatMessage(ConversationSummaryDO record) {
         if (record == null || StrUtil.isBlank(record.getContent())) {
             return null;
@@ -249,6 +246,7 @@ public class MySQLConversationMemorySummaryService implements ConversationMemory
         if (summary.getLastMessageId() != null) {
             return summary.getLastMessageId();
         }
+
         Date after = summary.getUpdateTime();
         if (after == null) {
             after = summary.getCreateTime();
@@ -266,16 +264,6 @@ public class MySQLConversationMemorySummaryService implements ConversationMemory
         return oldest == null ? null : oldest.getId();
     }
 
-    private Date resolveSummaryTime(List<ConversationMessageDO> toSummarize) {
-        for (int i = toSummarize.size() - 1; i >= 0; i--) {
-            ConversationMessageDO item = toSummarize.get(i);
-            if (item != null && item.getCreateTime() != null) {
-                return item.getCreateTime();
-            }
-        }
-        return null;
-    }
-
     private Long resolveLastMessageId(List<ConversationMessageDO> toSummarize) {
         for (int i = toSummarize.size() - 1; i >= 0; i--) {
             ConversationMessageDO item = toSummarize.get(i);
@@ -289,14 +277,12 @@ public class MySQLConversationMemorySummaryService implements ConversationMemory
     private void createSummary(String conversationId,
                                String userId,
                                String content,
-                               Date summaryTime,
                                Long lastMessageId) {
         ConversationSummaryBO summaryRecord = ConversationSummaryBO.builder()
                 .conversationId(conversationId)
                 .userId(userId)
                 .content(content)
                 .lastMessageId(lastMessageId)
-                .summaryTime(summaryTime)
                 .build();
         conversationMessageService.addMessageSummary(summaryRecord);
     }
