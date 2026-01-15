@@ -48,7 +48,7 @@ public class DataBaseConfiguration {
      * MyBatis-Plus 源数据自动填充类
      */
     @Bean
-    public MyMetaObjectHandler myMetaObjectHandler() {
+    public MetaObjectHandler myMetaObjectHandler() {
         return new MyMetaObjectHandler();
     }
 
