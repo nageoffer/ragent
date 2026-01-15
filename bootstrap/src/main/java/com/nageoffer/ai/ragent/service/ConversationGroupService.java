@@ -24,7 +24,6 @@ import com.nageoffer.ai.ragent.dao.entity.ConversationSummaryDO;
 import java.util.Date;
 import java.util.List;
 
-
 /**
  * 对话组服务接口
  * 提供对话消息、摘要和对话信息的查询功能

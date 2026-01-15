@@ -20,7 +20,6 @@ package com.nageoffer.ai.ragent.enums;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
-
 /**
  * 文档处理状态枚举
  *
