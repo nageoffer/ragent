@@ -25,6 +25,7 @@ import com.google.gson.JsonObject;
 import com.nageoffer.ai.ragent.framework.convention.ChatMessage;
 import com.nageoffer.ai.ragent.framework.convention.ChatRequest;
 import com.nageoffer.ai.ragent.infra.config.AIModelProperties;
+import com.nageoffer.ai.ragent.infra.enums.ModelProvider;
 import com.nageoffer.ai.ragent.infra.enums.ModelCapability;
 import com.nageoffer.ai.ragent.infra.http.HttpMediaTypes;
 import com.nageoffer.ai.ragent.infra.http.ModelClientErrorType;
@@ -70,7 +71,7 @@ public class OllamaChatClient implements ChatClient {
 
     @Override
     public String provider() {
-        return "ollama";
+        return ModelProvider.OLLAMA.getId();
     }
 
     @Override
@@ -90,6 +91,9 @@ public class OllamaChatClient implements ChatClient {
         }
         if (request.getTopP() != null) {
             body.addProperty("top_p", request.getTopP());
+        }
+        if (request.getTopK() != null) {
+            body.addProperty("top_k", request.getTopK());
         }
         if (request.getMaxTokens() != null) {
             body.addProperty("num_predict", request.getMaxTokens());
@@ -200,6 +204,9 @@ public class OllamaChatClient implements ChatClient {
         }
         if (request.getTopP() != null) {
             body.addProperty("top_p", request.getTopP());
+        }
+        if (request.getTopK() != null) {
+            body.addProperty("top_k", request.getTopK());
         }
         if (request.getMaxTokens() != null) {
             body.addProperty("num_predict", request.getMaxTokens());

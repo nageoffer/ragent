@@ -25,6 +25,7 @@ import com.google.gson.JsonObject;
 import com.nageoffer.ai.ragent.framework.convention.ChatMessage;
 import com.nageoffer.ai.ragent.framework.convention.ChatRequest;
 import com.nageoffer.ai.ragent.infra.config.AIModelProperties;
+import com.nageoffer.ai.ragent.infra.enums.ModelProvider;
 import com.nageoffer.ai.ragent.infra.enums.ModelCapability;
 import com.nageoffer.ai.ragent.infra.http.HttpMediaTypes;
 import com.nageoffer.ai.ragent.infra.http.ModelClientErrorType;
@@ -68,7 +69,7 @@ public class SiliconFlowChatClient implements ChatClient {
 
     @Override
     public String provider() {
-        return "siliconflow";
+        return ModelProvider.SILICON_FLOW.getId();
     }
 
     @Override
@@ -236,6 +237,9 @@ public class SiliconFlowChatClient implements ChatClient {
         }
         if (request.getTopP() != null) {
             reqBody.addProperty("top_p", request.getTopP());
+        }
+        if (request.getTopK() != null) {
+            reqBody.addProperty("top_k", request.getTopK());
         }
         if (request.getMaxTokens() != null) {
             reqBody.addProperty("max_tokens", request.getMaxTokens());

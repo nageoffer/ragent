@@ -18,6 +18,7 @@
 package com.nageoffer.ai.ragent.infra.rerank;
 
 import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
+import com.nageoffer.ai.ragent.infra.enums.ModelProvider;
 import com.nageoffer.ai.ragent.infra.model.ModelTarget;
 import org.springframework.stereotype.Service;
 
@@ -29,7 +30,7 @@ public class NoopRerankClient implements RerankClient {
 
     @Override
     public String provider() {
-        return "noop";
+        return ModelProvider.NOOP.getId();
     }
 
     @Override

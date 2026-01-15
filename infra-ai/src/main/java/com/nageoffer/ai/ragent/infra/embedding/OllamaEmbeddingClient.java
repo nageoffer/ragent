@@ -20,6 +20,7 @@ package com.nageoffer.ai.ragent.infra.embedding;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.nageoffer.ai.ragent.infra.config.AIModelProperties;
+import com.nageoffer.ai.ragent.infra.enums.ModelProvider;
 import com.nageoffer.ai.ragent.infra.enums.ModelCapability;
 import com.nageoffer.ai.ragent.infra.http.HttpMediaTypes;
 import com.nageoffer.ai.ragent.infra.http.ModelClientErrorType;
@@ -50,7 +51,7 @@ public class OllamaEmbeddingClient implements EmbeddingClient {
 
     @Override
     public String provider() {
-        return "ollama";
+        return ModelProvider.OLLAMA.getId();
     }
 
     @Override

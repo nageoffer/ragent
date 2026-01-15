@@ -23,6 +23,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
 import com.nageoffer.ai.ragent.infra.config.AIModelProperties;
+import com.nageoffer.ai.ragent.infra.enums.ModelProvider;
 import com.nageoffer.ai.ragent.infra.enums.ModelCapability;
 import com.nageoffer.ai.ragent.infra.http.HttpMediaTypes;
 import com.nageoffer.ai.ragent.infra.http.ModelClientErrorType;
@@ -55,7 +56,7 @@ public class BaiLianRerankClient implements RerankClient {
 
     @Override
     public String provider() {
-        return "bailian";
+        return ModelProvider.BAI_LIAN.getId();
     }
 
     @Override

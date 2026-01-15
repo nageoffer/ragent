@@ -23,6 +23,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.nageoffer.ai.ragent.infra.config.AIModelProperties;
+import com.nageoffer.ai.ragent.infra.enums.ModelProvider;
 import com.nageoffer.ai.ragent.infra.enums.ModelCapability;
 import com.nageoffer.ai.ragent.infra.http.HttpMediaTypes;
 import com.nageoffer.ai.ragent.infra.http.ModelClientErrorType;
@@ -57,7 +58,7 @@ public class SiliconFlowEmbeddingClient implements EmbeddingClient {
 
     @Override
     public String provider() {
-        return "siliconflow";
+        return ModelProvider.SILICON_FLOW.getId();
     }
 
     @Override

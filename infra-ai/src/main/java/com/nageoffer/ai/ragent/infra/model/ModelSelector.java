@@ -19,6 +19,7 @@ package com.nageoffer.ai.ragent.infra.model;
 
 import cn.hutool.core.util.StrUtil;
 import com.nageoffer.ai.ragent.infra.config.AIModelProperties;
+import com.nageoffer.ai.ragent.infra.enums.ModelProvider;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -159,7 +160,7 @@ public class ModelSelector {
 
         // 验证 provider 配置
         AIModelProperties.ProviderConfig provider = providers.get(candidate.getProvider());
-        if (provider == null && !"noop".equalsIgnoreCase(candidate.getProvider())) {
+        if (provider == null && !ModelProvider.NOOP.matches(candidate.getProvider())) {
             log.warn("Provider配置缺失: provider={}, modelId={}",
                     candidate.getProvider(), modelId);
             return null;

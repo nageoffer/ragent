@@ -38,9 +38,6 @@ import java.util.List;
  * <p>典型使用方式：</p>
  * <pre>
  * ChatRequest req = ChatRequest.builder()
- *     .prompt("帮我总结下这段文本")
- *     .systemPrompt("你是一个企业内部知识库助手")
- *     .context(ragContext)          // 可选：RAG 召回的文档内容
  *     .temperature(0.3)
  *     .maxTokens(512)
  *     .build();
@@ -83,6 +80,16 @@ public class ChatRequest {
      * </p>
      */
     private Double topP;
+
+    /**
+     * Top-K 采样参数
+     * <p>
+     * 表示每一步只从概率最高的 K 个 token 中采样，常与 {@link #temperature}
+     * 或 {@link #topP} 搭配使用。K 越小越保守，K 越大越发散
+     * 若为 {@code null} 则使用模型默认值
+     * </p>
+     */
+    private Integer topK;
 
     /**
      * 限制模型本次回答最多生成的 token 数量
