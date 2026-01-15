@@ -48,7 +48,7 @@ public class GlobalExceptionHandler {
      */
     @SneakyThrows
     @ExceptionHandler(value = MethodArgumentNotValidException.class)
-    public Result validExceptionHandler(HttpServletRequest request, MethodArgumentNotValidException ex) {
+    public Result<Void> validExceptionHandler(HttpServletRequest request, MethodArgumentNotValidException ex) {
         BindingResult bindingResult = ex.getBindingResult();
         FieldError firstFieldError = CollectionUtil.getFirst(bindingResult.getFieldErrors());
         String exceptionStr = Optional.ofNullable(firstFieldError)
@@ -62,7 +62,7 @@ public class GlobalExceptionHandler {
      * 拦截应用内抛出的异常
      */
     @ExceptionHandler(value = {AbstractException.class})
-    public Result abstractException(HttpServletRequest request, AbstractException ex) {
+    public Result<Void> abstractException(HttpServletRequest request, AbstractException ex) {
         if (ex.getCause() != null) {
             log.error("[{}] {} [ex] {}", request.getMethod(), request.getRequestURL().toString(), ex, ex.getCause());
             return Results.failure(ex);
@@ -81,8 +81,8 @@ public class GlobalExceptionHandler {
      * 拦截未登录异常
      */
     @ExceptionHandler(value = NotLoginException.class)
-    public Result notLoginException(HttpServletRequest request, NotLoginException ex) {
-        log.warn("[{}] {} [auth] {}", request.getMethod(), getUrl(request), ex.getMessage());
+    public Result<Void> notLoginException(HttpServletRequest request, NotLoginException ex) {
+        log.warn("[{}] {} [auth] not-login: {}", request.getMethod(), getUrl(request), ex.getMessage());
         return Results.failure(BaseErrorCode.CLIENT_ERROR.code(), "未登录或登录已过期");
     }
 
@@ -90,8 +90,8 @@ public class GlobalExceptionHandler {
      * 拦截无角色权限异常
      */
     @ExceptionHandler(value = NotRoleException.class)
-    public Result notRoleException(HttpServletRequest request, NotRoleException ex) {
-        log.warn("[{}] {} [auth] {}", request.getMethod(), getUrl(request), ex.getMessage());
+    public Result<Void> notRoleException(HttpServletRequest request, NotRoleException ex) {
+        log.warn("[{}] {} [auth] no-role: {}", request.getMethod(), getUrl(request), ex.getMessage());
         return Results.failure(BaseErrorCode.CLIENT_ERROR.code(), "权限不足");
     }
 
@@ -99,7 +99,7 @@ public class GlobalExceptionHandler {
      * 拦截未捕获异常
      */
     @ExceptionHandler(value = Throwable.class)
-    public Result defaultErrorHandler(HttpServletRequest request, Throwable throwable) {
+    public Result<Void> defaultErrorHandler(HttpServletRequest request, Throwable throwable) {
         log.error("[{}] {} ", request.getMethod(), getUrl(request), throwable);
         return Results.failure();
     }
