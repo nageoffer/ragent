@@ -43,8 +43,8 @@ rag:
   memory:
     history-keep-turns: 4
     summary-start-turns: 5
-    ttl-minutes: 60
     summary-enabled: true
+    ttl-minutes: 60
     summary-max-chars: 200
     title-max-length: 30
 
