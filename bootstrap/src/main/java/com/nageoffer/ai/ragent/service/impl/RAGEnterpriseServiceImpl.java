@@ -57,6 +57,7 @@ import com.nageoffer.ai.ragent.rag.rewrite.QueryRewriteService;
 import com.nageoffer.ai.ragent.rag.rewrite.RewriteResult;
 import com.nageoffer.ai.ragent.service.ConversationGroupService;
 import com.nageoffer.ai.ragent.service.RAGEnterpriseService;
+import com.nageoffer.ai.ragent.service.handler.ChatRateLimit;
 import com.nageoffer.ai.ragent.service.handler.StreamChatEventHandler;
 import com.nageoffer.ai.ragent.service.handler.StreamTaskManager;
 import lombok.extern.slf4j.Slf4j;
@@ -150,6 +151,7 @@ public class RAGEnterpriseServiceImpl implements RAGEnterpriseService {
     }
 
     @Override
+    @ChatRateLimit
     public void streamChat(String question, String conversationId, Boolean deepThinking, SseEmitter emitter) {
         String actualConversationId = StrUtil.isBlank(conversationId) ? IdUtil.getSnowflakeNextIdStr() : conversationId;
         String taskId = IdUtil.getSnowflakeNextIdStr();

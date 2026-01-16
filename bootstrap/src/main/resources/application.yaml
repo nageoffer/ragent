@@ -40,6 +40,14 @@ rag:
     max-history-messages: 4
     max-history-chars: 500
 
+  rate-limit:
+    global:
+      enabled: true
+      max-concurrent: 50
+      max-wait-seconds: 20
+      lease-seconds: 600
+      poll-interval-ms: 200
+
   memory:
     history-keep-turns: 4
     summary-start-turns: 5

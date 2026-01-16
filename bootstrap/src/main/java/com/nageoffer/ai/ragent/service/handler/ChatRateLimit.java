@@ -15,49 +15,17 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.enums;
+package com.nageoffer.ai.ragent.service.handler;
 
-import lombok.RequiredArgsConstructor;
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
 
-@RequiredArgsConstructor
-public enum SSEEventType {
-
-    /**
-     * 会话与任务的元信息事件
-     */
-    META("meta"),
-
-    /**
-     * 增量消息事件
-     */
-    MESSAGE("message"),
-
-    /**
-     * 完成事件
-     */
-    DONE("done"),
-
-    /**
-     * 标题事件
-     */
-    TITLE("title"),
-
-    /**
-     * 取消事件
-     */
-    CANCEL("cancel"),
-
-    /**
-     * 拒绝事件
-     */
-    REJECT("reject");
-
-    private final String value;
-
-    /**
-     * SSE 事件名称（与前端约定一致）
-     */
-    public String value() {
-        return value;
-    }
+/**
+ * 标记需要进行排队限流的 SSE 入口
+ */
+@Target(ElementType.METHOD)
+@Retention(RetentionPolicy.RUNTIME)
+public @interface ChatRateLimit {
 }
