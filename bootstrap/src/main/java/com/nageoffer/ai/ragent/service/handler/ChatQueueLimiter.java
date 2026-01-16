@@ -113,10 +113,11 @@ public class ChatQueueLimiter {
             return;
         }
 
+        String userId = resolveUserId();
         AtomicBoolean cancelled = new AtomicBoolean(false);
         AtomicReference<String> permitRef = new AtomicReference<>();
         String requestId = IdUtil.getSnowflakeNextIdStr();
-        RScoredSortedSet<String> queue = redissonClient.getScoredSortedSet(QUEUE_KEY);
+        RScoredSortedSet<String> queue = redissonClient.getScoredSortedSet(QUEUE_KEY, StringCodec.INSTANCE);
         long seq = nextQueueSeq();
         queue.add(seq, requestId);
         Runnable releaseOnce = () -> {
@@ -138,7 +139,7 @@ public class ChatQueueLimiter {
             return;
         }
 
-        scheduleQueuePoll(queue, requestId, permitRef, cancelled, question, conversationId, emitter, onAcquire);
+        scheduleQueuePoll(queue, requestId, permitRef, cancelled, question, conversationId, userId, emitter, onAcquire);
     }
 
     private void scheduleQueuePoll(RScoredSortedSet<String> queue,
@@ -147,6 +148,7 @@ public class ChatQueueLimiter {
                                    AtomicBoolean cancelled,
                                    String question,
                                    String conversationId,
+                                   String userId,
                                    SseEmitter emitter,
                                    Runnable onAcquire) {
         long deadline = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(rateLimitProperties.getGlobalMaxWaitSeconds());
@@ -170,8 +172,7 @@ public class ChatQueueLimiter {
                 }
                 cancelFuture(futureRef[0]);
                 if (!cancelled.get()) {
-                    log.info("排队等待超时，queueSize={}", queue.size());
-                    RejectedContext rejectedContext = recordRejectedConversation(question, conversationId);
+                    RejectedContext rejectedContext = recordRejectedConversation(question, conversationId, userId);
                     sendRejectEvents(emitter, rejectedContext);
                 }
                 return;
@@ -269,12 +270,27 @@ public class ChatQueueLimiter {
             return ClaimResult.notClaimed();
         }
         Object ok = result.get(0);
-        if (!(ok instanceof Long) || ((Long) ok) != 1L || result.size() < 2) {
+        long okValue = parseLong(ok);
+        if (okValue != 1L || result.size() < 2) {
             return ClaimResult.notClaimed();
         }
         Object scoreObj = result.get(1);
         double score = scoreObj == null ? System.currentTimeMillis() : Double.parseDouble(scoreObj.toString());
         return new ClaimResult(true, score);
+    }
+
+    private long parseLong(Object value) {
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        if (value instanceof String text) {
+            try {
+                return Long.parseLong(text);
+            } catch (NumberFormatException ignored) {
+                return 0L;
+            }
+        }
+        return 0L;
     }
 
     private long nextQueueSeq() {
@@ -292,12 +308,11 @@ public class ChatQueueLimiter {
         redissonClient.getTopic(NOTIFY_TOPIC).publish("permit_released");
     }
 
-    private RejectedContext recordRejectedConversation(String question, String conversationId) {
+    private RejectedContext recordRejectedConversation(String question, String conversationId, String userId) {
         if (StrUtil.isBlank(question)) {
             return null;
         }
 
-        String userId = UserContext.getUserId();
         if (StrUtil.isBlank(userId)) {
             try {
                 userId = StpUtil.getLoginIdAsString();
@@ -387,6 +402,18 @@ public class ChatQueueLimiter {
             onAcquire.run();
         } catch (Exception ex) {
             log.warn("执行排队后入口失败", ex);
+        }
+    }
+
+    private String resolveUserId() {
+        String userId = UserContext.getUserId();
+        if (StrUtil.isNotBlank(userId)) {
+            return userId;
+        }
+        try {
+            return StpUtil.getLoginIdAsString();
+        } catch (Exception ignored) {
+            return null;
         }
     }
 
