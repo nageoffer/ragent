@@ -33,3 +33,4 @@ build/
 
 ### VS Code ###
 .vscode/
+scripts/logs/
