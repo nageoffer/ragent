@@ -361,8 +361,7 @@ public class ChatQueueLimiter {
         SseEmitterSender sender = new SseEmitterSender(emitter);
         if (rejectedContext != null) {
             sender.sendEvent(SSEEventType.META.value(), new MetaPayload(rejectedContext.conversationId, rejectedContext.taskId));
-            sender.sendEvent(SSEEventType.REJECT.value(), REJECT_MESSAGE);
-            sender.sendEvent(SSEEventType.MESSAGE.value(), new MessageDelta(RESPONSE_TYPE, REJECT_MESSAGE));
+            sender.sendEvent(SSEEventType.REJECT.value(), new MessageDelta(RESPONSE_TYPE, REJECT_MESSAGE));
             if (StrUtil.isNotBlank(rejectedContext.title)) {
                 sender.sendEvent(SSEEventType.TITLE.value(), new TitlePayload(rejectedContext.title));
             }
