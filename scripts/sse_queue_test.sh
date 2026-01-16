@@ -22,13 +22,54 @@ TOKEN="${TOKEN:-214630a9cef34765a6df2076aa0c4610}"
 CONVERSATION_ID="${CONVERSATION_ID:-}"
 LOG_DIR="${LOG_DIR:-$(pwd)/logs}"
 
+# ==================== 检测 Python 可用性 ====================
+HAS_PYTHON=false
+if command -v python3 &>/dev/null; then
+  HAS_PYTHON=true
+  PYTHON_CMD="python3"
+elif command -v python &>/dev/null; then
+  HAS_PYTHON=true
+  PYTHON_CMD="python"
+fi
+
 # ==================== 工具函数 ====================
-# 计算字符串显示宽度（去除ANSI转义序列）
+# 精确计算字符串显示宽度（自动降级）
 get_display_width() {
   local str="$1"
   # 移除所有ANSI转义序列
   local clean_str=$(echo -e "$str" | sed 's/\x1b\[[0-9;]*m//g')
-  echo -n "$clean_str" | wc -m | tr -d ' '
+
+  if [[ "$HAS_PYTHON" == true ]]; then
+    # 方案1：使用Python精确计算（支持中文等宽字符）
+    $PYTHON_CMD -c "
+import unicodedata
+import sys
+s = '''$clean_str'''
+width = 0
+for c in s:
+    ea = unicodedata.east_asian_width(c)
+    if ea in ('F', 'W'):  # Fullwidth or Wide
+        width += 2
+    elif ea in ('H', 'Na', 'N', 'A'):  # Halfwidth, Narrow, Neutral, Ambiguous
+        width += 1
+print(width, end='')
+" 2>/dev/null || echo ${#clean_str}
+  else
+    # 方案2：纯Bash降级方案（估算中文字符）
+    # 简单规则：ASCII占1，非ASCII占2
+    local width=0
+    local len=${#clean_str}
+    for ((i=0; i<len; i++)); do
+      local char="${clean_str:i:1}"
+      # 检查是否是ASCII字符（0-127）
+      if [[ $(printf '%d' "'$char") -lt 128 ]] 2>/dev/null; then
+        ((width++))
+      else
+        ((width+=2))
+      fi
+    done
+    echo $width
+  fi
 }
 
 # 动态绘制配置框
@@ -103,6 +144,13 @@ echo -e "${RESET}"
 echo -e "${MAGENTA}╔══════════════════════════════════════════════════════════════╗${RESET}"
 echo -e "${MAGENTA}║${RESET}  ${BOLD}SSE Real-time Streaming Test Suite${RESET}                   ${MAGENTA}║${RESET}"
 echo -e "${MAGENTA}╚══════════════════════════════════════════════════════════════╝${RESET}"
+
+# 显示环境信息
+if [[ "$HAS_PYTHON" == true ]]; then
+  echo -e "${DIM}${GRAY}[✓] Using $PYTHON_CMD for precise width calculation${RESET}"
+else
+  echo -e "${DIM}${YELLOW}[!] Python not found, using fallback method${RESET}"
+fi
 echo ""
 
 # ==================== 准备配置信息 ====================
@@ -166,13 +214,12 @@ echo ""
 echo -e "${YELLOW}⏳ Streaming in progress... waiting for completion${RESET}"
 echo ""
 
-# ==================== 等待完成 ====================
 wait
 
 END_TIME=$(date +%s)
 TOTAL_TIME=$((END_TIME - START_TIME))
 
-# ==================== 结果展示（也使用自适应框）====================
+# ==================== 结果展示 ====================
 echo ""
 
 declare -a summary_lines
@@ -180,7 +227,6 @@ summary_lines+=("${MAGENTA}▸${RESET} ${CYAN}Total Workers${RESET}: ${YELLOW}${
 summary_lines+=("${MAGENTA}▸${RESET} ${CYAN}Total Time   ${RESET}: ${YELLOW}${TOTAL_TIME}s${RESET}")
 summary_lines+=("${MAGENTA}▸${RESET} ${CYAN}Log Location ${RESET}: ${YELLOW}${LOG_DIR}${RESET}")
 
-# 修改标题的函数版本
 draw_summary_box() {
   local -a lines=("$@")
   local max_width=0
