@@ -60,6 +60,7 @@ import com.nageoffer.ai.ragent.service.RAGEnterpriseService;
 import com.nageoffer.ai.ragent.service.handler.ChatRateLimit;
 import com.nageoffer.ai.ragent.service.handler.StreamChatEventHandler;
 import com.nageoffer.ai.ragent.service.handler.StreamTaskManager;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
@@ -90,13 +91,12 @@ import static com.nageoffer.ai.ragent.enums.IntentKind.SYSTEM;
  */
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class RAGEnterpriseServiceImpl implements RAGEnterpriseService {
 
     private final RetrieverService retrieverService;
     private final LLMService llmService;
     private final RerankService rerankService;
-    private final IntentClassifier intentClassifier;
-    private final QueryRewriteService queryRewriteService;
     private final RAGEnterprisePromptService promptBuilder;
     private final ContextFormatter contextFormatter;
     private final MCPService mcpService;
@@ -107,48 +107,16 @@ public class RAGEnterpriseServiceImpl implements RAGEnterpriseService {
     private final StreamTaskManager taskManager;
     private final AIModelProperties modelProperties;
     private final ConversationGroupService conversationGroupService;
+    @Qualifier("defaultIntentClassifier")
+    private final IntentClassifier intentClassifier;
+    @Qualifier("multiQuestionRewriteService")
+    private final QueryRewriteService queryRewriteService;
+    @Qualifier("intentClassifyThreadPoolExecutor")
     private final Executor intentClassifyExecutor;
+    @Qualifier("ragContextThreadPoolExecutor")
     private final Executor ragContextExecutor;
+    @Qualifier("ragRetrievalThreadPoolExecutor")
     private final Executor ragRetrievalExecutor;
-
-    public RAGEnterpriseServiceImpl(
-            RetrieverService retrieverService,
-            LLMService llmService,
-            RerankService rerankService,
-            MCPService mcpService,
-            MCPParameterExtractor mcpParameterExtractor,
-            MCPToolRegistry mcpToolRegistry,
-            PromptTemplateLoader promptTemplateLoader,
-            RAGEnterprisePromptService promptBuilder,
-            ContextFormatter contextFormatter,
-            ConversationMemoryService memoryService,
-            StreamTaskManager taskManager,
-            AIModelProperties modelProperties,
-            ConversationGroupService conversationGroupService,
-            @Qualifier("defaultIntentClassifier") IntentClassifier intentClassifier,
-            @Qualifier("multiQuestionRewriteService") QueryRewriteService queryRewriteService,
-            @Qualifier("intentClassifyThreadPoolExecutor") Executor intentClassifyExecutor,
-            @Qualifier("ragContextThreadPoolExecutor") Executor ragContextExecutor,
-            @Qualifier("ragRetrievalThreadPoolExecutor") Executor ragRetrievalExecutor) {
-        this.retrieverService = retrieverService;
-        this.llmService = llmService;
-        this.rerankService = rerankService;
-        this.promptBuilder = promptBuilder;
-        this.contextFormatter = contextFormatter;
-        this.mcpService = mcpService;
-        this.mcpParameterExtractor = mcpParameterExtractor;
-        this.mcpToolRegistry = mcpToolRegistry;
-        this.promptTemplateLoader = promptTemplateLoader;
-        this.memoryService = memoryService;
-        this.taskManager = taskManager;
-        this.modelProperties = modelProperties;
-        this.conversationGroupService = conversationGroupService;
-        this.intentClassifier = intentClassifier;
-        this.queryRewriteService = queryRewriteService;
-        this.intentClassifyExecutor = intentClassifyExecutor;
-        this.ragContextExecutor = ragContextExecutor;
-        this.ragRetrievalExecutor = ragRetrievalExecutor;
-    }
 
     @Override
     @ChatRateLimit
