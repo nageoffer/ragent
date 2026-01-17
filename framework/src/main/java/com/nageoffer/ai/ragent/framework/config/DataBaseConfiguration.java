@@ -21,6 +21,7 @@ import com.baomidou.mybatisplus.annotation.DbType;
 import com.baomidou.mybatisplus.core.handlers.MetaObjectHandler;
 import com.baomidou.mybatisplus.extension.plugins.MybatisPlusInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.inner.PaginationInnerInterceptor;
+import com.nageoffer.ai.ragent.framework.database.MyMetaObjectHandler;
 import org.apache.ibatis.reflection.MetaObject;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -50,23 +51,5 @@ public class DataBaseConfiguration {
     @Bean
     public MetaObjectHandler myMetaObjectHandler() {
         return new MyMetaObjectHandler();
-    }
-
-    /**
-     * MyBatis-Plus 源数据自动填充类
-     */
-    static class MyMetaObjectHandler implements MetaObjectHandler {
-
-        @Override
-        public void insertFill(MetaObject metaObject) {
-            strictInsertFill(metaObject, "createTime", Date::new, Date.class);
-            strictInsertFill(metaObject, "updateTime", Date::new, Date.class);
-            strictInsertFill(metaObject, "deleted", () -> 0, Integer.class);
-        }
-
-        @Override
-        public void updateFill(MetaObject metaObject) {
-            strictUpdateFill(metaObject, "updateTime", Date::new, Date.class);
-        }
     }
 }
