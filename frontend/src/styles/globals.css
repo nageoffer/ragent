@@ -39,6 +39,8 @@
   --secondary-color: #8b5cf6;
   --gradient-primary: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
   --gradient-light: linear-gradient(135deg, #eff6ff 0%, #f5f3ff 100%);
+  --dsw-alias-brand-primary-invert: #a5b4fc;
+  --dsw-specific-sidebar-nav-item-active-accent: #eff6ff;
   --success: #22c55e;
   --warning: #f59e0b;
   --error: #ef4444;
@@ -125,37 +127,33 @@ textarea {
   @apply inline-block w-1.5 h-1.5 rounded-full bg-muted-foreground align-middle ml-1 animate-blink;
 }
 
-.scrollbar-auto {
+.sidebar-scroll {
   scrollbar-width: none;
 }
 
-.scrollbar-auto::-webkit-scrollbar {
+.sidebar-scroll::-webkit-scrollbar {
   width: 0;
   height: 0;
 }
 
-.scrollbar-auto::-webkit-scrollbar-thumb {
-  background: transparent;
-  border-radius: 999px;
+.sidebar-scroll::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 2px;
 }
 
-.scrollbar-auto::-webkit-scrollbar-track {
+.sidebar-scroll::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.scrollbar-auto.is-scrolling {
+.sidebar-scroll:hover {
   scrollbar-width: thin;
 }
 
-.scrollbar-auto.is-scrolling::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+.sidebar-scroll:hover::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
 }
 
-.scrollbar-auto.is-scrolling::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.25);
-}
-
-.scrollbar-auto.is-scrolling::-webkit-scrollbar-thumb:hover {
-  background: rgba(148, 163, 184, 0.4);
+.sidebar-scroll:hover::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.25);
 }

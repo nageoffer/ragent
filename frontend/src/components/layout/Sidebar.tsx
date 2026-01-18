@@ -1,8 +1,9 @@
 import * as React from "react";
-import { differenceInCalendarDays, format, isValid } from "date-fns";
+import { differenceInCalendarDays, isValid } from "date-fns";
 import {
   BookOpen,
   LogOut,
+  MessageSquare,
   MoreHorizontal,
   Pencil,
   PlayCircle,
@@ -57,9 +58,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     id: string;
     title: string;
   } | null>(null);
-  const [isScrolling, setIsScrolling] = React.useState(false);
   const [avatarFailed, setAvatarFailed] = React.useState(false);
-  const scrollTimeoutRef = React.useRef<number | null>(null);
   const renameInputRef = React.useRef<HTMLInputElement | null>(null);
 
   React.useEffect(() => {
@@ -88,7 +87,8 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       const diff = Math.max(0, differenceInCalendarDays(now, date));
       if (diff === 0) return "今天";
       if (diff <= 7) return "7天内";
-      return format(date, "yyyy-MM");
+      if (diff <= 30) return "30天内";
+      return "更早";
     };
 
     filteredSessions.forEach((session) => {
@@ -106,24 +106,6 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     }));
   }, [filteredSessions]);
 
-  const handleScroll = () => {
-    setIsScrolling(true);
-    if (scrollTimeoutRef.current) {
-      window.clearTimeout(scrollTimeoutRef.current);
-    }
-    scrollTimeoutRef.current = window.setTimeout(() => {
-      setIsScrolling(false);
-    }, 800);
-  };
-
-  React.useEffect(() => {
-    return () => {
-      if (scrollTimeoutRef.current) {
-        window.clearTimeout(scrollTimeoutRef.current);
-      }
-    };
-  }, []);
-
   React.useEffect(() => {
     if (renamingId) {
       renameInputRef.current?.focus();
@@ -138,6 +120,8 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const avatarUrl = user?.avatar?.trim();
   const showAvatar = Boolean(avatarUrl) && !avatarFailed;
   const avatarFallback = (user?.username || user?.userId || "用户").slice(0, 1).toUpperCase();
+  const sessionTitleFont =
+    "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", \"Helvetica Neue\", Arial, sans-serif";
 
   const startRename = (id: string, title: string) => {
     setRenamingId(id);
@@ -176,22 +160,22 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       />
       <aside
         className={cn(
-          "fixed left-0 top-0 z-40 flex h-screen w-72 flex-shrink-0 flex-col border-r border-gray-200 bg-white transition-transform lg:static lg:h-screen lg:translate-x-0",
+          "fixed left-0 top-0 z-40 flex h-screen w-[280px] flex-shrink-0 flex-col rounded-2xl bg-white p-3 shadow-[0_2px_12px_rgba(0,0,0,0.08)] transition-transform lg:static lg:h-screen lg:translate-x-0",
           isOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >
-        <div className="border-b border-gray-100 p-5">
+        <div className="border-b border-[#F0F0F0] pb-3">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-purple-500 shadow-md shadow-indigo-500/20">
               <Sparkles className="h-5 w-5 text-white" />
             </div>
-            <div>
+            <div style={{ fontFamily: sessionTitleFont }}>
               <p className="text-base font-semibold text-gray-900">RAG 智能问答</p>
               <p className="text-xs text-gray-400">Powered by AI</p>
             </div>
           </div>
         </div>
-        <div className="p-4">
+        <div className="py-3">
           <button
             type="button"
             className="w-full"
@@ -207,7 +191,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
             </span>
           </button>
         </div>
-        <div className="px-4 pb-4">
+        <div className="pb-3">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
             <input
@@ -218,30 +202,30 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
             />
           </div>
         </div>
-        <div
-          className={cn(
-            "flex-1 overflow-y-auto px-3 scrollbar-auto",
-            isScrolling && "is-scrolling"
-          )}
-          onScroll={handleScroll}
-        >
+        <div className="flex-1 overflow-y-auto sidebar-scroll">
           {filteredSessions.length === 0 ? (
-            <p className="px-3 py-2 text-sm text-gray-400">暂无会话</p>
+            <div
+              className="flex h-full flex-col items-center justify-center text-[#999999]"
+              style={{ fontFamily: sessionTitleFont }}
+            >
+              <MessageSquare className="h-16 w-16" />
+              <p className="mt-2 text-[14px]">暂无对话记录</p>
+            </div>
           ) : (
-            <div className="space-y-3">
-              {groupedSessions.map((group) => (
-                <div key={group.label} className="space-y-0.5">
-                  <p className="px-4 pt-1 pb-0 text-xs font-medium text-gray-400">
+            <div>
+              {groupedSessions.map((group, index) => (
+                <div key={group.label} className={cn("flex flex-col", index === 0 ? "mt-0" : "mt-6")}>
+                  <p className="mb-2 pl-3 text-[12px] font-normal leading-[18px] text-[#999999]">
                     {group.label}
                   </p>
                   {group.items.map((session) => (
                     <div
                       key={session.id}
                       className={cn(
-                        "group relative flex items-center gap-2 rounded-xl px-4 py-1.5 text-[15px] transition-all",
+                        "group my-0.5 flex min-h-[42px] cursor-pointer items-center justify-between gap-2 rounded-lg px-3 py-2.5 text-[14px] leading-[22px] transition-[background-color] duration-200",
                         currentSessionId === session.id
-                          ? "text-indigo-700 before:pointer-events-none before:absolute before:inset-y-0 before:inset-x-2 before:rounded-lg before:border before:border-indigo-100 before:bg-indigo-50 before:content-[''] before:z-0"
-                          : "text-gray-600 hover:bg-gray-50"
+                          ? "bg-[#EBF5FF] text-[#1677FF] hover:bg-[#DDEEFF]"
+                          : "text-[#333333] hover:bg-[#F5F5F5]"
                       )}
                       role="button"
                       tabIndex={0}
@@ -281,10 +265,10 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                           onBlur={() => {
                             commitRename().catch(() => null);
                           }}
-                          className="relative z-10 h-7 flex-1 rounded-lg border border-indigo-200 bg-white px-2 text-sm text-gray-700 focus:border-indigo-500 focus:outline-none"
+                          className="h-6 flex-1 rounded-md border border-gray-200 bg-white px-2 text-[14px] leading-[22px] text-[#333333] focus:border-[#1677FF] focus:outline-none"
                         />
                       ) : (
-                        <span className="relative z-10 flex-1 truncate text-sm font-medium">
+                        <span className="min-w-0 flex-1 truncate font-normal">
                           {session.title || "新对话"}
                         </span>
                       )}
@@ -293,10 +277,10 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                           <button
                             type="button"
                             className={cn(
-                              "relative z-10 flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 transition-opacity hover:bg-gray-200",
+                              "flex h-6 w-6 items-center justify-center rounded text-[#666666] transition-opacity duration-150 hover:bg-[rgba(0,0,0,0.06)]",
                               currentSessionId === session.id
-                                ? "opacity-100"
-                                : "opacity-0 group-hover:opacity-100"
+                                ? "pointer-events-auto opacity-100 text-[#1677FF]"
+                                : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100"
                             )}
                             onClick={(event) => event.stopPropagation()}
                             aria-label="会话操作"
@@ -304,12 +288,16 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                             <MoreHorizontal className="h-4 w-4" />
                           </button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="start" className="w-32">
+                        <DropdownMenuContent
+                          align="start"
+                          className="min-w-[120px] rounded-lg border-0 bg-white p-0 py-1 shadow-[0_4px_16px_rgba(0,0,0,0.12)]"
+                        >
                           <DropdownMenuItem
                             onClick={(event) => {
                               event.stopPropagation();
                               startRename(session.id, session.title || "新对话");
                             }}
+                            className="px-4 py-2 text-[14px] text-[#333333] focus:bg-[#F5F5F5] focus:text-[#333333] data-[highlighted]:bg-[#F5F5F5] data-[highlighted]:text-[#333333]"
                           >
                             <Pencil className="mr-2 h-4 w-4" />
                             重命名
@@ -322,7 +310,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                                 title: session.title || "新对话"
                               });
                             }}
-                            className="text-rose-600 focus:text-rose-600"
+                            className="px-4 py-2 text-[14px] text-[#FF4D4F] focus:bg-[#F5F5F5] focus:text-[#FF4D4F] data-[highlighted]:bg-[#F5F5F5] data-[highlighted]:text-[#FF4D4F]"
                           >
                             <Trash2 className="mr-2 h-4 w-4" />
                             删除
@@ -336,7 +324,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
             </div>
           )}
         </div>
-        <div className="mt-auto p-3">
+        <div className="mt-auto pt-3">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
