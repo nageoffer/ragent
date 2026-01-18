@@ -14,18 +14,33 @@ interface MessageListProps {
 
 export function MessageList({ messages, isLoading, isStreaming, sessionKey }: MessageListProps) {
   const virtuosoRef = React.useRef<VirtuosoHandle | null>(null);
+  const scrollerRef = React.useRef<HTMLElement | null>(null);
   const lastSessionRef = React.useRef<string | null>(null);
   const pendingScrollRef = React.useRef(true);
+  const settleTimerRef = React.useRef<number | null>(null);
+  const heightScrollRafRef = React.useRef<number | null>(null);
   const initialTopMostItemIndex = React.useMemo(
     () => ({ index: "LAST" as const, align: "end" as const }),
     []
   );
+
+  const scrollToBottom = React.useCallback(() => {
+    virtuosoRef.current?.scrollToIndex({ index: "LAST", align: "end", behavior: "auto" });
+    const scroller = scrollerRef.current;
+    if (scroller) {
+      scroller.scrollTop = scroller.scrollHeight;
+    }
+  }, []);
 
   React.useEffect(() => {
     const nextKey = sessionKey ?? "empty";
     if (lastSessionRef.current !== nextKey) {
       lastSessionRef.current = nextKey;
       pendingScrollRef.current = true;
+      if (settleTimerRef.current) {
+        window.clearTimeout(settleTimerRef.current);
+        settleTimerRef.current = null;
+      }
     }
   }, [sessionKey]);
 
@@ -33,18 +48,81 @@ export function MessageList({ messages, isLoading, isStreaming, sessionKey }: Me
     if (!pendingScrollRef.current || isStreaming || isLoading || messages.length === 0) {
       return;
     }
-    const scrollToBottom = () => {
-      virtuosoRef.current?.scrollToIndex({
-        index: messages.length - 1,
-        align: "end",
-        behavior: "auto"
-      });
+    let attempts = 0;
+    let rafId = 0;
+    let active = true;
+    const run = () => {
+      scrollToBottom();
+      attempts += 1;
+      if (attempts < 3) {
+        rafId = window.requestAnimationFrame(run);
+      }
     };
-    scrollToBottom();
-    const timer = window.setTimeout(scrollToBottom, 120);
-    pendingScrollRef.current = false;
-    return () => window.clearTimeout(timer);
+    run();
+    const timer = window.setTimeout(scrollToBottom, 240);
+    const lateTimer = window.setTimeout(scrollToBottom, 900);
+    const handleLoad = () => {
+      if (active) {
+        scrollToBottom();
+      }
+    };
+    if (document.readyState === "complete") {
+      handleLoad();
+    } else {
+      window.addEventListener("load", handleLoad, { once: true });
+    }
+    if (document.fonts?.ready) {
+      document.fonts.ready.then(() => {
+      if (active) {
+        scrollToBottom();
+      }
+    });
+  }
+    if (settleTimerRef.current) {
+      window.clearTimeout(settleTimerRef.current);
+    }
+    settleTimerRef.current = window.setTimeout(() => {
+      pendingScrollRef.current = false;
+      settleTimerRef.current = null;
+    }, 1500);
+    return () => {
+      active = false;
+      window.cancelAnimationFrame(rafId);
+      window.clearTimeout(timer);
+      window.clearTimeout(lateTimer);
+      if (settleTimerRef.current) {
+        window.clearTimeout(settleTimerRef.current);
+        settleTimerRef.current = null;
+      }
+      window.removeEventListener("load", handleLoad);
+    };
   }, [messages.length, isStreaming, isLoading, sessionKey]);
+
+  React.useEffect(() => {
+    return () => {
+      if (heightScrollRafRef.current) {
+        window.cancelAnimationFrame(heightScrollRafRef.current);
+        heightScrollRafRef.current = null;
+      }
+      if (settleTimerRef.current) {
+        window.clearTimeout(settleTimerRef.current);
+        settleTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  const handleTotalListHeightChanged = React.useCallback(() => {
+    if (!pendingScrollRef.current || isStreaming || isLoading) {
+      return;
+    }
+    if (heightScrollRafRef.current) {
+      return;
+    }
+    heightScrollRafRef.current = window.requestAnimationFrame(() => {
+      heightScrollRafRef.current = null;
+      scrollToBottom();
+    });
+  }, [isStreaming, isLoading, scrollToBottom]);
 
   const List = React.useMemo(() => {
     const Comp = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
@@ -83,7 +161,14 @@ export function MessageList({ messages, isLoading, isStreaming, sessionKey }: Me
       ref={virtuosoRef}
       data={messages}
       initialTopMostItemIndex={initialTopMostItemIndex}
-      followOutput={(atBottom) => (isStreaming && atBottom ? "smooth" : false)}
+      followOutput={(atBottom) => {
+        if (!atBottom) return false;
+        return isStreaming ? "smooth" : "auto";
+      }}
+      scrollerRef={(node) => {
+        scrollerRef.current = node as HTMLElement | null;
+      }}
+      totalListHeightChanged={handleTotalListHeightChanged}
       className="h-full"
       components={{ List }}
       itemContent={(index, message) => (

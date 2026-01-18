@@ -51,7 +51,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         thinkingStartAt: null,
         streamTaskId: null,
         streamAbort: null,
-        streamingMessageId: null
+        streamingMessageId: null,
+        cancelRequested: false
       });
       toast.success("登录成功");
     } catch (error) {
@@ -79,7 +80,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       thinkingStartAt: null,
       streamTaskId: null,
       streamAbort: null,
-      streamingMessageId: null
+      streamingMessageId: null,
+      cancelRequested: false
     });
     storage.clearAuth();
     setAuthToken(null);

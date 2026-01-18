@@ -25,6 +25,7 @@ interface ChatState {
   streamTaskId: string | null;
   streamAbort: (() => void) | null;
   streamingMessageId: string | null;
+  cancelRequested: boolean;
   fetchSessions: () => Promise<void>;
   createSession: () => Promise<string>;
   deleteSession: (sessionId: string) => Promise<void>;
@@ -80,6 +81,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   streamTaskId: null,
   streamAbort: null,
   streamingMessageId: null,
+  cancelRequested: false,
   fetchSessions: async () => {
     set({ isLoading: true });
     try {
@@ -120,7 +122,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       thinkingStartAt: null,
       streamTaskId: null,
       streamAbort: null,
-      streamingMessageId: null
+      streamingMessageId: null,
+      cancelRequested: false
     });
     return "";
   },
@@ -190,7 +193,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
         isStreaming: false,
         streamTaskId: null,
         streamAbort: null,
-        streamingMessageId: null
+        streamingMessageId: null,
+        cancelRequested: false
       });
     }
   },
@@ -235,7 +239,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       isStreaming: true,
       streamingMessageId: assistantId,
       thinkingStartAt: deepThinkingEnabled ? Date.now() : null,
-      streamTaskId: null
+      streamTaskId: null,
+      cancelRequested: false
     }));
 
     const conversationId = get().currentSessionId;
@@ -249,6 +254,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     const handlers = {
       onMeta: (payload: { conversationId: string; taskId: string }) => {
+        if (get().streamingMessageId !== assistantId) return;
         const nextId = payload.conversationId || get().currentSessionId;
         if (!nextId) return;
         const lastTime = new Date().toISOString();
@@ -263,6 +269,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
             lastTime
           })
         }));
+        if (get().cancelRequested) {
+          stopTask(payload.taskId).catch(() => null);
+        }
       },
       onMessage: (payload: MessageDeltaPayload) => {
         if (!payload || typeof payload !== "object") return;
@@ -279,6 +288,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         get().appendStreamContent(payload.delta);
       },
       onFinish: (payload: CompletionPayload) => {
+        if (get().streamingMessageId !== assistantId) return;
         if (!payload) return;
         if (payload.title && get().currentSessionId) {
           get().updateSessionTitle(get().currentSessionId as string, payload.title);
@@ -329,6 +339,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         }
       },
       onCancel: (payload: CompletionPayload) => {
+        if (get().streamingMessageId !== assistantId) return;
         if (payload?.title && get().currentSessionId) {
           get().updateSessionTitle(get().currentSessionId as string, payload.title);
         }
@@ -353,29 +364,35 @@ export const useChatStore = create<ChatState>((set, get) => ({
           thinkingStartAt: null,
           streamTaskId: null,
           streamAbort: null,
-          streamingMessageId: null
+          streamingMessageId: null,
+          cancelRequested: false
         }));
       },
       onDone: () => {
+        if (get().streamingMessageId !== assistantId) return;
         set({
           isStreaming: false,
           thinkingStartAt: null,
           streamTaskId: null,
           streamAbort: null,
-          streamingMessageId: null
+          streamingMessageId: null,
+          cancelRequested: false
         });
       },
       onTitle: (payload: { title: string }) => {
+        if (get().streamingMessageId !== assistantId) return;
         if (payload?.title && get().currentSessionId) {
           get().updateSessionTitle(get().currentSessionId as string, payload.title);
         }
       },
       onError: (error: Error) => {
+        if (get().streamingMessageId !== assistantId) return;
         set((state) => ({
           isStreaming: false,
           thinkingStartAt: null,
           streamTaskId: null,
           streamAbort: null,
+          cancelRequested: false,
           messages: state.messages.map((message) =>
             message.id === state.streamingMessageId
               ? {
@@ -411,38 +428,24 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
       handlers.onError?.(error as Error);
     } finally {
-      set({ isStreaming: false, streamTaskId: null, streamAbort: null, streamingMessageId: null });
+      if (get().streamingMessageId === assistantId) {
+        set({
+          isStreaming: false,
+          streamTaskId: null,
+          streamAbort: null,
+          streamingMessageId: null,
+          cancelRequested: false
+        });
+      }
     }
   },
   cancelGeneration: () => {
-    const { isStreaming, streamTaskId, streamAbort } = get();
+    const { isStreaming, streamTaskId } = get();
     if (!isStreaming) return;
+    set({ cancelRequested: true });
     if (streamTaskId) {
       stopTask(streamTaskId).catch(() => null);
     }
-    if (streamAbort) {
-      streamAbort();
-    }
-    set((state) => ({
-      isStreaming: false,
-      thinkingStartAt: null,
-      streamTaskId: null,
-      streamAbort: null,
-      streamingMessageId: null,
-      messages: state.messages.map((message) => {
-        if (message.id !== state.streamingMessageId) return message;
-        const suffix = message.content.includes("（已停止生成）")
-          ? ""
-          : "\n\n（已停止生成）";
-        return {
-          ...message,
-          content: message.content + suffix,
-          status: "cancelled",
-          isThinking: false,
-          thinkingDuration: message.thinkingDuration ?? computeThinkingDuration(state.thinkingStartAt)
-        };
-      })
-    }));
   },
   appendStreamContent: (delta) => {
     if (!delta) return;
