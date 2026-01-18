@@ -2,6 +2,7 @@ import * as React from "react";
 import { differenceInCalendarDays, isValid } from "date-fns";
 import {
   BookOpen,
+  Cpu,
   LogOut,
   MessageSquare,
   MoreHorizontal,
@@ -167,7 +168,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         <div className="border-b border-[#F0F0F0] pb-3">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-purple-500 shadow-md shadow-indigo-500/20">
-              <Sparkles className="h-5 w-5 text-white" />
+              <Cpu className="h-5 w-5 text-white" />
             </div>
             <div style={{ fontFamily: sessionTitleFont }}>
               <p className="text-base font-semibold text-gray-900">RAG 智能问答</p>
@@ -214,15 +215,15 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           ) : (
             <div>
               {groupedSessions.map((group, index) => (
-                <div key={group.label} className={cn("flex flex-col", index === 0 ? "mt-0" : "mt-6")}>
-                  <p className="mb-2 pl-3 text-[12px] font-normal leading-[18px] text-[#999999]">
+                <div key={group.label} className={cn("flex flex-col", index === 0 ? "mt-0" : "mt-4")}>
+                  <p className="mb-1.5 pl-3 text-[12px] font-normal leading-[18px] text-[#999999]">
                     {group.label}
                   </p>
                   {group.items.map((session) => (
                     <div
                       key={session.id}
                       className={cn(
-                        "group my-0.5 flex min-h-[42px] cursor-pointer items-center justify-between gap-2 rounded-lg px-3 py-2.5 text-[14px] leading-[22px] transition-[background-color] duration-200",
+                        "group my-[1px] flex min-h-[40px] cursor-pointer items-center justify-between gap-2 rounded-lg px-3 py-2 text-[14px] leading-[22px] transition-[background-color] duration-200",
                         currentSessionId === session.id
                           ? "bg-[#EBF5FF] text-[#1677FF] hover:bg-[#DDEEFF]"
                           : "text-[#333333] hover:bg-[#F5F5F5]"
