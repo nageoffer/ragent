@@ -21,6 +21,10 @@ export function ChatPage() {
     createSession
   } = useChatStore();
   const [sessionsReady, setSessionsReady] = React.useState(false);
+  const sessionExists = React.useMemo(() => {
+    if (!sessionId) return false;
+    return sessions.some((session) => session.id === sessionId);
+  }, [sessionId, sessions]);
 
   React.useEffect(() => {
     let active = true;
@@ -38,6 +42,11 @@ export function ChatPage() {
 
   React.useEffect(() => {
     if (sessionId) {
+      if (sessionsReady && !sessionExists) {
+        createSession().catch(() => null);
+        navigate("/chat", { replace: true });
+        return;
+      }
       selectSession(sessionId).catch(() => null);
       return;
     }
@@ -51,7 +60,16 @@ export function ChatPage() {
       return;
     }
     createSession().catch(() => null);
-  }, [sessionId, sessionsReady, isCreatingNew, currentSessionId, selectSession, createSession]);
+  }, [
+    sessionId,
+    sessionsReady,
+    sessionExists,
+    isCreatingNew,
+    currentSessionId,
+    selectSession,
+    createSession,
+    navigate
+  ]);
 
   React.useEffect(() => {
     if (currentSessionId && currentSessionId !== sessionId) {

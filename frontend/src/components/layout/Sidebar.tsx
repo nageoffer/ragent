@@ -402,11 +402,16 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
             <AlertDialogAction
               onClick={() => {
                 if (!deleteTarget) return;
-                deleteSession(deleteTarget.id).catch(() => null);
-                if (currentSessionId === deleteTarget.id) {
-                  navigate("/chat");
-                }
+                const target = deleteTarget;
+                const isCurrent = currentSessionId === target.id;
                 setDeleteTarget(null);
+                deleteSession(target.id)
+                  .then(() => {
+                    if (isCurrent) {
+                      navigate("/chat");
+                    }
+                  })
+                  .catch(() => null);
               }}
             >
               删除

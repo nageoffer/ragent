@@ -41,10 +41,14 @@ export function SessionList({ onSelect }: SessionListProps) {
             onSelect?.();
           }}
           onDelete={() => {
-            deleteSession(session.id).catch(() => null);
-            if (currentSessionId === session.id) {
-              navigate("/chat");
-            }
+            const isCurrent = currentSessionId === session.id;
+            deleteSession(session.id)
+              .then(() => {
+                if (isCurrent) {
+                  navigate("/chat");
+                }
+              })
+              .catch(() => null);
           }}
         />
       ))}
