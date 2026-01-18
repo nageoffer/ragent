@@ -24,6 +24,8 @@ export function MessageList({ messages, isLoading, isStreaming, sessionKey }: Me
     () => ({ index: "LAST" as const, align: "end" as const }),
     []
   );
+  const lastMessage = messages[messages.length - 1];
+  const streamingContentKey = `${lastMessage?.id ?? ""}:${lastMessage?.content?.length ?? 0}:${lastMessage?.thinking?.length ?? 0}:${lastMessage?.status ?? ""}`;
 
   const scrollToBottom = React.useCallback(() => {
     virtuosoRef.current?.scrollToIndex({ index: "LAST", align: "end", behavior: "auto" });
@@ -59,6 +61,16 @@ export function MessageList({ messages, isLoading, isStreaming, sessionKey }: Me
     }
     return;
   }, [isStreaming, scrollToBottom]);
+
+  React.useLayoutEffect(() => {
+    if (!isStreaming || messages.length === 0) {
+      return;
+    }
+    const rafId = window.requestAnimationFrame(() => {
+      scrollToBottom();
+    });
+    return () => window.cancelAnimationFrame(rafId);
+  }, [isStreaming, messages.length, streamingContentKey, scrollToBottom]);
 
   React.useLayoutEffect(() => {
     if (!pendingScrollRef.current || isStreaming || isLoading || messages.length === 0) {
@@ -178,8 +190,8 @@ export function MessageList({ messages, isLoading, isStreaming, sessionKey }: Me
       data={messages}
       initialTopMostItemIndex={initialTopMostItemIndex}
       followOutput={(atBottom) => {
-        if (!atBottom) return false;
-        return isStreaming ? "smooth" : "auto";
+        if (isStreaming) return "smooth";
+        return atBottom ? "auto" : false;
       }}
       scrollerRef={(node) => {
         scrollerRef.current = node as HTMLElement | null;
