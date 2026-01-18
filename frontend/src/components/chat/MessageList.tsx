@@ -24,8 +24,6 @@ export function MessageList({ messages, isLoading, isStreaming, sessionKey }: Me
     () => ({ index: "LAST" as const, align: "end" as const }),
     []
   );
-  const lastMessage = messages[messages.length - 1];
-  const streamingContentKey = `${lastMessage?.id ?? ""}:${lastMessage?.content?.length ?? 0}:${lastMessage?.thinking?.length ?? 0}:${lastMessage?.status ?? ""}`;
 
   const scrollToBottom = React.useCallback(() => {
     virtuosoRef.current?.scrollToIndex({ index: "LAST", align: "end", behavior: "auto" });
@@ -33,6 +31,12 @@ export function MessageList({ messages, isLoading, isStreaming, sessionKey }: Me
     if (scroller) {
       scroller.scrollTop = scroller.scrollHeight;
     }
+  }, []);
+
+  const stickToBottom = React.useCallback(() => {
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+    scroller.scrollTop = scroller.scrollHeight;
   }, []);
 
   React.useEffect(() => {
@@ -51,26 +55,12 @@ export function MessageList({ messages, isLoading, isStreaming, sessionKey }: Me
     const wasStreaming = prevStreamingRef.current;
     prevStreamingRef.current = isStreaming;
     if (!wasStreaming && isStreaming) {
-      scrollToBottom();
-      const timer = window.setTimeout(scrollToBottom, 80);
-      const lateTimer = window.setTimeout(scrollToBottom, 260);
-      return () => {
-        window.clearTimeout(timer);
-        window.clearTimeout(lateTimer);
-      };
+      stickToBottom();
+      const timer = window.setTimeout(stickToBottom, 120);
+      return () => window.clearTimeout(timer);
     }
     return;
-  }, [isStreaming, scrollToBottom]);
-
-  React.useLayoutEffect(() => {
-    if (!isStreaming || messages.length === 0) {
-      return;
-    }
-    const rafId = window.requestAnimationFrame(() => {
-      scrollToBottom();
-    });
-    return () => window.cancelAnimationFrame(rafId);
-  }, [isStreaming, messages.length, streamingContentKey, scrollToBottom]);
+  }, [isStreaming, stickToBottom]);
 
   React.useLayoutEffect(() => {
     if (!pendingScrollRef.current || isStreaming || isLoading || messages.length === 0) {
@@ -140,17 +130,23 @@ export function MessageList({ messages, isLoading, isStreaming, sessionKey }: Me
   }, []);
 
   const handleTotalListHeightChanged = React.useCallback(() => {
-    if (!pendingScrollRef.current || isStreaming || isLoading) {
+    if (isLoading) {
       return;
     }
+    const shouldStick = isStreaming || pendingScrollRef.current;
+    if (!shouldStick) return;
     if (heightScrollRafRef.current) {
       return;
     }
     heightScrollRafRef.current = window.requestAnimationFrame(() => {
       heightScrollRafRef.current = null;
-      scrollToBottom();
+      if (isStreaming) {
+        stickToBottom();
+      } else {
+        scrollToBottom();
+      }
     });
-  }, [isStreaming, isLoading, scrollToBottom]);
+  }, [isStreaming, isLoading, scrollToBottom, stickToBottom]);
 
   const List = React.useMemo(() => {
     const Comp = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
@@ -190,7 +186,7 @@ export function MessageList({ messages, isLoading, isStreaming, sessionKey }: Me
       data={messages}
       initialTopMostItemIndex={initialTopMostItemIndex}
       followOutput={(atBottom) => {
-        if (isStreaming) return "smooth";
+        if (isStreaming) return false;
         return atBottom ? "auto" : false;
       }}
       scrollerRef={(node) => {
