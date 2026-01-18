@@ -132,6 +132,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         messages: state.currentSessionId === sessionId ? [] : state.messages,
         currentSessionId: state.currentSessionId === sessionId ? null : state.currentSessionId
       }));
+      toast.success("删除成功");
     } catch (error) {
       toast.error((error as Error).message || "删除会话失败");
     }

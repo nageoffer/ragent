@@ -3,7 +3,6 @@ import { differenceInCalendarDays, format, isValid } from "date-fns";
 import {
   BookOpen,
   LogOut,
-  MessageSquare,
   MoreHorizontal,
   Pencil,
   PlayCircle,
@@ -230,7 +229,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                     <div
                       key={session.id}
                       className={cn(
-                        "group flex items-center gap-3 rounded-xl px-4 py-3 text-sm transition-all",
+                        "group flex items-center gap-2 rounded-xl px-4 py-2 text-sm transition-all",
                         currentSessionId === session.id
                           ? "bg-indigo-50 text-indigo-700 border border-indigo-100"
                           : "text-gray-600 hover:bg-gray-50"
@@ -254,12 +253,6 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                         }
                       }}
                     >
-                      <MessageSquare
-                        className={cn(
-                          "h-4 w-4 shrink-0",
-                          currentSessionId === session.id ? "text-indigo-500" : "text-gray-400"
-                        )}
-                      />
                       {renamingId === session.id ? (
                         <input
                           ref={renameInputRef}
@@ -279,7 +272,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                           onBlur={() => {
                             commitRename().catch(() => null);
                           }}
-                          className="h-8 flex-1 rounded-lg border border-indigo-200 bg-white px-2 text-sm text-gray-700 focus:border-indigo-500 focus:outline-none"
+                          className="h-7 flex-1 rounded-lg border border-indigo-200 bg-white px-2 text-sm text-gray-700 focus:border-indigo-500 focus:outline-none"
                         />
                       ) : (
                         <span className="flex-1 truncate text-sm font-medium">
@@ -290,14 +283,19 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                         <DropdownMenuTrigger asChild>
                           <button
                             type="button"
-                            className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 opacity-0 transition-opacity hover:bg-gray-200 group-hover:opacity-100"
+                            className={cn(
+                              "flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 transition-opacity hover:bg-gray-200",
+                              currentSessionId === session.id
+                                ? "opacity-100"
+                                : "opacity-0 group-hover:opacity-100"
+                            )}
                             onClick={(event) => event.stopPropagation()}
                             aria-label="会话操作"
                           >
                             <MoreHorizontal className="h-4 w-4" />
                           </button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-32">
+                        <DropdownMenuContent align="start" className="w-32">
                           <DropdownMenuItem
                             onClick={(event) => {
                               event.stopPropagation();
