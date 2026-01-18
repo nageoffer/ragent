@@ -267,13 +267,14 @@ textarea {
   display: flex;
   align-items: center;
   gap: 8px;
+  margin-left: -6px;
 }
 
 .chat-welcome-tag {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 10px;
+  padding: 7px 12px;
   border-radius: 999px;
   border: 1px solid #e5e5e5;
   background: #ffffff;
