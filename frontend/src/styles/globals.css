@@ -165,3 +165,18 @@ textarea {
 .sidebar-scroll:hover::-webkit-scrollbar-thumb {
   background: rgba(0, 0, 0, 0.25);
 }
+
+.user-message {
+  background: #ebf5ff;
+  color: #333333;
+  padding: 10px 16px;
+  border-radius: 18px 18px 4px 18px;
+  max-width: 80%;
+  width: fit-content;
+  margin-left: auto;
+  font-size: 15px;
+  line-height: 1.5;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  white-space: pre-wrap;
+}

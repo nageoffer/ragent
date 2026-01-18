@@ -24,13 +24,9 @@ export const MessageItem = React.memo(function MessageItem({ message, isLast }: 
 
   if (isUser) {
     return (
-      <div className="flex justify-end">
-        <div className="flex max-w-[80%] items-start">
-          <div className="rounded-2xl rounded-tr-md bg-gradient-to-r from-indigo-500 to-purple-500 px-5 py-3.5 shadow-md shadow-indigo-500/20">
-            <p className="whitespace-pre-wrap text-[15px] leading-relaxed text-white">
-              {message.content}
-            </p>
-          </div>
+      <div className="flex">
+        <div className="user-message">
+          <p className="whitespace-pre-wrap break-words">{message.content}</p>
         </div>
       </div>
     );
