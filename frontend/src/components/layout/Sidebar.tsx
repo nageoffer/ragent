@@ -336,15 +336,15 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
             </div>
           )}
         </div>
-        <div className="mt-auto border-t border-gray-100 p-4">
+        <div className="mt-auto p-3">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                className="flex w-full items-center gap-3 rounded-xl p-3 text-left transition-colors hover:bg-gray-50 data-[state=open]:bg-gray-100"
+                className="flex w-full items-center gap-2 rounded-xl p-2 text-left transition-colors hover:bg-gray-50 data-[state=open]:bg-gray-100"
                 aria-label="用户菜单"
               >
-                <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 text-white shadow-md">
+                <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 text-white shadow-md">
                   {showAvatar ? (
                     <img
                       src={avatarUrl}
