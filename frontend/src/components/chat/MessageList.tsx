@@ -2,6 +2,7 @@ import * as React from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 
 import { MessageItem } from "@/components/chat/MessageItem";
+import { WelcomeScreen } from "@/components/chat/WelcomeScreen";
 import { cn } from "@/lib/utils";
 import type { Message } from "@/types";
 
@@ -166,17 +167,7 @@ export function MessageList({ messages, isLoading, isStreaming, sessionKey }: Me
     if (isLoading) {
       return <div className="h-full" />;
     }
-    return (
-      <div className="flex h-full items-center justify-center">
-        <div className="relative max-w-md rounded-3xl border border-gray-200 bg-white p-8 text-center shadow-sm">
-          <div className="absolute -inset-0.5 rounded-3xl bg-gradient-to-r from-indigo-50 to-purple-50 blur-lg" />
-          <div className="relative">
-            <p className="text-xl font-semibold text-gray-900">开始新的对话</p>
-            <p className="mt-3 text-sm text-gray-500">提出问题即可开始检索增强回答。</p>
-          </div>
-        </div>
-      </div>
-    );
+    return <WelcomeScreen />;
   }
 
   return (
