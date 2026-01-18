@@ -107,7 +107,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
   createSession: async () => {
     const state = get();
     if (state.messages.length === 0 && !state.currentSessionId) {
-      set({ isCreatingNew: true, isLoading: false, thinkingStartAt: null });
+      set({
+        isCreatingNew: true,
+        isLoading: false,
+        thinkingStartAt: null,
+        deepThinkingEnabled: false
+      });
       return "";
     }
     if (state.isStreaming) {
@@ -119,6 +124,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       isStreaming: false,
       isLoading: false,
       isCreatingNew: true,
+      deepThinkingEnabled: false,
       thinkingStartAt: null,
       streamTaskId: null,
       streamAbort: null,
