@@ -61,6 +61,10 @@ public class UserContextInterceptor implements HandlerInterceptor {
         if (request.getDispatcherType() == DispatcherType.ASYNC) {
             return true;
         }
+        // 预检请求放行，避免 CORS 阻断
+        if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
+            return true;
+        }
 
         String loginId = StpUtil.getLoginIdAsString();
         UserDO user = userMapper.selectById(Long.parseLong(loginId));

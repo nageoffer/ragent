@@ -58,6 +58,10 @@ public class SaTokenConfig implements WebMvcConfigurer {
                         if (request.getDispatcherType() == DispatcherType.ASYNC) {
                             return;
                         }
+                        // 预检请求直接放行，避免 CORS 被拦截
+                        if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
+                            return;
+                        }
                     }
                     // 执行登录检查
                     StpUtil.checkLogin();
