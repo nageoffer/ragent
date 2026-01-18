@@ -62,7 +62,7 @@ export function ChatInput() {
       </div>
       <div
         className={cn(
-          "relative flex items-end gap-3 rounded-2xl border-2 bg-white p-4 transition-all duration-300",
+          "relative flex flex-col rounded-2xl border-2 bg-white p-4 transition-all duration-300",
           isFocused
             ? "border-indigo-500 shadow-lg shadow-indigo-500/10"
             : "border-gray-200 hover:border-gray-300"
@@ -73,7 +73,7 @@ export function ChatInput() {
           value={value}
           onChange={(event) => setValue(event.target.value)}
           placeholder={deepThinkingEnabled ? "输入需要深度分析的问题..." : "输入你的问题..."}
-          className="max-h-40 min-h-[44px] flex-1 resize-none border-0 bg-transparent px-2 py-2 text-[15px] text-gray-700 shadow-none placeholder:text-gray-400 focus-visible:ring-0"
+          className="max-h-40 min-h-[44px] w-full resize-none border-0 bg-transparent px-2 pt-2 pb-2 pr-2 text-[15px] text-gray-700 shadow-none placeholder:text-gray-400 focus-visible:ring-0"
           rows={1}
           disabled={isStreaming}
           onFocus={() => setIsFocused(true)}
@@ -86,22 +86,24 @@ export function ChatInput() {
           }}
           aria-label="聊天输入框"
         />
-        <button
-          type="button"
-          onClick={handleSubmit}
-          disabled={!hasContent && !isStreaming}
-          aria-label={isStreaming ? "停止生成" : "发送消息"}
-          className={cn(
-            "rounded-xl p-3 transition-all duration-300",
-            isStreaming
-              ? "bg-rose-50 text-rose-500 hover:bg-rose-100"
-              : hasContent
-                ? "bg-gradient-to-r from-indigo-500 to-purple-500 text-white shadow-md shadow-indigo-500/25 hover:shadow-lg hover:scale-105"
-                : "cursor-not-allowed bg-gray-100 text-gray-400"
-          )}
-        >
-          {isStreaming ? <Square className="h-5 w-5" /> : <Send className="h-5 w-5" />}
-        </button>
+        <div className="flex items-center justify-end border-t border-gray-100 pt-2">
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={!hasContent && !isStreaming}
+            aria-label={isStreaming ? "停止生成" : "发送消息"}
+            className={cn(
+              "rounded-lg p-2 transition-all duration-300",
+              isStreaming
+                ? "bg-rose-50 text-rose-500 hover:bg-rose-100"
+                : hasContent
+                  ? "bg-gradient-to-r from-indigo-500 to-purple-500 text-white shadow-md shadow-indigo-500/25 hover:shadow-lg hover:scale-105"
+                  : "cursor-not-allowed bg-gray-100 text-gray-400"
+            )}
+          >
+            {isStreaming ? <Square className="h-4 w-4" /> : <Send className="h-4 w-4" />}
+          </button>
+        </div>
       </div>
       {deepThinkingEnabled ? (
         <p className="text-xs text-amber-600">
