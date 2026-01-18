@@ -11,6 +11,7 @@ export function ChatPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const {
     messages,
+    isLoading,
     isStreaming,
     currentSessionId,
     sessions,
@@ -65,6 +66,7 @@ export function ChatPage() {
         <div className="flex-1 min-h-0">
           <MessageList
             messages={messages}
+            isLoading={isLoading}
             isStreaming={isStreaming}
             sessionKey={currentSessionId}
           />

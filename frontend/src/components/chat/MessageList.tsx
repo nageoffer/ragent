@@ -7,34 +7,40 @@ import type { Message } from "@/types";
 
 interface MessageListProps {
   messages: Message[];
+  isLoading: boolean;
   isStreaming: boolean;
   sessionKey?: string | null;
 }
 
-export function MessageList({ messages, isStreaming, sessionKey }: MessageListProps) {
+export function MessageList({ messages, isLoading, isStreaming, sessionKey }: MessageListProps) {
   const virtuosoRef = React.useRef<VirtuosoHandle | null>(null);
   const lastSessionRef = React.useRef<string | null>(null);
-  const hasScrolledRef = React.useRef(false);
+  const pendingScrollRef = React.useRef(true);
 
   React.useEffect(() => {
     const nextKey = sessionKey ?? "empty";
     if (lastSessionRef.current !== nextKey) {
       lastSessionRef.current = nextKey;
-      hasScrolledRef.current = false;
+      pendingScrollRef.current = true;
     }
   }, [sessionKey]);
 
   React.useEffect(() => {
-    if (hasScrolledRef.current || isStreaming || messages.length === 0) {
+    if (!pendingScrollRef.current || isStreaming || isLoading || messages.length === 0) {
       return;
     }
-    virtuosoRef.current?.scrollToIndex({
-      index: messages.length - 1,
-      align: "end",
-      behavior: "auto"
-    });
-    hasScrolledRef.current = true;
-  }, [messages.length, isStreaming]);
+    const scrollToBottom = () => {
+      virtuosoRef.current?.scrollToIndex({
+        index: messages.length - 1,
+        align: "end",
+        behavior: "auto"
+      });
+    };
+    scrollToBottom();
+    const timer = window.setTimeout(scrollToBottom, 120);
+    pendingScrollRef.current = false;
+    return () => window.clearTimeout(timer);
+  }, [messages.length, isStreaming, isLoading, sessionKey]);
 
   const List = React.useMemo(() => {
     const Comp = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
