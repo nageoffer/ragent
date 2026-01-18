@@ -6,6 +6,7 @@ export type MessageStatus = "streaming" | "done" | "cancelled" | "error";
 
 export interface User {
   userId: string;
+  username?: string;
   role: string;
   token: string;
 }

@@ -1,16 +1,7 @@
 import * as React from "react";
-import { Github, LogOut, Menu, Settings, User } from "lucide-react";
+import { Github, Menu } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger
-} from "@/components/ui/dropdown-menu";
-import { useAuthStore } from "@/stores/authStore";
 import { useChatStore } from "@/stores/chatStore";
 
 interface HeaderProps {
@@ -18,7 +9,6 @@ interface HeaderProps {
 }
 
 export function Header({ onToggleSidebar }: HeaderProps) {
-  const { user, logout } = useAuthStore();
   const { currentSessionId, sessions } = useChatStore();
   const [starCount, setStarCount] = React.useState<number | null>(null);
   const currentSession = React.useMemo(
@@ -84,35 +74,6 @@ export function Header({ onToggleSidebar }: HeaderProps) {
               {starLabel}
             </span>
           </a>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="rounded-full hover:bg-gray-100"
-                aria-label="用户菜单"
-              >
-                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 text-white shadow-sm">
-                  <User className="h-4 w-4" />
-                </span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuLabel>
-                <p className="text-sm font-semibold">{user?.userId || "用户"}</p>
-                <p className="text-xs text-muted-foreground">{user?.role || "成员"}</p>
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem>
-                <Settings className="mr-2 h-4 w-4" />
-                设置
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => logout()}>
-                <LogOut className="mr-2 h-4 w-4" />
-                退出登录
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
         </div>
       </div>
     </header>

@@ -1,12 +1,14 @@
 import * as React from "react";
 import { differenceInCalendarDays, format, isValid } from "date-fns";
 import {
+  BookOpen,
+  LogOut,
   MessageSquare,
   MoreHorizontal,
   Pencil,
+  PlayCircle,
   Plus,
   Search,
-  Settings,
   Sparkles,
   Trash2
 } from "lucide-react";
@@ -48,7 +50,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     fetchSessions
   } = useChatStore();
   const navigate = useNavigate();
-  const user = useAuthStore((state) => state.user);
+  const { user, logout } = useAuthStore();
   const [query, setQuery] = React.useState("");
   const [renamingId, setRenamingId] = React.useState<string | null>(null);
   const [renameValue, setRenameValue] = React.useState("");
@@ -328,18 +330,56 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           )}
         </div>
         <div className="mt-auto border-t border-gray-100 p-4">
-          <div className="flex items-center gap-3 rounded-xl p-3 transition hover:bg-gray-50">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 text-white shadow-md">
-              <span className="text-sm font-medium">
-                {(user?.userId || "A").slice(0, 1).toUpperCase()}
-              </span>
-            </div>
-            <div className="flex-1">
-              <p className="text-sm font-medium text-gray-900">{user?.userId || "管理员"}</p>
-              <p className="text-xs text-gray-400">{user?.role || "成员"}</p>
-            </div>
-            <Settings className="h-4 w-4 text-gray-400" />
-          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="flex w-full items-center gap-3 rounded-xl p-3 text-left transition-colors hover:bg-gray-50 data-[state=open]:bg-gray-100"
+                aria-label="用户菜单"
+              >
+                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 text-white shadow-md">
+                  <span className="text-sm font-medium">
+                    {(user?.userId || "A").slice(0, 1).toUpperCase()}
+                  </span>
+                </div>
+                <span className="flex-1 truncate text-sm font-medium text-gray-900">
+                  {(() => {
+                    const fallback = user?.username || user?.userId || "用户";
+                    return /^\d+$/.test(fallback) ? "用户" : fallback;
+                  })()}
+                </span>
+                <MoreHorizontal className="h-4 w-4 text-gray-400" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" side="top" sideOffset={8} className="w-48">
+              <DropdownMenuItem asChild>
+                <a
+                  href="https://nageoffer.com/ragent"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center"
+                >
+                  <BookOpen className="mr-2 h-4 w-4" />
+                  官方文档
+                </a>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <a
+                  href="https://space.bilibili.com/352177376"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center"
+                >
+                  <PlayCircle className="mr-2 h-4 w-4" />
+                  哔哩哔哩
+                </a>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => logout()} className="text-rose-600 focus:text-rose-600">
+                <LogOut className="mr-2 h-4 w-4" />
+                退出登录
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </aside>
       <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => {

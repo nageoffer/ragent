@@ -25,7 +25,12 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ isLoading: true });
     try {
       const data = await loginRequest(username, password);
-      const user = { userId: data.userId, role: data.role, token: data.token };
+      const user = {
+        userId: data.userId,
+        username: data.username || username,
+        role: data.role,
+        token: data.token
+      };
       storage.setToken(user.token);
       storage.setUser(user);
       setAuthToken(user.token);
