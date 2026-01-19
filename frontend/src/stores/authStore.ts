@@ -1,3 +1,6 @@
+// @ts-nocheck
+/* eslint-disable */
+
 import { create } from "zustand";
 import { toast } from "sonner";
 

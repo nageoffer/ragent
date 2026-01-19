@@ -10,7 +10,6 @@ import {
   PlayCircle,
   Plus,
   Search,
-  Sparkles,
   Trash2
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -31,6 +30,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
+import { Loading } from "@/components/common/Loading";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/authStore";
 import { useChatStore } from "@/stores/chatStore";
@@ -44,6 +44,8 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const {
     sessions,
     currentSessionId,
+    isLoading,
+    sessionsLoaded,
     createSession,
     deleteSession,
     renameSession,
@@ -204,7 +206,14 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           </div>
         </div>
         <div className="flex-1 overflow-y-auto sidebar-scroll">
-          {filteredSessions.length === 0 ? (
+          {sessions.length === 0 && (!sessionsLoaded || isLoading) ? (
+            <div
+              className="flex h-full items-center justify-center text-[#999999]"
+              style={{ fontFamily: sessionTitleFont }}
+            >
+              <Loading label="加载会话中" />
+            </div>
+          ) : filteredSessions.length === 0 ? (
             <div
               className="flex h-full flex-col items-center justify-center text-[#999999]"
               style={{ fontFamily: sessionTitleFont }}

@@ -18,6 +18,7 @@ interface ChatState {
   currentSessionId: string | null;
   messages: Message[];
   isLoading: boolean;
+  sessionsLoaded: boolean;
   isStreaming: boolean;
   isCreatingNew: boolean;
   deepThinkingEnabled: boolean;
@@ -74,6 +75,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   currentSessionId: null,
   messages: [],
   isLoading: false,
+  sessionsLoaded: false,
   isStreaming: false,
   isCreatingNew: false,
   deepThinkingEnabled: false,
@@ -101,7 +103,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     } catch (error) {
       toast.error((error as Error).message || "加载会话失败");
     } finally {
-      set({ isLoading: false });
+      set({ isLoading: false, sessionsLoaded: true });
     }
   },
   createSession: async () => {
