@@ -163,6 +163,12 @@ export function MessageList({ messages, isLoading, isStreaming, sessionKey }: Me
     return Comp;
   }, []);
 
+  const Footer = React.useMemo(() => {
+    const Comp = () => <div aria-hidden="true" className="h-8" />;
+    Comp.displayName = "MessageListFooter";
+    return Comp;
+  }, []);
+
   if (messages.length === 0) {
     if (isLoading) {
       return <div className="h-full" />;
@@ -185,7 +191,7 @@ export function MessageList({ messages, isLoading, isStreaming, sessionKey }: Me
       }}
       totalListHeightChanged={handleTotalListHeightChanged}
       className="h-full"
-      components={{ List }}
+      components={{ List, Footer }}
       itemContent={(index, message) => (
         <div className={index === messages.length - 1 ? "animate-fade-up" : ""}>
           <MessageItem message={message} isLast={index === messages.length - 1} />
