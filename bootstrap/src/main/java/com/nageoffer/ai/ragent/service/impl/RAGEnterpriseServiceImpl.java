@@ -57,6 +57,8 @@ import com.nageoffer.ai.ragent.rag.rewrite.QueryRewriteService;
 import com.nageoffer.ai.ragent.rag.rewrite.RewriteResult;
 import com.nageoffer.ai.ragent.service.ConversationGroupService;
 import com.nageoffer.ai.ragent.service.RAGEnterpriseService;
+import com.nageoffer.ai.ragent.service.guidance.GuidanceDecision;
+import com.nageoffer.ai.ragent.service.guidance.IntentGuidanceService;
 import com.nageoffer.ai.ragent.service.handler.ChatRateLimit;
 import com.nageoffer.ai.ragent.service.handler.StreamChatEventHandler;
 import com.nageoffer.ai.ragent.service.handler.StreamTaskManager;
@@ -74,6 +76,7 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
+import java.util.stream.Collectors;
 
 import static com.nageoffer.ai.ragent.constant.RAGConstant.CHAT_SYSTEM_PROMPT_PATH;
 import static com.nageoffer.ai.ragent.constant.RAGConstant.DEFAULT_TOP_K;
@@ -107,6 +110,7 @@ public class RAGEnterpriseServiceImpl implements RAGEnterpriseService {
     private final StreamTaskManager taskManager;
     private final AIModelProperties modelProperties;
     private final ConversationGroupService conversationGroupService;
+    private final IntentGuidanceService guidanceService;
     @Qualifier("defaultIntentClassifier")
     private final IntentClassifier intentClassifier;
     @Qualifier("multiQuestionRewriteService")
@@ -134,12 +138,46 @@ public class RAGEnterpriseServiceImpl implements RAGEnterpriseService {
                 taskManager
         );
 
-        List<ChatMessage> history = memoryService.load(actualConversationId, UserContext.getUserId());
-        RewriteResult rewriteResult = queryRewriteService.rewriteWithSplit(question, history);
+        String userId = UserContext.getUserId();
+        List<ChatMessage> history = memoryService.load(actualConversationId, userId);
+        GuidanceDecision existingDecision = guidanceService.handleExistingSession(actualConversationId, userId, question);
+        if (existingDecision.isPrompt()) {
+            memoryService.append(actualConversationId, userId, ChatMessage.user(question));
+            callback.onContent(existingDecision.getPrompt());
+            callback.onComplete();
+            return;
+        }
 
-        memoryService.append(actualConversationId, UserContext.getUserId(), ChatMessage.user(question));
+        memoryService.append(actualConversationId, userId, ChatMessage.user(question));
+        String effectiveQuestion = question;
+        List<IntentNode> resolvedNodes = null;
+        if (existingDecision.isResolved() && CollUtil.isNotEmpty(existingDecision.getResolvedNodes())) {
+            effectiveQuestion = existingDecision.getResolvedQuestion();
+            resolvedNodes = existingDecision.getResolvedNodes();
+        }
 
-        List<SubQuestionIntent> subIntents = buildSubQuestionIntents(rewriteResult);
+        RewriteResult rewriteResult = queryRewriteService.rewriteWithSplit(effectiveQuestion, history);
+
+        List<SubQuestionIntent> subIntents;
+        if (CollUtil.isNotEmpty(resolvedNodes)) {
+            List<NodeScore> fixed = resolvedNodes.stream()
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.collectingAndThen(
+                            Collectors.toMap(IntentNode::getId, node -> new NodeScore(node, 1.0D), (a, b) -> a),
+                            map -> new java.util.ArrayList<>(map.values())
+                    ));
+            subIntents = List.of(new SubQuestionIntent(rewriteResult.rewrittenQuestion(), fixed));
+        } else {
+            subIntents = buildSubQuestionIntents(rewriteResult);
+            GuidanceDecision newDecision = guidanceService.detectAmbiguity(
+                    effectiveQuestion, subIntents, actualConversationId, userId);
+            if (newDecision.isPrompt()) {
+                callback.onContent(newDecision.getPrompt());
+                callback.onComplete();
+                return;
+            }
+        }
+
         boolean allSystemOnly = subIntents.stream()
                 .allMatch(si -> isSystemOnly(si.nodeScores()));
         if (allSystemOnly) {

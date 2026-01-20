@@ -83,6 +83,12 @@ public class RAGConstant {
     public static final String INTENT_CLASSIFIER_PROMPT_PATH = "prompt/intent-classifier.st";
 
     /**
+     * 引导式问答选择解析提示词模板路径
+     * 用于解析用户在引导式问答场景下的选项选择
+     */
+    public static final String GUIDANCE_SELECTION_PROMPT_PATH = "prompt/guidance-selection.st";
+
+    /**
      * 系统对话提示词模板路径
      * 定义企业知识助手「小码」的角色设定和对话规则，包括打招呼、自我介绍、问题分类处理等场景。模板通过 {@code {question}} 占位符接收用户问题。
      */

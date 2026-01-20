@@ -54,7 +54,7 @@ import static com.nageoffer.ai.ragent.constant.RAGConstant.INTENT_CLASSIFIER_PRO
 @Slf4j
 @Service("defaultIntentClassifier")
 @RequiredArgsConstructor
-public class DefaultIntentClassifier implements IntentClassifier {
+public class DefaultIntentClassifier implements IntentClassifier, IntentNodeRegistry {
 
     private final LLMService llmService;
     private final IntentNodeMapper intentNodeMapper;
@@ -91,6 +91,14 @@ public class DefaultIntentClassifier implements IntentClassifier {
 
         log.info("意图分类器初始化完成, 总节点数: {}, 叶子节点数: {}",
                 allNodes.size(), leafNodes.size());
+    }
+
+    @Override
+    public IntentNode getNodeById(String id) {
+        if (id == null || id.isBlank()) {
+            return null;
+        }
+        return id2Node == null ? null : id2Node.get(id);
     }
 
     private List<IntentNode> flatten(List<IntentNode> roots) {
