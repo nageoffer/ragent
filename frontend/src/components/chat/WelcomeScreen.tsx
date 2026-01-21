@@ -7,9 +7,16 @@ import { useChatStore } from "@/stores/chatStore";
 export function WelcomeScreen() {
   const [value, setValue] = React.useState("");
   const [isFocused, setIsFocused] = React.useState(false);
+  const isComposingRef = React.useRef(false);
   const textareaRef = React.useRef<HTMLTextAreaElement | null>(null);
   const { sendMessage, isStreaming, cancelGeneration, deepThinkingEnabled, setDeepThinkingEnabled } =
     useChatStore();
+
+  const focusInput = React.useCallback(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.focus({ preventScroll: true });
+  }, []);
 
   const adjustHeight = React.useCallback(() => {
     const el = textareaRef.current;
@@ -26,12 +33,15 @@ export function WelcomeScreen() {
   const handleSubmit = async () => {
     if (isStreaming) {
       cancelGeneration();
+      focusInput();
       return;
     }
     if (!value.trim()) return;
     const next = value;
     setValue("");
+    focusInput();
     await sendMessage(next);
+    focusInput();
   };
 
   const hasContent = value.trim().length > 0;
@@ -53,11 +63,20 @@ export function WelcomeScreen() {
             placeholder="给 AI 助手发送消息"
             className="chat-welcome-textarea"
             rows={1}
-            disabled={isStreaming}
             onFocus={() => setIsFocused(true)}
             onBlur={() => setIsFocused(false)}
+            onCompositionStart={() => {
+              isComposingRef.current = true;
+            }}
+            onCompositionEnd={() => {
+              isComposingRef.current = false;
+            }}
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.shiftKey) {
+                const nativeEvent = event.nativeEvent as KeyboardEvent;
+                if (nativeEvent.isComposing || isComposingRef.current || nativeEvent.keyCode === 229) {
+                  return;
+                }
                 event.preventDefault();
                 handleSubmit();
               }
