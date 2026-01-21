@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.service.guidance;
+package com.nageoffer.ai.ragent.rag.guidance;
 
 import lombok.Getter;
 
