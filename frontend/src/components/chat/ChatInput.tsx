@@ -8,9 +8,22 @@ import { useChatStore } from "@/stores/chatStore";
 export function ChatInput() {
   const [value, setValue] = React.useState("");
   const [isFocused, setIsFocused] = React.useState(false);
+  const isComposingRef = React.useRef(false);
   const textareaRef = React.useRef<HTMLTextAreaElement | null>(null);
-  const { sendMessage, isStreaming, cancelGeneration, deepThinkingEnabled, setDeepThinkingEnabled } =
-    useChatStore();
+  const {
+    sendMessage,
+    isStreaming,
+    cancelGeneration,
+    deepThinkingEnabled,
+    setDeepThinkingEnabled,
+    inputFocusKey
+  } = useChatStore();
+
+  const focusInput = React.useCallback(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.focus({ preventScroll: true });
+  }, []);
 
   const adjustHeight = React.useCallback(() => {
     const el = textareaRef.current;
@@ -24,15 +37,23 @@ export function ChatInput() {
     adjustHeight();
   }, [value, adjustHeight]);
 
+  React.useEffect(() => {
+    if (!inputFocusKey) return;
+    focusInput();
+  }, [inputFocusKey, focusInput]);
+
   const handleSubmit = async () => {
     if (isStreaming) {
       cancelGeneration();
+      focusInput();
       return;
     }
     if (!value.trim()) return;
     const next = value;
     setValue("");
+    focusInput();
     await sendMessage(next);
+    focusInput();
   };
 
   const hasContent = value.trim().length > 0;
@@ -55,11 +76,20 @@ export function ChatInput() {
             placeholder={deepThinkingEnabled ? "输入需要深度分析的问题..." : "输入你的问题..."}
             className="max-h-40 min-h-[44px] w-full resize-none border-0 bg-transparent px-2 pt-2 pb-2 pr-2 text-[15px] text-gray-700 shadow-none placeholder:text-gray-400 focus-visible:ring-0"
             rows={1}
-            disabled={isStreaming}
             onFocus={() => setIsFocused(true)}
             onBlur={() => setIsFocused(false)}
+            onCompositionStart={() => {
+              isComposingRef.current = true;
+            }}
+            onCompositionEnd={() => {
+              isComposingRef.current = false;
+            }}
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.shiftKey) {
+                const nativeEvent = event.nativeEvent as KeyboardEvent;
+                if (nativeEvent.isComposing || isComposingRef.current || nativeEvent.keyCode === 229) {
+                  return;
+                }
                 event.preventDefault();
                 handleSubmit();
               }

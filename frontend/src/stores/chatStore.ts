@@ -19,6 +19,7 @@ interface ChatState {
   messages: Message[];
   isLoading: boolean;
   sessionsLoaded: boolean;
+  inputFocusKey: number;
   isStreaming: boolean;
   isCreatingNew: boolean;
   deepThinkingEnabled: boolean;
@@ -76,6 +77,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   messages: [],
   isLoading: false,
   sessionsLoaded: false,
+  inputFocusKey: 0,
   isStreaming: false,
   isCreatingNew: false,
   deepThinkingEnabled: false,
@@ -221,6 +223,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (!trimmed) return;
     if (get().isStreaming) return;
     const deepThinkingEnabled = get().deepThinkingEnabled;
+    const inputFocusKey = Date.now();
 
     const userMessage: Message = {
       id: `user-${Date.now()}`,
@@ -247,6 +250,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       isStreaming: true,
       streamingMessageId: assistantId,
       thinkingStartAt: deepThinkingEnabled ? Date.now() : null,
+      inputFocusKey,
       streamTaskId: null,
       cancelRequested: false
     }));
