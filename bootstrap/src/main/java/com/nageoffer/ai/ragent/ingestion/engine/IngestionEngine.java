@@ -93,7 +93,6 @@ public class IngestionEngine {
             return Collections.emptyMap();
         }
         return nodes.stream()
-                .filter(NodeConfig::isEnabled)
                 .collect(Collectors.toMap(NodeConfig::getNodeId, n -> n));
     }
 

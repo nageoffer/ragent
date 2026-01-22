@@ -29,8 +29,6 @@ public class IngestionPipelineNodeVO {
 
     private String nodeType;
 
-    private Boolean enabled;
-
     private JsonNode settings;
 
     private JsonNode condition;

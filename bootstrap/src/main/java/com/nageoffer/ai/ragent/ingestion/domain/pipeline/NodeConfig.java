@@ -45,11 +45,6 @@ public class NodeConfig {
     private String nodeType;
 
     /**
-     * 节点是否启用
-     */
-    private boolean enabled;
-
-    /**
      * 节点的配置参数
      * <p>不同类型的节点有不同的配置结构</p>
      */
