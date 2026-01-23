@@ -55,7 +55,7 @@ public class IngestionResult {
 
     /**
      * 执行结果的消息说明
-     * <p>成功时为概要信息，失败时为错误原因</p>
+     * 成功时为概要信息，失败时为错误原因
      */
     private String message;
 }

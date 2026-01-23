@@ -45,7 +45,7 @@ public class StructuredDocument {
 
     /**
      * 文档的章节结构列表
-     * <p>按层级组织的标题和内容</p>
+     * 按层级组织的标题和内容
      */
     private List<StructuredSection> sections;
 
@@ -56,37 +56,40 @@ public class StructuredDocument {
 
     /**
      * 文档的元数据信息
-     * <p>如作者、创建时间、页数等</p>
+     * 如作者、创建时间、页数等
      */
     private Map<String, Object> metadata;
 
     /**
      * 文档章节结构
-     * <p>
-     * 表示文档中的一个章节或段落，包含标题、层级、内容以及在原文中的位置信息。
-     * </p>
+     * 表示文档中的一个章节或段落，包含标题、层级、内容以及在原文中的位置信息
      */
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
     @Builder
     public static class StructuredSection {
+
         /**
          * 章节标题
          */
         private String title;
+
         /**
          * 章节层级（如1表示一级标题，2表示二级标题）
          */
         private Integer level;
+
         /**
          * 章节的文本内容
          */
         private String content;
+
         /**
          * 章节在原始文档中的起始偏移量
          */
         private Integer startOffset;
+
         /**
          * 章节在原始文档中的结束偏移量
          */
@@ -95,28 +98,30 @@ public class StructuredDocument {
 
     /**
      * 文档表格结构
-     * <p>
-     * 表示文档中的一个表格，包含表格标题、行数据以及在原文中的位置信息。
-     * </p>
+     * 表示文档中的一个表格，包含表格标题、行数据以及在原文中的位置信息
      */
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
     @Builder
     public static class StructuredTable {
+
         /**
          * 表格标题或名称
          */
         private String title;
+
         /**
          * 表格数据行
-         * <p>每行是一个字符串列表，表示各单元格的内容</p>
+         * 每行是一个字符串列表，表示各单元格的内容
          */
         private List<List<String>> rows;
+
         /**
          * 表格在原始文档中的起始偏移量
          */
         private Integer startOffset;
+
         /**
          * 表格在原始文档中的结束偏移量
          */

@@ -17,17 +17,15 @@
 
 package com.nageoffer.ai.ragent.controller;
 
-import cn.hutool.core.bean.BeanUtil;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nageoffer.ai.ragent.controller.request.IngestionTaskCreateRequest;
 import com.nageoffer.ai.ragent.controller.vo.IngestionTaskNodeVO;
 import com.nageoffer.ai.ragent.controller.vo.IngestionTaskVO;
 import com.nageoffer.ai.ragent.framework.convention.Result;
 import com.nageoffer.ai.ragent.framework.web.Results;
 import com.nageoffer.ai.ragent.ingestion.domain.result.IngestionResult;
-import com.nageoffer.ai.ragent.ingestion.service.IngestionTaskService;
+import com.nageoffer.ai.ragent.service.IngestionTaskService;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import org.springframework.http.MediaType;
@@ -42,7 +40,6 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
-import java.util.Map;
 
 /**
  * 知识库采集任务控制层

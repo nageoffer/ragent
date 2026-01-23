@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.ingestion.service;
+package com.nageoffer.ai.ragent.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.lang.Assert;
@@ -29,14 +29,15 @@ import com.nageoffer.ai.ragent.controller.request.IngestionPipelineNodeRequest;
 import com.nageoffer.ai.ragent.controller.request.IngestionPipelineUpdateRequest;
 import com.nageoffer.ai.ragent.controller.vo.IngestionPipelineNodeVO;
 import com.nageoffer.ai.ragent.controller.vo.IngestionPipelineVO;
-import com.nageoffer.ai.ragent.framework.context.UserContext;
-import com.nageoffer.ai.ragent.framework.exception.ClientException;
-import com.nageoffer.ai.ragent.ingestion.domain.pipeline.NodeConfig;
-import com.nageoffer.ai.ragent.ingestion.domain.pipeline.PipelineDefinition;
 import com.nageoffer.ai.ragent.dao.entity.IngestionPipelineDO;
 import com.nageoffer.ai.ragent.dao.entity.IngestionPipelineNodeDO;
 import com.nageoffer.ai.ragent.dao.mapper.IngestionPipelineMapper;
 import com.nageoffer.ai.ragent.dao.mapper.IngestionPipelineNodeMapper;
+import com.nageoffer.ai.ragent.framework.context.UserContext;
+import com.nageoffer.ai.ragent.framework.exception.ClientException;
+import com.nageoffer.ai.ragent.ingestion.domain.pipeline.NodeConfig;
+import com.nageoffer.ai.ragent.ingestion.domain.pipeline.PipelineDefinition;
+import com.nageoffer.ai.ragent.service.IngestionPipelineService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
@@ -45,14 +46,18 @@ import org.springframework.util.StringUtils;
 
 import java.util.List;
 
+/**
+ * 数据清洗流水线业务逻辑实现
+ */
 @Service
 @RequiredArgsConstructor
-public class IngestionPipelineService {
+public class IngestionPipelineServiceImpl implements IngestionPipelineService {
 
     private final IngestionPipelineMapper pipelineMapper;
     private final IngestionPipelineNodeMapper nodeMapper;
     private final ObjectMapper objectMapper;
 
+    @Override
     @Transactional(rollbackFor = Exception.class)
     public IngestionPipelineVO create(IngestionPipelineCreateRequest request) {
         Assert.notNull(request, () -> new ClientException("请求不能为空"));
@@ -71,6 +76,7 @@ public class IngestionPipelineService {
         return toVO(pipeline, fetchNodes(pipeline.getId()));
     }
 
+    @Override
     @Transactional(rollbackFor = Exception.class)
     public IngestionPipelineVO update(String pipelineId, IngestionPipelineUpdateRequest request) {
         IngestionPipelineDO pipeline = pipelineMapper.selectById(pipelineId);
@@ -91,12 +97,14 @@ public class IngestionPipelineService {
         return toVO(pipeline, fetchNodes(pipeline.getId()));
     }
 
+    @Override
     public IngestionPipelineVO get(String pipelineId) {
         IngestionPipelineDO pipeline = pipelineMapper.selectById(pipelineId);
         Assert.notNull(pipeline, () -> new ClientException("未找到流水线"));
         return toVO(pipeline, fetchNodes(pipeline.getId()));
     }
 
+    @Override
     public IPage<IngestionPipelineVO> page(Page<IngestionPipelineVO> page, String keyword) {
         Page<IngestionPipelineDO> mpPage = new Page<>(page.getCurrent(), page.getSize());
         LambdaQueryWrapper<IngestionPipelineDO> qw = new LambdaQueryWrapper<IngestionPipelineDO>()
@@ -111,6 +119,7 @@ public class IngestionPipelineService {
         return voPage;
     }
 
+    @Override
     @Transactional(rollbackFor = Exception.class)
     public void delete(String pipelineId) {
         IngestionPipelineDO pipeline = pipelineMapper.selectById(pipelineId);
@@ -124,6 +133,7 @@ public class IngestionPipelineService {
         nodeMapper.delete(qw);
     }
 
+    @Override
     public PipelineDefinition getDefinition(String pipelineId) {
         IngestionPipelineDO pipeline = pipelineMapper.selectById(pipelineId);
         Assert.notNull(pipeline, () -> new ClientException("未找到流水线"));
@@ -211,5 +221,4 @@ public class IngestionPipelineService {
             return null;
         }
     }
-
 }

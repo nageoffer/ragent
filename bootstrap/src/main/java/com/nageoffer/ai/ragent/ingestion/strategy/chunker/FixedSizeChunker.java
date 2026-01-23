@@ -27,6 +27,10 @@ import org.springframework.util.StringUtils;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * 固定大小的分块策略实现类
+ * 该类通过指定的分块大小和重叠大小对文档内容进行切分
+ */
 @Component
 public class FixedSizeChunker implements ChunkingStrategy {
 

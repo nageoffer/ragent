@@ -42,6 +42,10 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+/**
+ * 文本增强节点
+ * 该节点通过调用大模型对输入的文本进行增强处理，包括不限于上下文增强、关键词提取、问题生成及元数据提取等任务
+ */
 @Component
 public class EnhancerNode implements IngestionNode {
 

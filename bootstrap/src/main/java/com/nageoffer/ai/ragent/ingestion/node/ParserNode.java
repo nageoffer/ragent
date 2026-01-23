@@ -36,6 +36,10 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+/**
+ * 文档解析节点
+ * 负责将输入的字节流（如 PDF、Word、Excel 等）解析为结构化的文本或文档对象
+ */
 @Component
 public class ParserNode implements IngestionNode {
 

@@ -51,6 +51,11 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+/**
+ * 索引节点类，负责将处理后的文档分块数据索引到向量数据库中
+ * 该类实现了 {@link IngestionNode} 接口，是数据摄入流水线中的关键节点
+ * 主要功能包括：解析配置、生成向量嵌入、确保向量空间存在以及将数据批量插入到 Milvus 等向量数据库
+ */
 @Slf4j
 @Component
 public class IndexerNode implements IngestionNode {

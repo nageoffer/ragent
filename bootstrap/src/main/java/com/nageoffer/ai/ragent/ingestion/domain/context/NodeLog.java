@@ -42,7 +42,7 @@ public class NodeLog {
 
     /**
      * 节点类型
-     * <p>如 FETCHER、PARSER、CHUNKER 等</p>
+     * 如 FETCHER、PARSER、CHUNKER 等
      */
     private String nodeType;
 
@@ -68,7 +68,7 @@ public class NodeLog {
 
     /**
      * 节点的输出数据
-     * <p>存储节点处理后产生的结构化数据</p>
+     * 存储节点处理后产生的结构化数据
      */
     private java.util.Map<String, Object> output;
 }

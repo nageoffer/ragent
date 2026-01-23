@@ -23,6 +23,10 @@ import org.springframework.stereotype.Component;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
+/**
+ * Markdown 文档解析器实现类
+ * 负责将 Markdown 格式的内容解析为结构化文档对象
+ */
 @Component
 public class MarkdownParser implements DocumentParser {
 

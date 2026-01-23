@@ -19,6 +19,9 @@ package com.nageoffer.ai.ragent.ingestion.util;
 
 import org.apache.tika.Tika;
 
+/**
+ * MimeType 探测器，用于识别文件或字节数组的媒体类型
+ */
 public final class MimeTypeDetector {
 
     private static final Tika TIKA = new Tika();

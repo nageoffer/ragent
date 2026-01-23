@@ -30,6 +30,10 @@ import org.springframework.util.StringUtils;
 import java.util.List;
 import java.util.Objects;
 
+/**
+ * 条件评估器
+ * 用于根据给定的 IngestionContext 上下文和 JsonNode 格式的条件配置来评估条件是否满足
+ */
 @Component
 public class ConditionEvaluator {
 
@@ -114,7 +118,6 @@ public class ConditionEvaluator {
 
     private boolean compare(Object left, Object right, String operator) {
         return switch (operator.toLowerCase()) {
-            case "eq" -> Objects.equals(normalize(left), normalize(right));
             case "ne" -> !Objects.equals(normalize(left), normalize(right));
             case "in" -> in(left, right);
             case "contains" -> contains(left, right);

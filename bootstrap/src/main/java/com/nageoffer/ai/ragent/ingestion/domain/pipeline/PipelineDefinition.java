@@ -54,5 +54,4 @@ public class PipelineDefinition {
      * 按执行顺序排列的节点配置
      */
     private List<NodeConfig> nodes;
-
 }

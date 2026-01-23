@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.ingestion.service;
+package com.nageoffer.ai.ragent.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.lang.Assert;
@@ -28,6 +28,10 @@ import com.nageoffer.ai.ragent.controller.request.DocumentSourceRequest;
 import com.nageoffer.ai.ragent.controller.request.IngestionTaskCreateRequest;
 import com.nageoffer.ai.ragent.controller.vo.IngestionTaskNodeVO;
 import com.nageoffer.ai.ragent.controller.vo.IngestionTaskVO;
+import com.nageoffer.ai.ragent.dao.entity.IngestionTaskDO;
+import com.nageoffer.ai.ragent.dao.entity.IngestionTaskNodeDO;
+import com.nageoffer.ai.ragent.dao.mapper.IngestionTaskMapper;
+import com.nageoffer.ai.ragent.dao.mapper.IngestionTaskNodeMapper;
 import com.nageoffer.ai.ragent.framework.context.UserContext;
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.ingestion.domain.context.DocumentSource;
@@ -39,12 +43,10 @@ import com.nageoffer.ai.ragent.ingestion.domain.pipeline.NodeConfig;
 import com.nageoffer.ai.ragent.ingestion.domain.pipeline.PipelineDefinition;
 import com.nageoffer.ai.ragent.ingestion.domain.result.IngestionResult;
 import com.nageoffer.ai.ragent.ingestion.engine.IngestionEngine;
-import com.nageoffer.ai.ragent.dao.entity.IngestionTaskDO;
-import com.nageoffer.ai.ragent.dao.entity.IngestionTaskNodeDO;
-import com.nageoffer.ai.ragent.dao.mapper.IngestionTaskMapper;
-import com.nageoffer.ai.ragent.dao.mapper.IngestionTaskNodeMapper;
 import com.nageoffer.ai.ragent.ingestion.util.MimeTypeDetector;
 import com.nageoffer.ai.ragent.rag.vector.VectorSpaceId;
+import com.nageoffer.ai.ragent.service.IngestionPipelineService;
+import com.nageoffer.ai.ragent.service.IngestionTaskService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -60,9 +62,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * 数据摄入任务服务实现
+ */
 @Service
 @RequiredArgsConstructor
-public class IngestionTaskService {
+public class IngestionTaskServiceImpl implements IngestionTaskService {
 
     private final IngestionEngine engine;
     private final IngestionPipelineService pipelineService;
@@ -70,6 +75,7 @@ public class IngestionTaskService {
     private final IngestionTaskNodeMapper taskNodeMapper;
     private final ObjectMapper objectMapper;
 
+    @Override
     @Transactional(rollbackFor = Exception.class)
     public IngestionResult execute(IngestionTaskCreateRequest request) {
         Assert.notNull(request, () -> new ClientException("请求不能为空"));
@@ -77,6 +83,7 @@ public class IngestionTaskService {
         return executeInternal(request.getPipelineId(), source, null, null, request.getVectorSpaceId());
     }
 
+    @Override
     @Transactional(rollbackFor = Exception.class)
     public IngestionResult upload(String pipelineId, MultipartFile file) {
         Assert.notNull(file, () -> new ClientException("文件不能为空"));
@@ -98,12 +105,14 @@ public class IngestionTaskService {
         }
     }
 
+    @Override
     public IngestionTaskVO get(String taskId) {
         IngestionTaskDO task = taskMapper.selectById(taskId);
         Assert.notNull(task, () -> new ClientException("未找到任务"));
         return toVO(task);
     }
 
+    @Override
     public IPage<IngestionTaskVO> page(Page<IngestionTaskVO> page, String status) {
         Page<IngestionTaskDO> mpPage = new Page<>(page.getCurrent(), page.getSize());
         LambdaQueryWrapper<IngestionTaskDO> qw = new LambdaQueryWrapper<IngestionTaskDO>()
@@ -116,6 +125,7 @@ public class IngestionTaskService {
         return voPage;
     }
 
+    @Override
     public List<IngestionTaskNodeVO> listNodes(String taskId) {
         LambdaQueryWrapper<IngestionTaskNodeDO> qw = new LambdaQueryWrapper<IngestionTaskNodeDO>()
                 .eq(IngestionTaskNodeDO::getDeleted, 0)
@@ -300,40 +310,40 @@ public class IngestionTaskService {
     }
 
     private IngestionTaskVO toVO(IngestionTaskDO task) {
-        IngestionTaskVO vo = new IngestionTaskVO();
-        vo.setId(task.getId());
-        vo.setPipelineId(task.getPipelineId());
-        vo.setSourceType(task.getSourceType());
-        vo.setSourceLocation(task.getSourceLocation());
-        vo.setSourceFileName(task.getSourceFileName());
-        vo.setStatus(task.getStatus());
-        vo.setChunkCount(task.getChunkCount());
-        vo.setErrorMessage(task.getErrorMessage());
-        vo.setLogs(readLogs(task.getLogsJson()));
-        vo.setMetadata(BeanUtil.beanToMap(task.getMetadataJson()));
-        vo.setStartedAt(task.getStartedAt());
-        vo.setCompletedAt(task.getCompletedAt());
-        vo.setCreateTime(task.getCreateTime());
-        vo.setUpdateTime(task.getUpdateTime());
-        return vo;
+        return IngestionTaskVO.builder()
+                .id(String.valueOf(task.getId()))
+                .pipelineId(String.valueOf(task.getPipelineId()))
+                .sourceType(task.getSourceType())
+                .sourceLocation(task.getSourceLocation())
+                .sourceFileName(task.getSourceFileName())
+                .status(task.getStatus())
+                .chunkCount(task.getChunkCount())
+                .errorMessage(task.getErrorMessage())
+                .logs(readLogs(task.getLogsJson()))
+                .metadata(BeanUtil.beanToMap(task.getMetadataJson()))
+                .startedAt(task.getStartedAt())
+                .completedAt(task.getCompletedAt())
+                .createTime(task.getCreateTime())
+                .updateTime(task.getUpdateTime())
+                .build();
     }
 
     private IngestionTaskNodeVO toNodeVO(IngestionTaskNodeDO node) {
-        IngestionTaskNodeVO vo = new IngestionTaskNodeVO();
-        vo.setId(node.getId());
-        vo.setTaskId(node.getTaskId());
-        vo.setPipelineId(node.getPipelineId());
-        vo.setNodeId(node.getNodeId());
-        vo.setNodeType(node.getNodeType());
-        vo.setNodeOrder(node.getNodeOrder());
-        vo.setStatus(node.getStatus());
-        vo.setDurationMs(node.getDurationMs());
-        vo.setMessage(node.getMessage());
-        vo.setErrorMessage(node.getErrorMessage());
-        vo.setOutput(BeanUtil.beanToMap(node.getOutputJson()));
-        vo.setCreateTime(node.getCreateTime());
-        vo.setUpdateTime(node.getUpdateTime());
-        return vo;
+        return IngestionTaskNodeVO.builder()
+                .id(String.valueOf(node.getId()))
+                .taskId(String.valueOf(node.getTaskId()))
+                .pipelineId(String.valueOf(node.getPipelineId()))
+                .nodeId(node.getNodeId())
+                .nodeType(node.getNodeType())
+                .nodeOrder(node.getNodeOrder())
+                .status(node.getStatus())
+                .durationMs(node.getDurationMs())
+                .message(node.getMessage())
+                .errorMessage(node.getErrorMessage())
+                .output(BeanUtil.beanToMap(node.getOutputJson()))
+                .createTime(node.getCreateTime())
+                .updateTime(node.getUpdateTime())
+                .build();
     }
 
     private String writeJson(Object value) {
@@ -347,8 +357,7 @@ public class IngestionTaskService {
         }
     }
 
-    private List<NodeLog> buildLogSummary(
-            List<NodeLog> logs) {
+    private List<NodeLog> buildLogSummary(List<NodeLog> logs) {
         if (logs == null) {
             return List.of();
         }
@@ -399,4 +408,3 @@ public class IngestionTaskService {
         return truncated + "... [输出过大，已截断，原始大小: " + json.length() + " 字节]";
     }
 }
-

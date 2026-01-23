@@ -29,6 +29,10 @@ import org.springframework.util.StringUtils;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * HTTP 链接文档获取器
+ * 用于从指定的 HTTP/HTTPS 链接地址获取文档内容
+ */
 @Component
 @RequiredArgsConstructor
 public class HttpUrlFetcher implements DocumentFetcher {

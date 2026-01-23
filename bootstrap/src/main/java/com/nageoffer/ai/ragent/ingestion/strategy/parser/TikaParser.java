@@ -26,6 +26,9 @@ import org.springframework.stereotype.Component;
 import java.io.ByteArrayInputStream;
 import java.util.Map;
 
+/**
+ * Tika 文本解析器实现类
+ */
 @Slf4j
 @Component
 public class TikaParser implements DocumentParser {

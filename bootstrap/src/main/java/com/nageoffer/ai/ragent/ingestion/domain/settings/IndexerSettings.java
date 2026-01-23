@@ -49,7 +49,7 @@ public class IndexerSettings {
 
     /**
      * 要存储的元数据字段列表
-     * <p>指定哪些元数据字段应被存储到向量数据库中</p>
+     * 指定哪些元数据字段应被存储到向量数据库中
      */
     private List<String> metadataFields;
 }

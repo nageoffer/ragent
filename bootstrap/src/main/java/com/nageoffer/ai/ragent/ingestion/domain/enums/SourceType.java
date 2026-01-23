@@ -36,5 +36,10 @@ public enum SourceType {
     /**
      * 飞书文档 - 文档来源为飞书文档
      */
-    FEISHU
+    FEISHU,
+
+    /**
+     * S3对象存储 - 文档来源为S3兼容的对象存储（如RustFS）
+     */
+    S3
 }

@@ -34,6 +34,12 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+/**
+ * 文档获取节点 (Fetcher Node)
+ * 数据摄取负责从多元化的存储介质（如 Local FS、HTTP/HTTPS、OSS 等）中检索并载入文档原始字节流
+ * 核心逻辑采用策略模式 (Strategy Pattern) 实现，根据 {@link SourceType} 动态路由至具体的 {@link DocumentFetcher}
+ * 具备幂等性检查机制：若上下文中已预置原始字节，则自动跳过获取流程，避免重复 I/O
+ */
 @Component
 public class FetcherNode implements IngestionNode {
 

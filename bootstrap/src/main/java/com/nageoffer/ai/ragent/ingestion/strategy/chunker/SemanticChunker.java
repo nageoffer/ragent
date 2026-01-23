@@ -29,6 +29,11 @@ import org.springframework.util.StringUtils;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * 语义分片策略实现类
+ * 该类通过集成 {@link StructureAwareSemanticChunkService}，基于文档内容的语义结构进行智能分片
+ * 适用于需要保持上下文语义连贯性的文档处理场景
+ */
 @Component
 @RequiredArgsConstructor
 public class SemanticChunker implements ChunkingStrategy {

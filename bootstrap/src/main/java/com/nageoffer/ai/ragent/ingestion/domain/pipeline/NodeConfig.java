@@ -40,25 +40,25 @@ public class NodeConfig {
 
     /**
      * 节点类型
-     * <p>对应 NodeType 枚举值，如 FETCHER、PARSER 等</p>
+     * 对应 NodeType 枚举值，如 FETCHER、PARSER 等
      */
     private String nodeType;
 
     /**
      * 节点的配置参数
-     * <p>不同类型的节点有不同的配置结构</p>
+     * 不同类型的节点有不同的配置结构
      */
     private JsonNode settings;
 
     /**
      * 节点执行的条件表达式
-     * <p>满足条件时才执行该节点</p>
+     * 满足条件时才执行该节点
      */
     private JsonNode condition;
 
     /**
      * 下一个节点ID
-     * <p>用于定义管道中节点的执行顺序</p>
+     * 用于定义管道中节点的执行顺序
      */
     private String nextNodeId;
 }

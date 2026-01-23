@@ -27,6 +27,10 @@ import org.springframework.util.StringUtils;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * 句子切分策略实现类
+ * 该类通过识别句子边界（如标点符号和换行符）将文本切分为多个分块（Chunk）
+ */
 @Component
 public class SentenceChunker implements ChunkingStrategy {
 

@@ -35,6 +35,10 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+/**
+ * 文本分块节点
+ * 负责将输入的完整文本（原始文本或增强后的文本）按照指定的策略切分成多个较小的文本块（Chunk）
+ */
 @Component
 public class ChunkerNode implements IngestionNode {
 

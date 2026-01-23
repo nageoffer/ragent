@@ -55,26 +55,27 @@ public class EnricherSettings {
 
     /**
      * 分块富集任务配置
-     * <p>
-     * 定义单个块富集任务的类型和提示词配置。
-     * </p>
+     * 定义单个块富集任务的类型和提示词配置
      */
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
     @Builder
     public static class ChunkEnrichTask {
+
         /**
          * 富集任务类型
          */
         private ChunkEnrichType type;
+
         /**
          * 系统提示词
          */
         private String systemPrompt;
+
         /**
          * 用户提示词模板
-         * <p>支持变量替换</p>
+         * 支持变量替换
          */
         private String userPromptTemplate;
     }

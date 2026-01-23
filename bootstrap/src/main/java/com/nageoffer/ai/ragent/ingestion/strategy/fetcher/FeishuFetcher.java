@@ -37,6 +37,10 @@ import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * 飞书文档抓取器
+ * 负责从飞书平台获取文档内容，支持 docx 类型的在线文档和二进制文件
+ */
 @Component
 @RequiredArgsConstructor
 public class FeishuFetcher implements DocumentFetcher {

@@ -24,7 +24,7 @@ import com.nageoffer.ai.ragent.controller.request.IngestionPipelineUpdateRequest
 import com.nageoffer.ai.ragent.controller.vo.IngestionPipelineVO;
 import com.nageoffer.ai.ragent.framework.convention.Result;
 import com.nageoffer.ai.ragent.framework.web.Results;
-import com.nageoffer.ai.ragent.ingestion.service.IngestionPipelineService;
+import com.nageoffer.ai.ragent.service.IngestionPipelineService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;

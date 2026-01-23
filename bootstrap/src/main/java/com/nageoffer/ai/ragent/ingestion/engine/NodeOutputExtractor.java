@@ -26,6 +26,10 @@ import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+/**
+ * 节点输出提取器
+ * 负责从 IngestionContext 中提取特定节点的输出信息
+ */
 @Component
 public class NodeOutputExtractor {
 

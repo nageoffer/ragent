@@ -27,6 +27,9 @@ import org.springframework.util.StringUtils;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * 按段落进行文本分块的策略实现类
+ */
 @Component
 public class ParagraphChunker implements ChunkingStrategy {
 

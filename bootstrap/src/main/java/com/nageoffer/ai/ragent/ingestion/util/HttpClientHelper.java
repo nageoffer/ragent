@@ -18,6 +18,7 @@
 package com.nageoffer.ai.ragent.ingestion.util;
 
 import com.nageoffer.ai.ragent.framework.exception.ServiceException;
+import lombok.RequiredArgsConstructor;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
@@ -28,14 +29,14 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
+/**
+ * HTTP 请求工具类，用于获取网络资源
+ */
 @Component
+@RequiredArgsConstructor
 public class HttpClientHelper {
 
     private final OkHttpClient client;
-
-    public HttpClientHelper(OkHttpClient client) {
-        this.client = client;
-    }
 
     public HttpFetchResponse get(String url, Map<String, String> headers) {
         Request.Builder builder = new Request.Builder().url(url);

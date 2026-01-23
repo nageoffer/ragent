@@ -19,6 +19,9 @@ package com.nageoffer.ai.ragent.ingestion.util;
 
 import java.util.Map;
 
+/**
+ * 提示词模板渲染器
+ */
 public final class PromptTemplateRenderer {
 
     private PromptTemplateRenderer() {

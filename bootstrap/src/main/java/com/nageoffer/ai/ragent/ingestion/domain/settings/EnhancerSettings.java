@@ -47,26 +47,27 @@ public class EnhancerSettings {
 
     /**
      * 增强任务配置
-     * <p>
-     * 定义单个增强任务的类型和提示词配置。
-     * </p>
+     * 定义单个增强任务的类型和提示词配置
      */
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
     @Builder
     public static class EnhanceTask {
+
         /**
          * 增强任务类型
          */
         private EnhanceType type;
+
         /**
          * 系统提示词
          */
         private String systemPrompt;
+
         /**
          * 用户提示词模板
-         * <p>支持变量替换</p>
+         * 支持变量替换
          */
         private String userPromptTemplate;
     }

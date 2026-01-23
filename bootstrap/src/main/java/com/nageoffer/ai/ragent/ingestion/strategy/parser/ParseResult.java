@@ -19,5 +19,11 @@ package com.nageoffer.ai.ragent.ingestion.strategy.parser;
 
 import com.nageoffer.ai.ragent.ingestion.domain.context.StructuredDocument;
 
+/**
+ * 文档解析结果
+ *
+ * @param text     解析后的文本内容
+ * @param document 结构化文档对象，包含文档的元数据和结构信息
+ */
 public record ParseResult(String text, StructuredDocument document) {
 }
