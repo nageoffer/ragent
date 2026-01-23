@@ -20,6 +20,7 @@ package com.nageoffer.ai.ragent.ingestion.node;
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.ingestion.domain.context.DocumentSource;
 import com.nageoffer.ai.ragent.ingestion.domain.context.IngestionContext;
+import com.nageoffer.ai.ragent.ingestion.domain.enums.IngestionNodeType;
 import com.nageoffer.ai.ragent.ingestion.domain.enums.SourceType;
 import com.nageoffer.ai.ragent.ingestion.domain.pipeline.NodeConfig;
 import com.nageoffer.ai.ragent.ingestion.domain.result.NodeResult;
@@ -52,7 +53,7 @@ public class FetcherNode implements IngestionNode {
 
     @Override
     public String getNodeType() {
-        return "FETCHER";
+        return IngestionNodeType.FETCHER.getValue();
     }
 
     @Override

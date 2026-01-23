@@ -42,7 +42,7 @@ public class NodeLog {
 
     /**
      * 节点类型
-     * 如 FETCHER、PARSER、CHUNKER 等
+     * 如 Fetcher、Parser、Chunker 等
      */
     private String nodeType;
 

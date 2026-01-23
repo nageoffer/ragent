@@ -57,7 +57,7 @@ public class IngestionPipelineNodeDO {
     private String nodeId;
 
     /**
-     * 节点类型
+     * 节点类型 (如: Fetcher, Parser, Chunker, Indexer)
      */
     private String nodeType;
 

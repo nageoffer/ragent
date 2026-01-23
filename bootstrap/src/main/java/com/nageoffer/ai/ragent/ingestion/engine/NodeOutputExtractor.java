@@ -19,6 +19,7 @@ package com.nageoffer.ai.ragent.ingestion.engine;
 
 import com.nageoffer.ai.ragent.ingestion.domain.context.DocumentSource;
 import com.nageoffer.ai.ragent.ingestion.domain.context.IngestionContext;
+import com.nageoffer.ai.ragent.ingestion.domain.enums.IngestionNodeType;
 import com.nageoffer.ai.ragent.ingestion.domain.pipeline.NodeConfig;
 import org.springframework.stereotype.Component;
 
@@ -37,14 +38,17 @@ public class NodeOutputExtractor {
         if (context == null || config == null) {
             return Map.of();
         }
-        return switch (config.getNodeType()) {
-            case "FETCHER" -> fetcherOutput(context);
-            case "PARSER" -> parserOutput(context);
-            case "ENHANCER" -> enhancerOutput(context);
-            case "CHUNKER" -> chunkerOutput(context);
-            case "ENRICHER" -> enricherOutput(context);
-            case "INDEXER" -> indexerOutput(context, config);
-            default -> genericOutput(context);
+        IngestionNodeType nodeType = resolveNodeType(config.getNodeType());
+        if (nodeType == null) {
+            return genericOutput(context);
+        }
+        return switch (nodeType) {
+            case FETCHER -> fetcherOutput(context);
+            case PARSER -> parserOutput(context);
+            case ENHANCER -> enhancerOutput(context);
+            case CHUNKER -> chunkerOutput(context);
+            case ENRICHER -> enricherOutput(context);
+            case INDEXER -> indexerOutput(context, config);
         };
     }
 
@@ -53,7 +57,7 @@ public class NodeOutputExtractor {
         DocumentSource source = context.getSource();
         if (source != null) {
             Map<String, Object> sourceView = new LinkedHashMap<>();
-            sourceView.put("type", source.getType() == null ? null : source.getType().name());
+            sourceView.put("type", source.getType() == null ? null : source.getType().getValue());
             sourceView.put("location", source.getLocation());
             sourceView.put("fileName", source.getFileName());
             output.put("source", sourceView);
@@ -116,5 +120,16 @@ public class NodeOutputExtractor {
         output.put("metadata", context.getMetadata());
         output.put("chunks", context.getChunks());
         return output;
+    }
+
+    private IngestionNodeType resolveNodeType(String nodeType) {
+        if (nodeType == null || nodeType.isBlank()) {
+            return null;
+        }
+        try {
+            return IngestionNodeType.fromValue(nodeType);
+        } catch (IllegalArgumentException ex) {
+            return null;
+        }
     }
 }

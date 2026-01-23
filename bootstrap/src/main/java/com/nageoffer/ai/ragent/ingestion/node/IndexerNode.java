@@ -29,6 +29,7 @@ import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.ingestion.domain.context.DocumentChunk;
 import com.nageoffer.ai.ragent.ingestion.domain.context.DocumentSource;
 import com.nageoffer.ai.ragent.ingestion.domain.context.IngestionContext;
+import com.nageoffer.ai.ragent.ingestion.domain.enums.IngestionNodeType;
 import com.nageoffer.ai.ragent.ingestion.domain.pipeline.NodeConfig;
 import com.nageoffer.ai.ragent.ingestion.domain.result.NodeResult;
 import com.nageoffer.ai.ragent.ingestion.domain.settings.IndexerSettings;
@@ -86,7 +87,7 @@ public class IndexerNode implements IngestionNode {
 
     @Override
     public String getNodeType() {
-        return "INDEXER";
+        return IngestionNodeType.INDEXER.getValue();
     }
 
     @Override
@@ -248,7 +249,7 @@ public class IndexerNode implements IngestionNode {
             metadata.addProperty("pipeline_id", context.getPipelineId());
             DocumentSource source = context.getSource();
             if (source != null && source.getType() != null) {
-                metadata.addProperty("source_type", source.getType().name());
+                metadata.addProperty("source_type", source.getType().getValue());
             }
             if (source != null && StringUtils.hasText(source.getLocation())) {
                 metadata.addProperty("source_location", source.getLocation());

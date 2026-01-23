@@ -25,6 +25,7 @@ import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.ingestion.domain.context.DocumentChunk;
 import com.nageoffer.ai.ragent.ingestion.domain.context.IngestionContext;
 import com.nageoffer.ai.ragent.ingestion.domain.enums.ChunkEnrichType;
+import com.nageoffer.ai.ragent.ingestion.domain.enums.IngestionNodeType;
 import com.nageoffer.ai.ragent.ingestion.domain.pipeline.NodeConfig;
 import com.nageoffer.ai.ragent.ingestion.domain.result.NodeResult;
 import com.nageoffer.ai.ragent.ingestion.domain.settings.EnricherSettings;
@@ -65,7 +66,7 @@ public class EnricherNode implements IngestionNode {
 
     @Override
     public String getNodeType() {
-        return "ENRICHER";
+        return IngestionNodeType.ENRICHER.getValue();
     }
 
     @Override

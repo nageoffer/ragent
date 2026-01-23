@@ -115,9 +115,10 @@ public class IngestionTaskServiceImpl implements IngestionTaskService {
     @Override
     public IPage<IngestionTaskVO> page(Page<IngestionTaskVO> page, String status) {
         Page<IngestionTaskDO> mpPage = new Page<>(page.getCurrent(), page.getSize());
+        String normalizedStatus = normalizeStatus(status);
         LambdaQueryWrapper<IngestionTaskDO> qw = new LambdaQueryWrapper<IngestionTaskDO>()
                 .eq(IngestionTaskDO::getDeleted, 0)
-                .eq(StringUtils.hasText(status), IngestionTaskDO::getStatus, status)
+                .eq(StringUtils.hasText(normalizedStatus), IngestionTaskDO::getStatus, normalizedStatus)
                 .orderByDesc(IngestionTaskDO::getCreateTime);
         IPage<IngestionTaskDO> result = taskMapper.selectPage(mpPage, qw);
         Page<IngestionTaskVO> voPage = new Page<>(result.getCurrent(), result.getSize(), result.getTotal());
@@ -146,10 +147,10 @@ public class IngestionTaskServiceImpl implements IngestionTaskService {
 
         IngestionTaskDO task = IngestionTaskDO.builder()
                 .pipelineId(Long.parseLong(resolvedPipelineId))
-                .sourceType(source.getType() == null ? null : source.getType().name())
+                .sourceType(source.getType() == null ? null : source.getType().getValue())
                 .sourceLocation(source.getLocation())
                 .sourceFileName(source.getFileName())
-                .status(IngestionStatus.RUNNING.name())
+                .status(IngestionStatus.RUNNING.getValue())
                 .chunkCount(0)
                 .startedAt(new Date())
                 .createdBy(UserContext.getUsername())
@@ -180,7 +181,7 @@ public class IngestionTaskServiceImpl implements IngestionTaskService {
     }
 
     private void updateTaskFromContext(IngestionTaskDO task, IngestionContext context) {
-        task.setStatus(context.getStatus() == null ? IngestionStatus.FAILED.name() : context.getStatus().name());
+        task.setStatus(context.getStatus() == null ? IngestionStatus.FAILED.getValue() : context.getStatus().getValue());
         task.setChunkCount(context.getChunks() == null ? 0 : context.getChunks().size());
         task.setErrorMessage(context.getError() == null ? null : context.getError().getMessage());
         task.setCompletedAt(new Date());
@@ -262,16 +263,16 @@ public class IngestionTaskServiceImpl implements IngestionTaskService {
 
     private String resolveNodeStatus(NodeLog log) {
         if (log == null) {
-            return "FAILED";
+            return "Failed";
         }
         if (!log.isSuccess()) {
-            return "FAILED";
+            return "Failed";
         }
         String message = log.getMessage();
         if (message != null && message.startsWith("Skipped:")) {
-            return "SKIPPED";
+            return "Skipped";
         }
-        return "SUCCESS";
+        return "Success";
     }
 
     private Map<String, Object> buildTaskMetadata(IngestionContext context) {
@@ -293,6 +294,17 @@ public class IngestionTaskServiceImpl implements IngestionTaskService {
             return pipelineId;
         }
         throw new ClientException("必须传流水线ID");
+    }
+
+    private String normalizeStatus(String status) {
+        if (!StringUtils.hasText(status)) {
+            return status;
+        }
+        try {
+            return IngestionStatus.fromValue(status).getValue();
+        } catch (IllegalArgumentException ex) {
+            return status;
+        }
     }
 
     private DocumentSource toSource(DocumentSourceRequest request) {

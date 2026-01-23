@@ -17,65 +17,64 @@
 
 package com.nageoffer.ai.ragent.ingestion.domain.enums;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonValue;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
 /**
- * 摄取任务状态枚举
- * 定义文档摄取任务的执行状态
+ * 摄取节点类型枚举
+ * 定义文档摄取流水线中支持的节点类型
  */
 @Getter
 @RequiredArgsConstructor
-public enum IngestionStatus {
+public enum IngestionNodeType {
 
     /**
-     * 等待中 - 任务已创建但尚未开始执行
+     * 文档获取节点 - 从各种数据源获取文档
      */
-    PENDING("Pending"),
+    FETCHER("Fetcher"),
 
     /**
-     * 运行中 - 任务正在执行中
+     * 文档解析节点 - 解析文档内容为文本
      */
-    RUNNING("Running"),
+    PARSER("Parser"),
 
     /**
-     * 失败 - 任务执行失败
+     * 文档增强节点 - 对整个文档进行AI增强处理
      */
-    FAILED("Failed"),
+    ENHANCER("Enhancer"),
 
     /**
-     * 已完成 - 任务执行成功完成
+     * 文档分块节点 - 将文档切分为多个文本块
      */
-    COMPLETED("Completed");
+    CHUNKER("Chunker"),
 
     /**
-     * 状态值（首字母大写）
+     * 分块增强节点 - 对每个文本块进行AI增强处理
+     */
+    ENRICHER("Enricher"),
+
+    /**
+     * 索引节点 - 将文本块向量化并存储到向量数据库
+     */
+    INDEXER("Indexer");
+
+    /**
+     * 节点类型的字符串值（首字母大写）
      */
     private final String value;
 
     /**
-     * 根据字符串值解析状态
+     * 根据字符串值获取枚举
      */
-    @JsonCreator
-    public static IngestionStatus fromValue(String value) {
+    public static IngestionNodeType fromValue(String value) {
         if (value == null) {
             return null;
         }
-        for (IngestionStatus status : values()) {
-            if (status.value.equalsIgnoreCase(value) || status.name().equalsIgnoreCase(value)) {
-                return status;
+        for (IngestionNodeType type : values()) {
+            if (type.value.equalsIgnoreCase(value) || type.name().equalsIgnoreCase(value)) {
+                return type;
             }
         }
-        throw new IllegalArgumentException("Unknown ingestion status: " + value);
-    }
-
-    /**
-     * 获取序列化值
-     */
-    @JsonValue
-    public String getValue() {
-        return value;
+        throw new IllegalArgumentException("Unknown node type: " + value);
     }
 }

@@ -35,6 +35,7 @@ import com.nageoffer.ai.ragent.dao.mapper.IngestionPipelineMapper;
 import com.nageoffer.ai.ragent.dao.mapper.IngestionPipelineNodeMapper;
 import com.nageoffer.ai.ragent.framework.context.UserContext;
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
+import com.nageoffer.ai.ragent.ingestion.domain.enums.IngestionNodeType;
 import com.nageoffer.ai.ragent.ingestion.domain.pipeline.NodeConfig;
 import com.nageoffer.ai.ragent.ingestion.domain.pipeline.PipelineDefinition;
 import com.nageoffer.ai.ragent.service.IngestionPipelineService;
@@ -163,7 +164,7 @@ public class IngestionPipelineServiceImpl implements IngestionPipelineService {
             IngestionPipelineNodeDO entity = IngestionPipelineNodeDO.builder()
                     .pipelineId(pipelineId)
                     .nodeId(node.getNodeId())
-                    .nodeType(node.getNodeType())
+                    .nodeType(normalizeNodeType(node.getNodeType()))
                     .nextNodeId(node.getNextNodeId())
                     .settingsJson(toJson(node.getSettings()))
                     .conditionJson(toJson(node.getCondition()))
@@ -197,7 +198,7 @@ public class IngestionPipelineServiceImpl implements IngestionPipelineService {
     private NodeConfig toNodeConfig(IngestionPipelineNodeDO node) {
         return NodeConfig.builder()
                 .nodeId(node.getNodeId())
-                .nodeType(node.getNodeType())
+                .nodeType(normalizeNodeType(node.getNodeType()))
                 .settings(parseJson(node.getSettingsJson()))
                 .condition(parseJson(node.getConditionJson()))
                 .nextNodeId(node.getNextNodeId())
@@ -219,6 +220,17 @@ public class IngestionPipelineServiceImpl implements IngestionPipelineService {
             return objectMapper.readTree(raw);
         } catch (Exception e) {
             return null;
+        }
+    }
+
+    private String normalizeNodeType(String nodeType) {
+        if (!StringUtils.hasText(nodeType)) {
+            return nodeType;
+        }
+        try {
+            return IngestionNodeType.fromValue(nodeType).getValue();
+        } catch (IllegalArgumentException ex) {
+            throw new ClientException("未知节点类型: " + nodeType);
         }
     }
 }

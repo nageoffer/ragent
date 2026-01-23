@@ -23,6 +23,7 @@ import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.ingestion.domain.context.DocumentChunk;
 import com.nageoffer.ai.ragent.ingestion.domain.context.IngestionContext;
 import com.nageoffer.ai.ragent.ingestion.domain.enums.ChunkStrategy;
+import com.nageoffer.ai.ragent.ingestion.domain.enums.IngestionNodeType;
 import com.nageoffer.ai.ragent.ingestion.domain.pipeline.NodeConfig;
 import com.nageoffer.ai.ragent.ingestion.domain.result.NodeResult;
 import com.nageoffer.ai.ragent.ingestion.domain.settings.ChunkerSettings;
@@ -53,7 +54,7 @@ public class ChunkerNode implements IngestionNode {
 
     @Override
     public String getNodeType() {
-        return "CHUNKER";
+        return IngestionNodeType.CHUNKER.getValue();
     }
 
     @Override

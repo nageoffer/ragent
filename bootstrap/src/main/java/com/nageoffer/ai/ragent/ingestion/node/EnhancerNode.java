@@ -24,6 +24,7 @@ import com.nageoffer.ai.ragent.framework.convention.ChatRequest;
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.ingestion.domain.context.IngestionContext;
 import com.nageoffer.ai.ragent.ingestion.domain.enums.EnhanceType;
+import com.nageoffer.ai.ragent.ingestion.domain.enums.IngestionNodeType;
 import com.nageoffer.ai.ragent.ingestion.domain.pipeline.NodeConfig;
 import com.nageoffer.ai.ragent.ingestion.domain.result.NodeResult;
 import com.nageoffer.ai.ragent.ingestion.domain.settings.EnhancerSettings;
@@ -64,7 +65,7 @@ public class EnhancerNode implements IngestionNode {
 
     @Override
     public String getNodeType() {
-        return "ENHANCER";
+        return IngestionNodeType.ENHANCER.getValue();
     }
 
     @Override

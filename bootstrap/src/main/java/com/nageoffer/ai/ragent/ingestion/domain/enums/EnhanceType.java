@@ -17,29 +17,66 @@
 
 package com.nageoffer.ai.ragent.ingestion.domain.enums;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
+import lombok.Getter;
+import lombok.RequiredArgsConstructor;
+
 /**
  * 文档增强类型枚举
  * 定义对整个文档内容进行增强处理的类型，用于提升文档的检索和理解质量
+ * 类型值使用首字母大写，如 ContextEnhance、Keywords
  */
+@Getter
+@RequiredArgsConstructor
 public enum EnhanceType {
 
     /**
      * 上下文增强 - 为文本添加上下文信息，提升理解能力
      */
-    CONTEXT_ENHANCE,
+    CONTEXT_ENHANCE("ContextEnhance"),
 
     /**
      * 关键词提取 - 从文档中提取重要关键词
      */
-    KEYWORDS,
+    KEYWORDS("Keywords"),
 
     /**
      * 问题生成 - 基于文档内容生成相关问题
      */
-    QUESTIONS,
+    QUESTIONS("Questions"),
 
     /**
      * 元数据提取 - 提取文档的元数据信息
      */
-    METADATA
+    METADATA("Metadata");
+
+    /**
+     * 类型值（首字母大写）
+     */
+    private final String value;
+
+    /**
+     * 根据字符串值解析类型
+     */
+    @JsonCreator
+    public static EnhanceType fromValue(String value) {
+        if (value == null) {
+            return null;
+        }
+        for (EnhanceType type : values()) {
+            if (type.value.equalsIgnoreCase(value) || type.name().equalsIgnoreCase(value)) {
+                return type;
+            }
+        }
+        throw new IllegalArgumentException("Unknown enhance type: " + value);
+    }
+
+    /**
+     * 获取序列化值
+     */
+    @JsonValue
+    public String getValue() {
+        return value;
+    }
 }
