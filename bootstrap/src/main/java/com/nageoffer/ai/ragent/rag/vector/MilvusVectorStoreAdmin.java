@@ -119,6 +119,9 @@ public class MilvusVectorStoreAdmin implements VectorStoreAdmin {
 
     @Override
     public boolean vectorSpaceExists(VectorSpaceId spaceId) {
-        return false;
+        String logicalName = spaceId.getLogicalName();
+        return milvusClient.hasCollection(
+                HasCollectionReq.builder().collectionName(logicalName).build()
+        );
     }
 }
