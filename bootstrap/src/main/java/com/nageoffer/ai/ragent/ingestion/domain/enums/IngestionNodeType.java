@@ -23,6 +23,7 @@ import lombok.RequiredArgsConstructor;
 /**
  * 摄取节点类型枚举
  * 定义文档摄取流水线中支持的节点类型
+ * 类型值使用小写 snake_case，如 fetcher、parser、chunker
  */
 @Getter
 @RequiredArgsConstructor
@@ -31,35 +32,35 @@ public enum IngestionNodeType {
     /**
      * 文档获取节点 - 从各种数据源获取文档
      */
-    FETCHER("Fetcher"),
+    FETCHER("fetcher"),
 
     /**
      * 文档解析节点 - 解析文档内容为文本
      */
-    PARSER("Parser"),
+    PARSER("parser"),
 
     /**
      * 文档增强节点 - 对整个文档进行AI增强处理
      */
-    ENHANCER("Enhancer"),
+    ENHANCER("enhancer"),
 
     /**
      * 文档分块节点 - 将文档切分为多个文本块
      */
-    CHUNKER("Chunker"),
+    CHUNKER("chunker"),
 
     /**
      * 分块增强节点 - 对每个文本块进行AI增强处理
      */
-    ENRICHER("Enricher"),
+    ENRICHER("enricher"),
 
     /**
      * 索引节点 - 将文本块向量化并存储到向量数据库
      */
-    INDEXER("Indexer");
+    INDEXER("indexer");
 
     /**
-     * 节点类型的字符串值（首字母大写）
+     * 节点类型的字符串值（小写 snake_case）
      */
     private final String value;
 
@@ -70,11 +71,18 @@ public enum IngestionNodeType {
         if (value == null) {
             return null;
         }
+        String normalized = normalize(value);
         for (IngestionNodeType type : values()) {
-            if (type.value.equalsIgnoreCase(value) || type.name().equalsIgnoreCase(value)) {
+            if (type.value.equalsIgnoreCase(normalized) || type.name().equalsIgnoreCase(normalized)) {
                 return type;
             }
         }
         throw new IllegalArgumentException("Unknown node type: " + value);
+    }
+
+    private static String normalize(String value) {
+        String trimmed = value.trim();
+        String lower = trimmed.toLowerCase();
+        return lower.replace('-', '_');
     }
 }

@@ -25,6 +25,7 @@ import lombok.RequiredArgsConstructor;
 /**
  * 摄取任务状态枚举
  * 定义文档摄取任务的执行状态
+ * 状态值使用小写 snake_case，如 pending、running、completed
  */
 @Getter
 @RequiredArgsConstructor
@@ -33,25 +34,25 @@ public enum IngestionStatus {
     /**
      * 等待中 - 任务已创建但尚未开始执行
      */
-    PENDING("Pending"),
+    PENDING("pending"),
 
     /**
      * 运行中 - 任务正在执行中
      */
-    RUNNING("Running"),
+    RUNNING("running"),
 
     /**
      * 失败 - 任务执行失败
      */
-    FAILED("Failed"),
+    FAILED("failed"),
 
     /**
      * 已完成 - 任务执行成功完成
      */
-    COMPLETED("Completed");
+    COMPLETED("completed");
 
     /**
-     * 状态值（首字母大写）
+     * 状态值（小写 snake_case）
      */
     private final String value;
 
@@ -63,12 +64,19 @@ public enum IngestionStatus {
         if (value == null) {
             return null;
         }
+        String normalized = normalize(value);
         for (IngestionStatus status : values()) {
-            if (status.value.equalsIgnoreCase(value) || status.name().equalsIgnoreCase(value)) {
+            if (status.value.equalsIgnoreCase(normalized) || status.name().equalsIgnoreCase(normalized)) {
                 return status;
             }
         }
         throw new IllegalArgumentException("Unknown ingestion status: " + value);
+    }
+
+    private static String normalize(String value) {
+        String trimmed = value.trim();
+        String lower = trimmed.toLowerCase();
+        return lower.replace('-', '_');
     }
 
     /**

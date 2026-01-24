@@ -40,7 +40,7 @@ public class NodeConfig {
 
     /**
      * 节点类型
-     * 对应节点类型枚举值，如 Fetcher、Parser 等
+     * 对应节点类型枚举值，如 fetcher、parser 等
      */
     private String nodeType;
 

@@ -34,7 +34,7 @@ public class IngestionPipelineNodeRequest {
 
     /**
      * 节点类型
-     * 如 Fetcher、Parser、Chunker、Indexer 等
+     * 如 fetcher、parser、chunker、indexer 等
      */
     private String nodeType;
 

@@ -56,7 +56,7 @@ public class IngestionTaskNodeVO {
 
     /**
      * 节点类型
-     * 如 Fetcher、Parser、Chunker 等
+     * 如 fetcher、parser、chunker 等
      */
     private String nodeType;
 
@@ -66,7 +66,7 @@ public class IngestionTaskNodeVO {
     private Integer nodeOrder;
 
     /**
-     * 状态 (如: Success, Failed, Skipped)
+     * 状态 (如: success, failed, skipped)
      */
     private String status;
 

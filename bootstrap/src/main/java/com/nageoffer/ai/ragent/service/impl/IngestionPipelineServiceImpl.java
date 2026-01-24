@@ -190,6 +190,7 @@ public class IngestionPipelineServiceImpl implements IngestionPipelineService {
 
     private IngestionPipelineNodeVO toNodeVO(IngestionPipelineNodeDO node) {
         IngestionPipelineNodeVO vo = BeanUtil.toBean(node, IngestionPipelineNodeVO.class);
+        vo.setNodeType(normalizeNodeTypeForOutput(node.getNodeType()));
         vo.setSettings(parseJson(node.getSettingsJson()));
         vo.setCondition(parseJson(node.getConditionJson()));
         return vo;
@@ -231,6 +232,17 @@ public class IngestionPipelineServiceImpl implements IngestionPipelineService {
             return IngestionNodeType.fromValue(nodeType).getValue();
         } catch (IllegalArgumentException ex) {
             throw new ClientException("未知节点类型: " + nodeType);
+        }
+    }
+
+    private String normalizeNodeTypeForOutput(String nodeType) {
+        if (!StringUtils.hasText(nodeType)) {
+            return nodeType;
+        }
+        try {
+            return IngestionNodeType.fromValue(nodeType).getValue();
+        } catch (IllegalArgumentException ex) {
+            return nodeType;
         }
     }
 }

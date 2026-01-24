@@ -37,6 +37,7 @@ import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.ingestion.domain.context.DocumentSource;
 import com.nageoffer.ai.ragent.ingestion.domain.context.IngestionContext;
 import com.nageoffer.ai.ragent.ingestion.domain.context.NodeLog;
+import com.nageoffer.ai.ragent.ingestion.domain.enums.IngestionNodeType;
 import com.nageoffer.ai.ragent.ingestion.domain.enums.IngestionStatus;
 import com.nageoffer.ai.ragent.ingestion.domain.enums.SourceType;
 import com.nageoffer.ai.ragent.ingestion.domain.pipeline.NodeConfig;
@@ -263,16 +264,16 @@ public class IngestionTaskServiceImpl implements IngestionTaskService {
 
     private String resolveNodeStatus(NodeLog log) {
         if (log == null) {
-            return "Failed";
+            return "failed";
         }
         if (!log.isSuccess()) {
-            return "Failed";
+            return "failed";
         }
         String message = log.getMessage();
         if (message != null && message.startsWith("Skipped:")) {
-            return "Skipped";
+            return "skipped";
         }
-        return "Success";
+        return "success";
     }
 
     private Map<String, Object> buildTaskMetadata(IngestionContext context) {
@@ -325,10 +326,10 @@ public class IngestionTaskServiceImpl implements IngestionTaskService {
         return IngestionTaskVO.builder()
                 .id(String.valueOf(task.getId()))
                 .pipelineId(String.valueOf(task.getPipelineId()))
-                .sourceType(task.getSourceType())
+                .sourceType(normalizeSourceType(task.getSourceType()))
                 .sourceLocation(task.getSourceLocation())
                 .sourceFileName(task.getSourceFileName())
-                .status(task.getStatus())
+                .status(normalizeStatus(task.getStatus()))
                 .chunkCount(task.getChunkCount())
                 .errorMessage(task.getErrorMessage())
                 .logs(readLogs(task.getLogsJson()))
@@ -346,9 +347,9 @@ public class IngestionTaskServiceImpl implements IngestionTaskService {
                 .taskId(String.valueOf(node.getTaskId()))
                 .pipelineId(String.valueOf(node.getPipelineId()))
                 .nodeId(node.getNodeId())
-                .nodeType(node.getNodeType())
+                .nodeType(normalizeNodeType(node.getNodeType()))
                 .nodeOrder(node.getNodeOrder())
-                .status(node.getStatus())
+                .status(normalizeNodeStatus(node.getStatus()))
                 .durationMs(node.getDurationMs())
                 .message(node.getMessage())
                 .errorMessage(node.getErrorMessage())
@@ -396,6 +397,37 @@ public class IngestionTaskServiceImpl implements IngestionTaskService {
         } catch (Exception e) {
             return List.of();
         }
+    }
+
+    private String normalizeSourceType(String sourceType) {
+        if (!StringUtils.hasText(sourceType)) {
+            return sourceType;
+        }
+        try {
+            return SourceType.fromValue(sourceType).getValue();
+        } catch (IllegalArgumentException ex) {
+            return sourceType;
+        }
+    }
+
+    private String normalizeNodeType(String nodeType) {
+        if (!StringUtils.hasText(nodeType)) {
+            return nodeType;
+        }
+        try {
+            return IngestionNodeType.fromValue(nodeType).getValue();
+        } catch (IllegalArgumentException ex) {
+            return nodeType;
+        }
+    }
+
+    private String normalizeNodeStatus(String status) {
+        if (!StringUtils.hasText(status)) {
+            return status;
+        }
+        String trimmed = status.trim();
+        String lower = trimmed.toLowerCase();
+        return lower.replace('-', '_');
     }
 
     /**

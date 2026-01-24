@@ -52,7 +52,7 @@ public class IngestionTaskDO {
     private Long pipelineId;
 
     /**
-     * 数据源类型 (如: File, Url, Feishu, S3)
+     * 数据源类型 (如: file, url, feishu, s3)
      */
     private String sourceType;
 
@@ -67,7 +67,7 @@ public class IngestionTaskDO {
     private String sourceFileName;
 
     /**
-     * 任务状态 (如: Pending, Running, Completed, Failed)
+     * 任务状态 (如: pending, running, completed, failed)
      */
     private String status;
 
