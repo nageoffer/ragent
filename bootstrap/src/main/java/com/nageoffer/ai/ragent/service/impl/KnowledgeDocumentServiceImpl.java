@@ -45,7 +45,6 @@ import com.nageoffer.ai.ragent.service.KnowledgeChunkService;
 import com.nageoffer.ai.ragent.service.KnowledgeDocumentService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -72,13 +71,10 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
 
     @Value("${kb.chunk.semantic.targetChars:1400}")
     private int targetChars;
-
     @Value("${kb.chunk.semantic.maxChars:1800}")
     private int maxChars;
-
     @Value("${kb.chunk.semantic.minChars:600}")
     private int minChars;
-
     @Value("${kb.chunk.semantic.overlapChars:0}")
     private int overlapChars;
 
@@ -131,6 +127,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
                     .overlapSize(overlapChars)
                     .metadata(metadata)
                     .build();
+            // TODO 此处应该获取请求对应的分块策略，目前默认使用结构-aware分块策略
             ChunkingStrategy chunkingStrategy = chunkingStrategyFactory.requireStrategy(ChunkingMode.STRUCTURE_AWARE);
 
             List<VectorChunk> chunkResults = chunkingStrategy.chunk(text, config);
