@@ -30,6 +30,7 @@ import com.nageoffer.ai.ragent.dao.mapper.IntentNodeMapper;
 import com.nageoffer.ai.ragent.dao.mapper.KnowledgeBaseMapper;
 import com.nageoffer.ai.ragent.enums.IntentKind;
 import com.nageoffer.ai.ragent.enums.IntentLevel;
+import com.nageoffer.ai.ragent.framework.context.UserContext;
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.framework.exception.ServiceException;
 import com.nageoffer.ai.ragent.rag.intent.IntentNode;
@@ -139,8 +140,8 @@ public class IntentTreeServiceImpl extends ServiceImpl<IntentNodeMapper, IntentN
                 .enabled(
                         requestParam.getEnabled() == null ? 1 : requestParam.getEnabled()
                 )
-                .createBy("")
-                .updateBy("")
+                .createBy(UserContext.getUsername())
+                .updateBy(UserContext.getUsername())
                 .paramPromptTemplate(requestParam.getParamPromptTemplate())
                 .promptSnippet(requestParam.getPromptSnippet())
                 .promptTemplate(requestParam.getPromptTemplate())
@@ -185,7 +186,7 @@ public class IntentTreeServiceImpl extends ServiceImpl<IntentNodeMapper, IntentN
         if (req.getEnabled() != null) {
             node.setEnabled(req.getEnabled());
         }
-        node.setUpdateBy("");
+        node.setUpdateBy(UserContext.getUsername());
         this.updateById(node);
     }
 

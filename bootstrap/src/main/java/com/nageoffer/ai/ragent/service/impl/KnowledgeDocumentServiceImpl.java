@@ -35,6 +35,7 @@ import com.nageoffer.ai.ragent.dao.mapper.KnowledgeBaseMapper;
 import com.nageoffer.ai.ragent.dao.mapper.KnowledgeDocumentMapper;
 import com.nageoffer.ai.ragent.dto.StoredFileDTO;
 import com.nageoffer.ai.ragent.enums.DocumentStatus;
+import com.nageoffer.ai.ragent.framework.context.UserContext;
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.framework.exception.ServiceException;
 import com.nageoffer.ai.ragent.rag.extractor.DocumentTextExtractor;
@@ -93,7 +94,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
                 .fileType(stored.getDetectedType())
                 .fileSize(stored.getSize())
                 .status(DocumentStatus.PENDING.getCode())
-                .createdBy("")
+                .createdBy(UserContext.getUsername())
                 .build();
         docMapper.insert(documentDO);
 
@@ -159,7 +160,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
         Assert.notNull(documentDO, () -> new ClientException("文档不存在"));
 
         documentDO.setDeleted(1);
-        documentDO.setUpdatedBy("");
+        documentDO.setUpdatedBy(UserContext.getUsername());
         docMapper.updateById(documentDO);
 
         vectorStoreService.deleteDocumentVectors(String.valueOf(documentDO.getKbId()), docId);
@@ -195,7 +196,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
         KnowledgeDocumentDO documentDO = docMapper.selectById(docId);
         Assert.notNull(documentDO, () -> new ClientException("文档不存在"));
         documentDO.setEnabled(enabled ? 1 : 0);
-        documentDO.setUpdatedBy("");
+        documentDO.setUpdatedBy(UserContext.getUsername());
         docMapper.updateById(documentDO);
 
         if (!enabled) {
@@ -206,7 +207,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
 
     private void patchStatus(KnowledgeDocumentDO doc, DocumentStatus status) {
         doc.setStatus(status.getCode());
-        doc.setUpdatedBy("");
+        doc.setUpdatedBy(UserContext.getUsername());
         docMapper.updateById(doc);
     }
 }

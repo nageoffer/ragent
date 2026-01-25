@@ -29,6 +29,7 @@ import com.nageoffer.ai.ragent.dao.entity.KnowledgeBaseDO;
 import com.nageoffer.ai.ragent.dao.entity.KnowledgeDocumentDO;
 import com.nageoffer.ai.ragent.dao.mapper.KnowledgeBaseMapper;
 import com.nageoffer.ai.ragent.dao.mapper.KnowledgeDocumentMapper;
+import com.nageoffer.ai.ragent.framework.context.UserContext;
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.framework.exception.ServiceException;
 import com.nageoffer.ai.ragent.rag.vector.VectorSpaceId;
@@ -72,8 +73,8 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
                 .name(requestParam.getName())
                 .embeddingModel(requestParam.getEmbeddingModel())
                 .collectionName(requestParam.getCollectionName())
-                .createdBy("")
-                .updatedBy("")
+                .createdBy(UserContext.getUsername())
+                .updatedBy(UserContext.getUsername())
                 .deleted(0)
                 .build();
 
@@ -130,7 +131,7 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
             kb.setName(requestParam.getName());
         }
 
-        kb.setUpdatedBy("");
+        kb.setUpdatedBy(UserContext.getUsername());
         knowledgeBaseMapper.updateById(kb);
     }
 
@@ -158,7 +159,7 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
         }
 
         kb.setName(requestParam.getName());
-        kb.setUpdatedBy("");
+        kb.setUpdatedBy(UserContext.getUsername());
         knowledgeBaseMapper.updateById(kb);
 
         log.info("成功重命名知识库, kbId={}, newName={}", kbId, requestParam.getName());

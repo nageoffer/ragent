@@ -34,6 +34,7 @@ import com.nageoffer.ai.ragent.dao.entity.KnowledgeChunkDO;
 import com.nageoffer.ai.ragent.dao.entity.KnowledgeDocumentDO;
 import com.nageoffer.ai.ragent.dao.mapper.KnowledgeChunkMapper;
 import com.nageoffer.ai.ragent.dao.mapper.KnowledgeDocumentMapper;
+import com.nageoffer.ai.ragent.framework.context.UserContext;
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.framework.exception.ServiceException;
 import com.nageoffer.ai.ragent.infra.embedding.EmbeddingService;
@@ -125,7 +126,7 @@ public class KnowledgeChunkServiceImpl implements KnowledgeChunkService {
                 .charCount(charCount)
                 .tokenCount(null) // 可选，暂不计算
                 .enabled(1)
-                .createdBy("")
+                .createdBy(UserContext.getUsername())
                 .build();
 
         chunkMapper.insert(chunkDO);
@@ -163,7 +164,7 @@ public class KnowledgeChunkServiceImpl implements KnowledgeChunkService {
         chunkDO.setContent(newContent);
         chunkDO.setContentHash(calculateHash(newContent));
         chunkDO.setCharCount(newContent.length());
-        chunkDO.setUpdatedBy("");
+        chunkDO.setUpdatedBy(UserContext.getUsername());
 
         chunkMapper.updateById(chunkDO);
 
@@ -218,7 +219,7 @@ public class KnowledgeChunkServiceImpl implements KnowledgeChunkService {
         }
 
         chunkDO.setEnabled(enabledValue);
-        chunkDO.setUpdatedBy("");
+        chunkDO.setUpdatedBy(UserContext.getUsername());
         chunkMapper.updateById(chunkDO);
 
         String kbId = String.valueOf(documentDO.getKbId());
@@ -323,7 +324,7 @@ public class KnowledgeChunkServiceImpl implements KnowledgeChunkService {
         for (KnowledgeChunkDO chunk : chunks) {
             if (!chunk.getEnabled().equals(enabledValue)) {
                 chunk.setEnabled(enabledValue);
-                chunk.setUpdatedBy("");
+                chunk.setUpdatedBy(UserContext.getUsername());
                 chunkMapper.updateById(chunk);
                 needUpdateIds.add(chunk.getId());
             }
