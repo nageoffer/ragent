@@ -15,18 +15,25 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.service;
+package com.nageoffer.ai.ragent.knowledge.controller.request;
 
-import com.nageoffer.ai.ragent.dto.StoredFileDTO;
-import org.springframework.web.multipart.MultipartFile;
+import lombok.Data;
 
-import java.io.InputStream;
+@Data
+public class KnowledgeBaseCreateRequest {
 
-public interface FileStorageService {
+    /**
+     * 知识库名称
+     */
+    private String name;
 
-    StoredFileDTO upload(String bucketName, MultipartFile file);
+    /**
+     * 嵌入模型，如 qwen3-embedding:8b-fp16
+     */
+    private String embeddingModel;
 
-    InputStream openStream(String url);
-
-    void deleteByUrl(String url);
+    /**
+     * Milvus Collection 名称
+     */
+    private String collectionName;
 }

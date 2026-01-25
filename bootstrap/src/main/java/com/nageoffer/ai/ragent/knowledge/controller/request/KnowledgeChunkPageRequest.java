@@ -15,18 +15,13 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.service;
+package com.nageoffer.ai.ragent.knowledge.controller.request;
 
-import com.nageoffer.ai.ragent.dto.StoredFileDTO;
-import org.springframework.web.multipart.MultipartFile;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import lombok.Data;
 
-import java.io.InputStream;
+@Data
+public class KnowledgeChunkPageRequest extends Page {
 
-public interface FileStorageService {
-
-    StoredFileDTO upload(String bucketName, MultipartFile file);
-
-    InputStream openStream(String url);
-
-    void deleteByUrl(String url);
+    private Integer enabled;
 }

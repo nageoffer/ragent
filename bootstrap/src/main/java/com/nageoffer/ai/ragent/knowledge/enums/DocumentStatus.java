@@ -15,18 +15,42 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.service;
+package com.nageoffer.ai.ragent.knowledge.enums;
 
-import com.nageoffer.ai.ragent.dto.StoredFileDTO;
-import org.springframework.web.multipart.MultipartFile;
+import lombok.Getter;
+import lombok.RequiredArgsConstructor;
 
-import java.io.InputStream;
+/**
+ * 文档处理状态枚举
+ *
+ * <p>表示文档在处理过程中可能处于的各种状态
+ */
+@Getter
+@RequiredArgsConstructor
+public enum DocumentStatus {
 
-public interface FileStorageService {
+    /**
+     * 文档待处理
+     */
+    PENDING("pending"),
 
-    StoredFileDTO upload(String bucketName, MultipartFile file);
+    /**
+     * 文档处理中
+     */
+    RUNNING("running"),
 
-    InputStream openStream(String url);
+    /**
+     * 文档处理失败
+     */
+    FAILED("failed"),
 
-    void deleteByUrl(String url);
+    /**
+     * 文档处理成功
+     */
+    SUCCESS("success");
+
+    /**
+     * 状态码
+     */
+    private final String code;
 }

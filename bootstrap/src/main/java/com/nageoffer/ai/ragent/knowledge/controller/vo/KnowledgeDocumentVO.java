@@ -15,18 +15,25 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.service;
+package com.nageoffer.ai.ragent.knowledge.controller.vo;
 
-import com.nageoffer.ai.ragent.dto.StoredFileDTO;
-import org.springframework.web.multipart.MultipartFile;
+import lombok.Data;
 
-import java.io.InputStream;
+import java.time.LocalDateTime;
 
-public interface FileStorageService {
-
-    StoredFileDTO upload(String bucketName, MultipartFile file);
-
-    InputStream openStream(String url);
-
-    void deleteByUrl(String url);
+@Data
+public class KnowledgeDocumentVO {
+    private Long id;
+    private Long kbId;
+    private String docName;
+    private Boolean enabled;
+    private Integer chunkCount;
+    private String fileUrl;
+    private String fileType;
+    private Long fileSize;
+    private String status;
+    private String createdBy;
+    private String updatedBy;
+    private LocalDateTime createTime;
+    private LocalDateTime updateTime;
 }

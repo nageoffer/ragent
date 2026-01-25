@@ -15,18 +15,20 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.service;
+package com.nageoffer.ai.ragent.knowledge.controller.request;
 
-import com.nageoffer.ai.ragent.dto.StoredFileDTO;
-import org.springframework.web.multipart.MultipartFile;
+import lombok.Data;
 
-import java.io.InputStream;
+import java.util.List;
 
-public interface FileStorageService {
+/**
+ * 知识库 Chunk 批量操作请求
+ */
+@Data
+public class KnowledgeChunkBatchRequest {
 
-    StoredFileDTO upload(String bucketName, MultipartFile file);
-
-    InputStream openStream(String url);
-
-    void deleteByUrl(String url);
+    /**
+     * Chunk ID 列表（可选，不传则操作文档下所有 chunk）
+     */
+    private List<Long> chunkIds;
 }

@@ -15,18 +15,40 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.service;
+package com.nageoffer.ai.ragent.knowledge.controller.request;
 
-import com.nageoffer.ai.ragent.dto.StoredFileDTO;
-import org.springframework.web.multipart.MultipartFile;
+import lombok.Data;
 
-import java.io.InputStream;
+@Data
+public class KnowledgeDocumentCreateRequest {
 
-public interface FileStorageService {
+    /**
+     * 所属知识库 ID
+     */
+    private Long kbId;
 
-    StoredFileDTO upload(String bucketName, MultipartFile file);
+    /**
+     * 文档名称
+     */
+    private String docName;
 
-    InputStream openStream(String url);
+    /**
+     * 文件地址
+     */
+    private String fileUrl;
 
-    void deleteByUrl(String url);
+    /**
+     * 文件类型：pdf / markdown / docx 等
+     */
+    private String fileType;
+
+    /**
+     * 文件大小（字节）
+     */
+    private Long fileSize;
+
+    /**
+     * 是否启用：1-启用，0-禁用（可选，默认 1）
+     */
+    private Integer enabled;
 }

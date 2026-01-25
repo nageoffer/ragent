@@ -15,18 +15,22 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.service;
+package com.nageoffer.ai.ragent.knowledge.controller.request;
 
-import com.nageoffer.ai.ragent.dto.StoredFileDTO;
-import org.springframework.web.multipart.MultipartFile;
+import lombok.Data;
 
-import java.io.InputStream;
+@Data
+public class KnowledgeBaseUpdateRequest {
 
-public interface FileStorageService {
+    private String id;
 
-    StoredFileDTO upload(String bucketName, MultipartFile file);
+    /**
+     * 知识库名称（可修改）
+     */
+    private String name;
 
-    InputStream openStream(String url);
-
-    void deleteByUrl(String url);
+    /**
+     * 嵌入模型（有文档分块后禁止修改）
+     */
+    private String embeddingModel;
 }

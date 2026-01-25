@@ -15,18 +15,10 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.service;
+package com.nageoffer.ai.ragent.knowledge.dao.mapper;
 
-import com.nageoffer.ai.ragent.dto.StoredFileDTO;
-import org.springframework.web.multipart.MultipartFile;
+import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.nageoffer.ai.ragent.knowledge.dao.entity.KnowledgeChunkDO;
 
-import java.io.InputStream;
-
-public interface FileStorageService {
-
-    StoredFileDTO upload(String bucketName, MultipartFile file);
-
-    InputStream openStream(String url);
-
-    void deleteByUrl(String url);
+public interface KnowledgeChunkMapper extends BaseMapper<KnowledgeChunkDO> {
 }

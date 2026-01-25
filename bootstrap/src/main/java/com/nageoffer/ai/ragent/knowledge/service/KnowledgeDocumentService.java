@@ -15,18 +15,24 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.service;
+package com.nageoffer.ai.ragent.knowledge.service;
 
-import com.nageoffer.ai.ragent.dto.StoredFileDTO;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.nageoffer.ai.ragent.knowledge.controller.vo.KnowledgeDocumentVO;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.InputStream;
+public interface KnowledgeDocumentService {
 
-public interface FileStorageService {
+    KnowledgeDocumentVO upload(String kbId, MultipartFile file);
 
-    StoredFileDTO upload(String bucketName, MultipartFile file);
+    void startChunk(String docId);
 
-    InputStream openStream(String url);
+    void delete(String docId);
 
-    void deleteByUrl(String url);
+    KnowledgeDocumentVO get(String docId);
+
+    IPage<KnowledgeDocumentVO> page(String kbId, Page<KnowledgeDocumentVO> page, String status, String keyword);
+
+    void enable(String docId, boolean enabled);
 }
