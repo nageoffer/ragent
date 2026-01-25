@@ -15,17 +15,17 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.service.impl;
+package com.nageoffer.ai.ragent.user.service.impl;
 
 import cn.dev33.satoken.stp.StpUtil;
 import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
-import com.nageoffer.ai.ragent.controller.request.LoginRequest;
-import com.nageoffer.ai.ragent.controller.vo.LoginVO;
-import com.nageoffer.ai.ragent.dao.entity.UserDO;
-import com.nageoffer.ai.ragent.dao.mapper.UserMapper;
+import com.nageoffer.ai.ragent.user.controller.request.LoginRequest;
+import com.nageoffer.ai.ragent.user.controller.vo.LoginVO;
+import com.nageoffer.ai.ragent.user.dao.entity.UserDO;
+import com.nageoffer.ai.ragent.user.dao.mapper.UserMapper;
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
-import com.nageoffer.ai.ragent.service.AuthService;
+import com.nageoffer.ai.ragent.user.service.AuthService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 

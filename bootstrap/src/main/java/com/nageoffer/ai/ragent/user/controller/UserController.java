@@ -15,9 +15,9 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.controller;
+package com.nageoffer.ai.ragent.user.controller;
 
-import com.nageoffer.ai.ragent.controller.vo.CurrentUserVO;
+import com.nageoffer.ai.ragent.user.controller.vo.CurrentUserVO;
 import com.nageoffer.ai.ragent.framework.context.LoginUser;
 import com.nageoffer.ai.ragent.framework.context.UserContext;
 import com.nageoffer.ai.ragent.framework.convention.Result;

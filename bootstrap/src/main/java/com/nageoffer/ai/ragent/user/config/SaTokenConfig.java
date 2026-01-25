@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.config;
+package com.nageoffer.ai.ragent.user.config;
 
 import cn.dev33.satoken.interceptor.SaInterceptor;
 import cn.dev33.satoken.stp.StpUtil;

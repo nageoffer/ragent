@@ -15,38 +15,22 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.enums;
+package com.nageoffer.ai.ragent.user.controller.vo;
 
-import lombok.Getter;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
-/**
- * 用户角色枚举
- * 定义系统中的用户角色类型
- */
-@Getter
-public enum UserRole {
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class LoginVO {
 
-    /**
-     * 管理员角色
-     */
-    ADMIN("admin"),
+    private String userId;
 
-    /**
-     * 普通用户角色
-     */
-    USER("user");
+    private String role;
 
-    /**
-     * 角色编码
-     */
-    private final String code;
+    private String token;
 
-    /**
-     * 构造函数
-     *
-     * @param code 角色编码
-     */
-    UserRole(String code) {
-        this.code = code;
-    }
+    private String avatar;
 }

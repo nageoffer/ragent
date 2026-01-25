@@ -15,22 +15,14 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.controller.vo;
+package com.nageoffer.ai.ragent.user.controller.request;
 
-import lombok.AllArgsConstructor;
 import lombok.Data;
-import lombok.NoArgsConstructor;
 
 @Data
-@NoArgsConstructor
-@AllArgsConstructor
-public class LoginVO {
+public class LoginRequest {
 
-    private String userId;
+    private String username;
 
-    private String role;
-
-    private String token;
-
-    private String avatar;
+    private String password;
 }

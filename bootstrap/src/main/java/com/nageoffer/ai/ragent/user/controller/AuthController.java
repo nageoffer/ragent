@@ -15,13 +15,13 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.controller;
+package com.nageoffer.ai.ragent.user.controller;
 
-import com.nageoffer.ai.ragent.controller.request.LoginRequest;
-import com.nageoffer.ai.ragent.controller.vo.LoginVO;
+import com.nageoffer.ai.ragent.user.controller.request.LoginRequest;
+import com.nageoffer.ai.ragent.user.controller.vo.LoginVO;
 import com.nageoffer.ai.ragent.framework.convention.Result;
 import com.nageoffer.ai.ragent.framework.web.Results;
-import com.nageoffer.ai.ragent.service.AuthService;
+import com.nageoffer.ai.ragent.user.service.AuthService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;

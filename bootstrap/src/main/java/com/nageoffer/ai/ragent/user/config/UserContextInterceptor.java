@@ -15,12 +15,12 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.config;
+package com.nageoffer.ai.ragent.user.config;
 
 import cn.dev33.satoken.stp.StpUtil;
 import cn.hutool.core.util.StrUtil;
-import com.nageoffer.ai.ragent.dao.entity.UserDO;
-import com.nageoffer.ai.ragent.dao.mapper.UserMapper;
+import com.nageoffer.ai.ragent.user.dao.entity.UserDO;
+import com.nageoffer.ai.ragent.user.dao.mapper.UserMapper;
 import com.nageoffer.ai.ragent.framework.context.LoginUser;
 import com.nageoffer.ai.ragent.framework.context.UserContext;
 import jakarta.servlet.DispatcherType;
