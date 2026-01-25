@@ -33,9 +33,6 @@ import com.nageoffer.ai.ragent.ingestion.domain.enums.IngestionNodeType;
 import com.nageoffer.ai.ragent.ingestion.domain.pipeline.NodeConfig;
 import com.nageoffer.ai.ragent.ingestion.domain.result.NodeResult;
 import com.nageoffer.ai.ragent.ingestion.domain.settings.IndexerSettings;
-import com.nageoffer.ai.ragent.infra.embedding.EmbeddingClient;
-import com.nageoffer.ai.ragent.infra.model.ModelSelector;
-import com.nageoffer.ai.ragent.infra.model.ModelTarget;
 import com.nageoffer.ai.ragent.rag.vector.VectorSpaceId;
 import com.nageoffer.ai.ragent.rag.vector.VectorSpaceSpec;
 import com.nageoffer.ai.ragent.rag.vector.VectorStoreAdmin;
@@ -49,8 +46,6 @@ import org.springframework.util.StringUtils;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 /**
  * 索引节点类，负责将处理后的文档分块数据索引到向量数据库中
@@ -64,22 +59,15 @@ public class IndexerNode implements IngestionNode {
     private static final Gson GSON = new Gson();
 
     private final ObjectMapper objectMapper;
-    private final ModelSelector modelSelector;
-    private final Map<String, EmbeddingClient> embeddingClientsByProvider;
     private final VectorStoreAdmin vectorStoreAdmin;
     private final MilvusClientV2 milvusClient;
     private final RAGDefaultProperties ragDefaultProperties;
 
     public IndexerNode(ObjectMapper objectMapper,
-                       ModelSelector modelSelector,
-                       List<EmbeddingClient> embeddingClients,
                        VectorStoreAdmin vectorStoreAdmin,
                        MilvusClientV2 milvusClient,
                        RAGDefaultProperties ragDefaultProperties) {
         this.objectMapper = objectMapper;
-        this.modelSelector = modelSelector;
-        this.embeddingClientsByProvider = embeddingClients.stream()
-                .collect(Collectors.toMap(EmbeddingClient::provider, Function.identity()));
         this.vectorStoreAdmin = vectorStoreAdmin;
         this.milvusClient = milvusClient;
         this.ragDefaultProperties = ragDefaultProperties;
@@ -97,23 +85,24 @@ public class IndexerNode implements IngestionNode {
             return NodeResult.fail(new ClientException("没有可索引的分块"));
         }
         IndexerSettings settings = parseSettings(config.getSettings());
-        String collectionName = resolveCollectionName(context, settings);
+        String collectionName = resolveCollectionName(context);
         if (!StringUtils.hasText(collectionName)) {
             return NodeResult.fail(new ClientException("索引器需要指定集合名称"));
         }
 
-        List<String> texts = chunks.stream()
-                .map(VectorChunk::getContent)
-                .toList();
-        ModelTarget target = resolveEmbeddingTarget(settings.getEmbeddingModel());
-        int expectedDim = resolveDimension(target);
+        int expectedDim = resolveDimension(chunks);
         if (expectedDim <= 0) {
             return NodeResult.fail(new ClientException("未配置向量维度"));
         }
-        float[][] vectorArray = resolveVectorArray(chunks, texts, target, expectedDim);
+        float[][] vectorArray;
+        try {
+            vectorArray = toArrayFromChunks(chunks, expectedDim);
+        } catch (ClientException ex) {
+            return NodeResult.fail(ex);
+        }
 
         ensureVectorSpace(collectionName);
-        List<JsonObject> rows = buildRows(context, chunks, texts, vectorArray, settings.getMetadataFields());
+        List<JsonObject> rows = buildRows(context, chunks, vectorArray, settings.getMetadataFields());
         insertRows(collectionName, rows);
         return NodeResult.ok("已写入 " + rows.size() + " 个分块到集合 " + collectionName);
     }
@@ -125,7 +114,7 @@ public class IndexerNode implements IngestionNode {
         return objectMapper.convertValue(node, IndexerSettings.class);
     }
 
-    private String resolveCollectionName(IngestionContext context, IndexerSettings settings) {
+    private String resolveCollectionName(IngestionContext context) {
         if (context.getVectorSpaceId() != null && StringUtils.hasText(context.getVectorSpaceId().getLogicalName())) {
             return context.getVectorSpaceId().getLogicalName();
         }
@@ -161,78 +150,17 @@ public class IndexerNode implements IngestionNode {
         log.info("Milvus 写入成功，集合={}，行数={}", collectionName, resp.getInsertCnt());
     }
 
-    private List<List<Float>> embedBatch(List<String> texts, ModelTarget target) {
-        EmbeddingClient client = embeddingClientsByProvider.get(target.candidate().getProvider());
-        if (client == null) {
-            throw new ClientException("未找到Embedding模型客户端: " + target.candidate().getProvider());
+    private int resolveDimension(List<VectorChunk> chunks) {
+        Integer configured = ragDefaultProperties.getDimension();
+        if (configured != null && configured > 0) {
+            return configured;
         }
-        return client.embedBatch(texts, target);
-    }
-
-    private ModelTarget resolveEmbeddingTarget(String modelId) {
-        List<ModelTarget> targets = modelSelector.selectEmbeddingCandidates();
-        return pickTarget(targets, modelId);
-    }
-
-    private ModelTarget pickTarget(List<ModelTarget> targets, String modelId) {
-        if (targets == null || targets.isEmpty()) {
-            throw new ClientException("未找到可用Embedding模型");
-        }
-        if (!StringUtils.hasText(modelId)) {
-            return targets.get(0);
-        }
-        return targets.stream()
-                .filter(target -> modelId.equals(target.id()))
-                .findFirst()
-                .orElseThrow(() -> new ClientException("未匹配到Embedding模型: " + modelId));
-    }
-
-    private int resolveDimension(ModelTarget target) {
-        Integer dim = target != null && target.candidate() != null ? target.candidate().getDimension() : null;
-        if (dim != null && dim > 0) {
-            return dim;
-        }
-        Integer fallback = ragDefaultProperties.getDimension();
-        return fallback == null ? 0 : fallback;
-    }
-
-    private float[][] toArray(List<List<Float>> vectors, int expectedDim) {
-        float[][] out = new float[vectors.size()][];
-        for (int i = 0; i < vectors.size(); i++) {
-            List<Float> row = vectors.get(i);
-            if (row == null) {
-                throw new ClientException("向量结果缺失，索引: " + i);
-            }
-            if (expectedDim > 0 && row.size() != expectedDim) {
-                throw new ClientException("向量维度不匹配，索引: " + i);
-            }
-            float[] vec = new float[row.size()];
-            for (int j = 0; j < row.size(); j++) {
-                vec[j] = row.get(j);
-            }
-            out[i] = vec;
-        }
-        return out;
-    }
-
-    private float[][] resolveVectorArray(List<VectorChunk> chunks,
-                                         List<String> texts,
-                                         ModelTarget target,
-                                         int expectedDim) {
-        if (hasEmbeddings(chunks)) {
-            try {
-                return toArrayFromChunks(chunks, expectedDim);
-            } catch (ClientException ex) {
-                log.warn("分块向量不匹配，使用模型重算: {}", ex.getMessage());
+        for (VectorChunk chunk : chunks) {
+            if (chunk.getEmbedding() != null && chunk.getEmbedding().length > 0) {
+                return chunk.getEmbedding().length;
             }
         }
-        List<List<Float>> vectors = embedBatch(texts, target);
-        return toArray(vectors, expectedDim);
-    }
-
-    private boolean hasEmbeddings(List<VectorChunk> chunks) {
-        return chunks.stream()
-                .allMatch(chunk -> chunk.getEmbedding() != null && chunk.getEmbedding().length > 0);
+        return 0;
     }
 
     private float[][] toArrayFromChunks(List<VectorChunk> chunks, int expectedDim) {
@@ -252,7 +180,6 @@ public class IndexerNode implements IngestionNode {
 
     private List<JsonObject> buildRows(IngestionContext context,
                                        List<VectorChunk> chunks,
-                                       List<String> texts,
                                        float[][] vectors,
                                        List<String> metadataFields) {
         Map<String, Object> mergedMetadata = mergeMetadata(context);
