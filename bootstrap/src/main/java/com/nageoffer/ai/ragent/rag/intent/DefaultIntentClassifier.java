@@ -24,8 +24,8 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.nageoffer.ai.ragent.dao.entity.IntentNodeDO;
-import com.nageoffer.ai.ragent.dao.mapper.IntentNodeMapper;
+import com.nageoffer.ai.ragent.rag.dao.entity.IntentNodeDO;
+import com.nageoffer.ai.ragent.rag.dao.mapper.IntentNodeMapper;
 import com.nageoffer.ai.ragent.framework.convention.ChatMessage;
 import com.nageoffer.ai.ragent.framework.convention.ChatRequest;
 import com.nageoffer.ai.ragent.infra.chat.LLMService;
@@ -44,7 +44,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-import static com.nageoffer.ai.ragent.constant.RAGConstant.INTENT_CLASSIFIER_PROMPT_PATH;
+import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.INTENT_CLASSIFIER_PROMPT_PATH;
 
 /**
  * LLM 树形意图分类器（串行实现）

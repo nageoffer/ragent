@@ -39,7 +39,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import static com.nageoffer.ai.ragent.constant.RAGConstant.MCP_PARAMETER_EXTRACT_PROMPT_PATH;
+import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.MCP_PARAMETER_EXTRACT_PROMPT_PATH;
 
 /**
  * 基于 LLM 的 MCP 参数提取器实现（V3 Enterprise 专用）

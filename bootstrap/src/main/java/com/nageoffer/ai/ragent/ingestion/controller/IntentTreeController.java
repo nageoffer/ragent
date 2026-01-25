@@ -17,9 +17,9 @@
 
 package com.nageoffer.ai.ragent.ingestion.controller;
 
-import com.nageoffer.ai.ragent.controller.request.IntentNodeCreateRequest;
-import com.nageoffer.ai.ragent.controller.vo.IntentNodeTreeVO;
-import com.nageoffer.ai.ragent.controller.request.IntentNodeUpdateRequest;
+import com.nageoffer.ai.ragent.rag.controller.request.IntentNodeCreateRequest;
+import com.nageoffer.ai.ragent.rag.controller.vo.IntentNodeTreeVO;
+import com.nageoffer.ai.ragent.rag.controller.request.IntentNodeUpdateRequest;
 import com.nageoffer.ai.ragent.framework.convention.Result;
 import com.nageoffer.ai.ragent.framework.web.Results;
 import com.nageoffer.ai.ragent.ingestion.service.IntentTreeService;

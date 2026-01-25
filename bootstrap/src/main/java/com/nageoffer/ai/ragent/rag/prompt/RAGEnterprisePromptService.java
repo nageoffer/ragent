@@ -30,9 +30,9 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
-import static com.nageoffer.ai.ragent.constant.RAGConstant.MCP_KB_MIXED_PROMPT_PATH;
-import static com.nageoffer.ai.ragent.constant.RAGConstant.MCP_ONLY_PROMPT_PATH;
-import static com.nageoffer.ai.ragent.constant.RAGConstant.RAG_ENTERPRISE_PROMPT_PATH;
+import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.MCP_KB_MIXED_PROMPT_PATH;
+import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.MCP_ONLY_PROMPT_PATH;
+import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.RAG_ENTERPRISE_PROMPT_PATH;
 
 @Service
 public class RAGEnterprisePromptService {

@@ -18,8 +18,8 @@
 package com.nageoffer.ai.ragent.rag.rewrite;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
-import com.nageoffer.ai.ragent.dao.entity.QueryTermMappingDO;
-import com.nageoffer.ai.ragent.dao.mapper.QueryTermMappingMapper;
+import com.nageoffer.ai.ragent.rag.dao.entity.QueryTermMappingDO;
+import com.nageoffer.ai.ragent.rag.dao.mapper.QueryTermMappingMapper;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

@@ -19,10 +19,10 @@ package com.nageoffer.ai.ragent.rag.intent;
 
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
-import com.nageoffer.ai.ragent.dto.IntentCandidate;
-import com.nageoffer.ai.ragent.dto.IntentGroup;
-import com.nageoffer.ai.ragent.dto.SubQuestionIntent;
-import com.nageoffer.ai.ragent.enums.IntentKind;
+import com.nageoffer.ai.ragent.rag.dto.IntentCandidate;
+import com.nageoffer.ai.ragent.rag.dto.IntentGroup;
+import com.nageoffer.ai.ragent.rag.dto.SubQuestionIntent;
+import com.nageoffer.ai.ragent.rag.enums.IntentKind;
 import com.nageoffer.ai.ragent.rag.rewrite.RewriteResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -35,9 +35,9 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 
-import static com.nageoffer.ai.ragent.constant.RAGConstant.INTENT_MIN_SCORE;
-import static com.nageoffer.ai.ragent.constant.RAGConstant.MAX_INTENT_COUNT;
-import static com.nageoffer.ai.ragent.enums.IntentKind.SYSTEM;
+import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.INTENT_MIN_SCORE;
+import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.MAX_INTENT_COUNT;
+import static com.nageoffer.ai.ragent.rag.enums.IntentKind.SYSTEM;
 
 @Service
 @RequiredArgsConstructor

@@ -17,14 +17,14 @@
 
 package com.nageoffer.ai.ragent.rag.intent;
 
-import com.nageoffer.ai.ragent.enums.IntentKind;
+import com.nageoffer.ai.ragent.rag.enums.IntentKind;
 
 import java.util.ArrayList;
 import java.util.List;
 
-import static com.nageoffer.ai.ragent.enums.IntentLevel.CATEGORY;
-import static com.nageoffer.ai.ragent.enums.IntentLevel.DOMAIN;
-import static com.nageoffer.ai.ragent.enums.IntentLevel.TOPIC;
+import static com.nageoffer.ai.ragent.rag.enums.IntentLevel.CATEGORY;
+import static com.nageoffer.ai.ragent.rag.enums.IntentLevel.DOMAIN;
+import static com.nageoffer.ai.ragent.rag.enums.IntentLevel.TOPIC;
 
 /**
  * 构造意图识别树

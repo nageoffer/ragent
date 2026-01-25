@@ -22,14 +22,14 @@ import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.google.gson.Gson;
-import com.nageoffer.ai.ragent.controller.request.IntentNodeCreateRequest;
-import com.nageoffer.ai.ragent.controller.request.IntentNodeUpdateRequest;
-import com.nageoffer.ai.ragent.controller.vo.IntentNodeTreeVO;
-import com.nageoffer.ai.ragent.dao.entity.IntentNodeDO;
-import com.nageoffer.ai.ragent.dao.mapper.IntentNodeMapper;
+import com.nageoffer.ai.ragent.rag.controller.request.IntentNodeCreateRequest;
+import com.nageoffer.ai.ragent.rag.controller.request.IntentNodeUpdateRequest;
+import com.nageoffer.ai.ragent.rag.controller.vo.IntentNodeTreeVO;
+import com.nageoffer.ai.ragent.rag.dao.entity.IntentNodeDO;
+import com.nageoffer.ai.ragent.rag.dao.mapper.IntentNodeMapper;
 import com.nageoffer.ai.ragent.knowledge.dao.mapper.KnowledgeBaseMapper;
-import com.nageoffer.ai.ragent.enums.IntentKind;
-import com.nageoffer.ai.ragent.enums.IntentLevel;
+import com.nageoffer.ai.ragent.rag.enums.IntentKind;
+import com.nageoffer.ai.ragent.rag.enums.IntentLevel;
 import com.nageoffer.ai.ragent.framework.context.UserContext;
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.framework.exception.ServiceException;
@@ -49,7 +49,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
-import static com.nageoffer.ai.ragent.enums.IntentLevel.DOMAIN;
+import static com.nageoffer.ai.ragent.rag.enums.IntentLevel.DOMAIN;
 
 @Service
 @RequiredArgsConstructor

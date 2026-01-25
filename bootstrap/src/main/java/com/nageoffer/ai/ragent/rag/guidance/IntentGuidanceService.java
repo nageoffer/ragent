@@ -19,10 +19,10 @@ package com.nageoffer.ai.ragent.rag.guidance;
 
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
-import com.nageoffer.ai.ragent.config.GuidanceProperties;
-import com.nageoffer.ai.ragent.constant.RAGConstant;
-import com.nageoffer.ai.ragent.dto.SubQuestionIntent;
-import com.nageoffer.ai.ragent.enums.IntentLevel;
+import com.nageoffer.ai.ragent.rag.config.GuidanceProperties;
+import com.nageoffer.ai.ragent.rag.constant.RAGConstant;
+import com.nageoffer.ai.ragent.rag.dto.SubQuestionIntent;
+import com.nageoffer.ai.ragent.rag.enums.IntentLevel;
 import com.nageoffer.ai.ragent.rag.intent.IntentNode;
 import com.nageoffer.ai.ragent.rag.intent.IntentNodeRegistry;
 import com.nageoffer.ai.ragent.rag.intent.NodeScore;

@@ -19,14 +19,14 @@ package com.nageoffer.ai.ragent.rag.memory;
 
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
-import com.nageoffer.ai.ragent.config.MemoryProperties;
-import com.nageoffer.ai.ragent.controller.request.ConversationCreateRequest;
-import com.nageoffer.ai.ragent.controller.vo.ConversationMessageVO;
+import com.nageoffer.ai.ragent.rag.config.MemoryProperties;
+import com.nageoffer.ai.ragent.rag.controller.request.ConversationCreateRequest;
+import com.nageoffer.ai.ragent.rag.controller.vo.ConversationMessageVO;
 import com.nageoffer.ai.ragent.framework.convention.ChatMessage;
-import com.nageoffer.ai.ragent.enums.ConversationMessageOrder;
-import com.nageoffer.ai.ragent.service.ConversationMessageService;
-import com.nageoffer.ai.ragent.service.ConversationService;
-import com.nageoffer.ai.ragent.service.bo.ConversationMessageBO;
+import com.nageoffer.ai.ragent.rag.enums.ConversationMessageOrder;
+import com.nageoffer.ai.ragent.rag.service.ConversationMessageService;
+import com.nageoffer.ai.ragent.rag.service.ConversationService;
+import com.nageoffer.ai.ragent.rag.service.bo.ConversationMessageBO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 

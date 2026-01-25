@@ -17,7 +17,7 @@
 
 package com.nageoffer.ai.ragent.rag.rewrite;
 
-import com.nageoffer.ai.ragent.config.RAGConfigProperties;
+import com.nageoffer.ai.ragent.rag.config.RAGConfigProperties;
 import com.nageoffer.ai.ragent.framework.convention.ChatMessage;
 import com.nageoffer.ai.ragent.framework.convention.ChatRequest;
 import com.nageoffer.ai.ragent.infra.chat.LLMService;

@@ -17,8 +17,8 @@
 
 package com.nageoffer.ai.ragent.rag.intent;
 
-import com.nageoffer.ai.ragent.enums.IntentKind;
-import com.nageoffer.ai.ragent.enums.IntentLevel;
+import com.nageoffer.ai.ragent.rag.enums.IntentKind;
+import com.nageoffer.ai.ragent.rag.enums.IntentLevel;
 import lombok.Builder;
 import lombok.Data;
 

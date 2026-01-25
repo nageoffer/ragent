@@ -18,8 +18,9 @@
 package com.nageoffer.ai.ragent.service;
 
 import cn.hutool.json.JSONUtil;
-import com.nageoffer.ai.ragent.controller.vo.ConversationMessageVO;
-import com.nageoffer.ai.ragent.enums.ConversationMessageOrder;
+import com.nageoffer.ai.ragent.rag.controller.vo.ConversationMessageVO;
+import com.nageoffer.ai.ragent.rag.enums.ConversationMessageOrder;
+import com.nageoffer.ai.ragent.rag.service.ConversationMessageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Test;

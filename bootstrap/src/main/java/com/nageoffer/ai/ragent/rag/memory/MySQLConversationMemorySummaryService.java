@@ -19,16 +19,16 @@ package com.nageoffer.ai.ragent.rag.memory;
 
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
-import com.nageoffer.ai.ragent.config.MemoryProperties;
-import com.nageoffer.ai.ragent.dao.entity.ConversationMessageDO;
-import com.nageoffer.ai.ragent.dao.entity.ConversationSummaryDO;
+import com.nageoffer.ai.ragent.rag.config.MemoryProperties;
+import com.nageoffer.ai.ragent.rag.dao.entity.ConversationMessageDO;
+import com.nageoffer.ai.ragent.rag.dao.entity.ConversationSummaryDO;
 import com.nageoffer.ai.ragent.framework.convention.ChatMessage;
 import com.nageoffer.ai.ragent.framework.convention.ChatRequest;
 import com.nageoffer.ai.ragent.infra.chat.LLMService;
 import com.nageoffer.ai.ragent.rag.prompt.PromptTemplateLoader;
-import com.nageoffer.ai.ragent.service.ConversationGroupService;
-import com.nageoffer.ai.ragent.service.ConversationMessageService;
-import com.nageoffer.ai.ragent.service.bo.ConversationSummaryBO;
+import com.nageoffer.ai.ragent.rag.service.ConversationGroupService;
+import com.nageoffer.ai.ragent.rag.service.ConversationMessageService;
+import com.nageoffer.ai.ragent.rag.service.bo.ConversationSummaryBO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
@@ -47,7 +47,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
-import static com.nageoffer.ai.ragent.constant.RAGConstant.CONVERSATION_SUMMARY_PROMPT_PATH;
+import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.CONVERSATION_SUMMARY_PROMPT_PATH;
 
 @Slf4j
 @Service

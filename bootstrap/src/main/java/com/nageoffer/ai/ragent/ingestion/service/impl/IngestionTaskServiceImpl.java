@@ -24,7 +24,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.nageoffer.ai.ragent.controller.request.DocumentSourceRequest;
+import com.nageoffer.ai.ragent.rag.controller.request.DocumentSourceRequest;
 import com.nageoffer.ai.ragent.ingestion.controller.request.IngestionTaskCreateRequest;
 import com.nageoffer.ai.ragent.ingestion.controller.vo.IngestionTaskNodeVO;
 import com.nageoffer.ai.ragent.ingestion.controller.vo.IngestionTaskVO;

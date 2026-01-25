@@ -18,10 +18,10 @@
 package com.nageoffer.ai.ragent.ingestion.service;
 
 import com.baomidou.mybatisplus.extension.service.IService;
-import com.nageoffer.ai.ragent.dao.entity.IntentNodeDO;
-import com.nageoffer.ai.ragent.controller.request.IntentNodeCreateRequest;
-import com.nageoffer.ai.ragent.controller.vo.IntentNodeTreeVO;
-import com.nageoffer.ai.ragent.controller.request.IntentNodeUpdateRequest;
+import com.nageoffer.ai.ragent.rag.dao.entity.IntentNodeDO;
+import com.nageoffer.ai.ragent.rag.controller.request.IntentNodeCreateRequest;
+import com.nageoffer.ai.ragent.rag.controller.vo.IntentNodeTreeVO;
+import com.nageoffer.ai.ragent.rag.controller.request.IntentNodeUpdateRequest;
 
 import java.util.List;
 
