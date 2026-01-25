@@ -83,7 +83,8 @@ public class KnowledgeChunkServiceImpl implements KnowledgeChunkService {
                 .eq(requestParam.getEnabled() != null, KnowledgeChunkDO::getEnabled, requestParam.getEnabled())
                 .orderByAsc(KnowledgeChunkDO::getChunkIndex);
 
-        IPage<KnowledgeChunkDO> result = chunkMapper.selectPage(requestParam, queryWrapper);
+        Page<KnowledgeChunkDO> page = new Page<>(requestParam.getCurrent(), requestParam.getSize());
+        IPage<KnowledgeChunkDO> result = chunkMapper.selectPage(page, queryWrapper);
         return result.convert(each -> BeanUtil.toBean(each, KnowledgeChunkVO.class));
     }
 

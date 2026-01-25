@@ -20,6 +20,7 @@ package com.nageoffer.ai.ragent.service.impl;
 import cn.hutool.core.bean.BeanUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.nageoffer.ai.ragent.controller.request.KnowledgeBaseCreateRequest;
 import com.nageoffer.ai.ragent.controller.request.KnowledgeBasePageRequest;
@@ -196,7 +197,8 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
                 .eq(KnowledgeBaseDO::getDeleted, 0)
                 .orderByDesc(KnowledgeBaseDO::getUpdateTime);
 
-        IPage<KnowledgeBaseDO> result = knowledgeBaseMapper.selectPage(requestParam, queryWrapper);
+        Page<KnowledgeBaseDO> page = new Page<>(requestParam.getCurrent(), requestParam.getSize());
+        IPage<KnowledgeBaseDO> result = knowledgeBaseMapper.selectPage(page, queryWrapper);
         return result.convert(each -> BeanUtil.toBean(each, KnowledgeBaseVO.class));
     }
 }
