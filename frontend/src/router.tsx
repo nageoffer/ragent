@@ -5,6 +5,8 @@ import { ChatPage } from "@/pages/ChatPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { AdminLayout } from "@/pages/admin/AdminLayout";
 import { KnowledgeListPage } from "@/pages/admin/knowledge/KnowledgeListPage";
+import { KnowledgeDocumentsPage } from "@/pages/admin/knowledge/KnowledgeDocumentsPage";
+import { KnowledgeChunksPage } from "@/pages/admin/knowledge/KnowledgeChunksPage";
 import { IntentTreePage } from "@/pages/admin/intent-tree/IntentTreePage";
 import { IngestionPage } from "@/pages/admin/ingestion/IngestionPage";
 import { useAuthStore } from "@/stores/authStore";
@@ -89,6 +91,14 @@ export const router = createBrowserRouter([
       {
         path: "knowledge",
         element: <KnowledgeListPage />
+      },
+      {
+        path: "knowledge/:kbId",
+        element: <KnowledgeDocumentsPage />
+      },
+      {
+        path: "knowledge/:kbId/docs/:docId",
+        element: <KnowledgeChunksPage />
       },
       {
         path: "intent-tree",
