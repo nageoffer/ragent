@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.rag.service.handler;
+package com.nageoffer.ai.ragent.rag.aop;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -37,7 +37,7 @@ public class ChatRateLimitAspect {
 
     private final ChatQueueLimiter chatQueueLimiter;
 
-    @Around("@annotation(com.nageoffer.ai.ragent.rag.service.handler.ChatRateLimit)")
+    @Around("@annotation(com.nageoffer.ai.ragent.rag.aop.ChatRateLimit)")
     public Object limitStreamChat(ProceedingJoinPoint joinPoint) throws Throwable {
         Object[] args = joinPoint.getArgs();
         if (args == null || args.length < 4 || !(args[3] instanceof SseEmitter emitter)) {

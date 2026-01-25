@@ -41,7 +41,7 @@ import com.nageoffer.ai.ragent.rag.service.ConversationGroupService;
 import com.nageoffer.ai.ragent.rag.service.RAGEnterpriseService;
 import com.nageoffer.ai.ragent.rag.guidance.GuidanceDecision;
 import com.nageoffer.ai.ragent.rag.guidance.IntentGuidanceService;
-import com.nageoffer.ai.ragent.rag.service.handler.ChatRateLimit;
+import com.nageoffer.ai.ragent.rag.aop.ChatRateLimit;
 import com.nageoffer.ai.ragent.rag.service.handler.StreamChatEventHandler;
 import com.nageoffer.ai.ragent.rag.service.handler.StreamTaskManager;
 import lombok.RequiredArgsConstructor;

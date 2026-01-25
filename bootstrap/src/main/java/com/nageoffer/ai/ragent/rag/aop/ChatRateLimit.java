@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.rag.service.handler;
+package com.nageoffer.ai.ragent.rag.aop;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
