@@ -10,6 +10,7 @@ import {
   PlayCircle,
   Plus,
   Search,
+  Settings,
   Trash2
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -370,6 +371,17 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" side="top" sideOffset={8} className="w-48">
+              {user?.role === "admin" && (
+                <DropdownMenuItem
+                  onClick={() => {
+                    navigate("/admin");
+                    onClose();
+                  }}
+                >
+                  <Settings className="mr-2 h-4 w-4" />
+                  管理后台
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem asChild>
                 <a
                   href="https://nageoffer.com/ragent"

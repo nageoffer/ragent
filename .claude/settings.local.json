@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx shadcn@latest add table)",
+      "Bash(npx shadcn@latest add form input textarea select label badge card tabs separator sheet progress alert-dialog)",
+      "Bash(npm install @tanstack/react-table react-dropzone react-hook-form zod @hookform/resolvers)",
+      "Bash(npm run build)",
+      "Bash(npx shadcn@latest add:*)",
+      "Bash(curl:*)",
+      "Bash(kill:*)"
+    ]
+  }
+}
