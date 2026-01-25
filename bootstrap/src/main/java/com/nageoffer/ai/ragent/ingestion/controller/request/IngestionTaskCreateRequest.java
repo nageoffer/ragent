@@ -15,8 +15,9 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.controller.request;
+package com.nageoffer.ai.ragent.ingestion.controller.request;
 
+import com.nageoffer.ai.ragent.controller.request.DocumentSourceRequest;
 import com.nageoffer.ai.ragent.rag.vector.VectorSpaceId;
 import lombok.Data;
 

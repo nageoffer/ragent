@@ -15,80 +15,39 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.controller.vo;
+package com.nageoffer.ai.ragent.ingestion.controller.vo;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
 import lombok.Data;
-import lombok.NoArgsConstructor;
 
 import java.util.Date;
-import java.util.Map;
+import java.util.List;
+
 
 /**
- * 摄取任务节点视图对象
+ * 数据摄取管道视图对象
  */
 @Data
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
-public class IngestionTaskNodeVO {
+public class IngestionPipelineVO {
 
     /**
-     * ID
+     * 管道ID
      */
     private String id;
 
     /**
-     * 任务ID
+     * 管道名称
      */
-    private String taskId;
+    private String name;
 
     /**
-     * 流水线ID
+     * 管道描述
      */
-    private String pipelineId;
+    private String description;
 
     /**
-     * 节点ID
+     * 管道节点列表
      */
-    private String nodeId;
-
-    /**
-     * 节点类型
-     * 如 fetcher、parser、chunker 等
-     */
-    private String nodeType;
-
-    /**
-     * 节点排序
-     */
-    private Integer nodeOrder;
-
-    /**
-     * 状态 (如: success, failed, skipped)
-     */
-    private String status;
-
-    /**
-     * 耗时（毫秒）
-     */
-    private Long durationMs;
-
-    /**
-     * 消息
-     */
-    private String message;
-
-    /**
-     * 错误消息
-     */
-    private String errorMessage;
-
-    /**
-     * 输出结果
-     */
-    private Map<String, Object> output;
+    private List<IngestionPipelineNodeVO> nodes;
 
     /**
      * 创建时间

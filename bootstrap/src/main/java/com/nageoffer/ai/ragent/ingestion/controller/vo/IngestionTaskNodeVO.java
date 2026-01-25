@@ -15,46 +15,39 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.dao.entity;
+package com.nageoffer.ai.ragent.ingestion.controller.vo;
 
-import com.baomidou.mybatisplus.annotation.FieldFill;
-import com.baomidou.mybatisplus.annotation.IdType;
-import com.baomidou.mybatisplus.annotation.TableField;
-import com.baomidou.mybatisplus.annotation.TableId;
-import com.baomidou.mybatisplus.annotation.TableLogic;
-import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.util.Date;
+import java.util.Map;
 
 /**
- * 知识库数据接入任务节点实体
+ * 摄取任务节点视图对象
  */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@TableName("t_ingestion_task_node")
-public class IngestionTaskNodeDO {
+public class IngestionTaskNodeVO {
 
     /**
      * ID
      */
-    @TableId(type = IdType.ASSIGN_ID)
-    private Long id;
+    private String id;
 
     /**
      * 任务ID
      */
-    private Long taskId;
+    private String taskId;
 
     /**
      * 流水线ID
      */
-    private Long pipelineId;
+    private String pipelineId;
 
     /**
      * 节点ID
@@ -68,7 +61,7 @@ public class IngestionTaskNodeDO {
     private String nodeType;
 
     /**
-     * 节点顺序
+     * 节点排序
      */
     private Integer nodeOrder;
 
@@ -78,7 +71,7 @@ public class IngestionTaskNodeDO {
     private String status;
 
     /**
-     * 持续时间（毫秒）
+     * 耗时（毫秒）
      */
     private Long durationMs;
 
@@ -93,25 +86,17 @@ public class IngestionTaskNodeDO {
     private String errorMessage;
 
     /**
-     * 输出JSON
+     * 输出结果
      */
-    private String outputJson;
+    private Map<String, Object> output;
 
     /**
      * 创建时间
      */
-    @TableField(fill = FieldFill.INSERT)
     private Date createTime;
 
     /**
      * 更新时间
      */
-    @TableField(fill = FieldFill.INSERT_UPDATE)
     private Date updateTime;
-
-    /**
-     * 删除标记
-     */
-    @TableLogic
-    private Integer deleted;
 }

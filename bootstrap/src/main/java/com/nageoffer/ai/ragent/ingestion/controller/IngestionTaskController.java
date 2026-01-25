@@ -15,17 +15,17 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.controller;
+package com.nageoffer.ai.ragent.ingestion.controller;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.nageoffer.ai.ragent.controller.request.IngestionTaskCreateRequest;
-import com.nageoffer.ai.ragent.controller.vo.IngestionTaskNodeVO;
-import com.nageoffer.ai.ragent.controller.vo.IngestionTaskVO;
+import com.nageoffer.ai.ragent.ingestion.controller.request.IngestionTaskCreateRequest;
+import com.nageoffer.ai.ragent.ingestion.controller.vo.IngestionTaskNodeVO;
+import com.nageoffer.ai.ragent.ingestion.controller.vo.IngestionTaskVO;
 import com.nageoffer.ai.ragent.framework.convention.Result;
 import com.nageoffer.ai.ragent.framework.web.Results;
 import com.nageoffer.ai.ragent.ingestion.domain.result.IngestionResult;
-import com.nageoffer.ai.ragent.service.IngestionTaskService;
+import com.nageoffer.ai.ragent.ingestion.service.IngestionTaskService;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import org.springframework.http.MediaType;

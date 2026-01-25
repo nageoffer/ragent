@@ -15,31 +15,44 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.controller.request;
+package com.nageoffer.ai.ragent.ingestion.controller.request;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import lombok.Data;
 
-import java.util.List;
-
 /**
- * 摄取管道创建请求对象
- * 用于接收创建新摄取管道的请求参数，包括管道名称、描述及节点配置列表
+ * 摄取管道节点请求对象
+ * 用于接收管道中单个节点的配置信息，包括节点标识、类型、设置参数及执行条件
  */
 @Data
-public class IngestionPipelineCreateRequest {
+public class IngestionPipelineNodeRequest {
 
     /**
-     * 管道名称
+     * 节点的唯一标识符
      */
-    private String name;
+    private String nodeId;
 
     /**
-     * 管道描述信息
+     * 节点类型
+     * 如 fetcher、parser、chunker、indexer 等
      */
-    private String description;
+    private String nodeType;
 
     /**
-     * 管道节点配置列表
+     * 节点的配置参数
+     * 不同类型的节点有不同的配置结构
      */
-    private List<IngestionPipelineNodeRequest> nodes;
+    private JsonNode settings;
+
+    /**
+     * 节点执行的条件表达式
+     * 满足条件时才执行该节点
+     */
+    private JsonNode condition;
+
+    /**
+     * 下一个节点ID
+     * 用于定义管道中节点的执行顺序
+     */
+    private String nextNodeId;
 }

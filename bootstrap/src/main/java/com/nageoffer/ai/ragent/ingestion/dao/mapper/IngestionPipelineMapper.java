@@ -15,47 +15,10 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.controller.vo;
+package com.nageoffer.ai.ragent.ingestion.dao.mapper;
 
-import lombok.Data;
+import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.nageoffer.ai.ragent.ingestion.dao.entity.IngestionPipelineDO;
 
-import java.util.Date;
-import java.util.List;
-
-
-/**
- * 数据摄取管道视图对象
- */
-@Data
-public class IngestionPipelineVO {
-
-    /**
-     * 管道ID
-     */
-    private String id;
-
-    /**
-     * 管道名称
-     */
-    private String name;
-
-    /**
-     * 管道描述
-     */
-    private String description;
-
-    /**
-     * 管道节点列表
-     */
-    private List<IngestionPipelineNodeVO> nodes;
-
-    /**
-     * 创建时间
-     */
-    private Date createTime;
-
-    /**
-     * 更新时间
-     */
-    private Date updateTime;
+public interface IngestionPipelineMapper extends BaseMapper<IngestionPipelineDO> {
 }

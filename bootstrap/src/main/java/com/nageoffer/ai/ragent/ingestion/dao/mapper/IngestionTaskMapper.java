@@ -15,23 +15,10 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.controller.vo;
+package com.nageoffer.ai.ragent.ingestion.dao.mapper;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import lombok.Data;
+import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.nageoffer.ai.ragent.ingestion.dao.entity.IngestionTaskDO;
 
-@Data
-public class IngestionPipelineNodeVO {
-
-    private Long id;
-
-    private String nodeId;
-
-    private String nodeType;
-
-    private JsonNode settings;
-
-    private JsonNode condition;
-
-    private String nextNodeId;
+public interface IngestionTaskMapper extends BaseMapper<IngestionTaskDO> {
 }

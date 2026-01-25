@@ -15,16 +15,16 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.controller;
+package com.nageoffer.ai.ragent.ingestion.controller;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.nageoffer.ai.ragent.controller.request.IngestionPipelineCreateRequest;
-import com.nageoffer.ai.ragent.controller.request.IngestionPipelineUpdateRequest;
-import com.nageoffer.ai.ragent.controller.vo.IngestionPipelineVO;
+import com.nageoffer.ai.ragent.ingestion.controller.request.IngestionPipelineCreateRequest;
+import com.nageoffer.ai.ragent.ingestion.controller.request.IngestionPipelineUpdateRequest;
+import com.nageoffer.ai.ragent.ingestion.controller.vo.IngestionPipelineVO;
 import com.nageoffer.ai.ragent.framework.convention.Result;
 import com.nageoffer.ai.ragent.framework.web.Results;
-import com.nageoffer.ai.ragent.service.IngestionPipelineService;
+import com.nageoffer.ai.ragent.ingestion.service.IngestionPipelineService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;

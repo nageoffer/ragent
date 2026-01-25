@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.service;
+package com.nageoffer.ai.ragent.ingestion.service;
 
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.nageoffer.ai.ragent.dao.entity.IntentNodeDO;

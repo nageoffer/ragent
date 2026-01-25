@@ -15,14 +15,14 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.controller;
+package com.nageoffer.ai.ragent.ingestion.controller;
 
 import com.nageoffer.ai.ragent.controller.request.IntentNodeCreateRequest;
 import com.nageoffer.ai.ragent.controller.vo.IntentNodeTreeVO;
 import com.nageoffer.ai.ragent.controller.request.IntentNodeUpdateRequest;
 import com.nageoffer.ai.ragent.framework.convention.Result;
 import com.nageoffer.ai.ragent.framework.web.Results;
-import com.nageoffer.ai.ragent.service.IntentTreeService;
+import com.nageoffer.ai.ragent.ingestion.service.IntentTreeService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;

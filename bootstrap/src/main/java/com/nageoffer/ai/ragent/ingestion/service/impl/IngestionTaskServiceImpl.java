@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.service.impl;
+package com.nageoffer.ai.ragent.ingestion.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.lang.Assert;
@@ -25,13 +25,13 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nageoffer.ai.ragent.controller.request.DocumentSourceRequest;
-import com.nageoffer.ai.ragent.controller.request.IngestionTaskCreateRequest;
-import com.nageoffer.ai.ragent.controller.vo.IngestionTaskNodeVO;
-import com.nageoffer.ai.ragent.controller.vo.IngestionTaskVO;
-import com.nageoffer.ai.ragent.dao.entity.IngestionTaskDO;
-import com.nageoffer.ai.ragent.dao.entity.IngestionTaskNodeDO;
-import com.nageoffer.ai.ragent.dao.mapper.IngestionTaskMapper;
-import com.nageoffer.ai.ragent.dao.mapper.IngestionTaskNodeMapper;
+import com.nageoffer.ai.ragent.ingestion.controller.request.IngestionTaskCreateRequest;
+import com.nageoffer.ai.ragent.ingestion.controller.vo.IngestionTaskNodeVO;
+import com.nageoffer.ai.ragent.ingestion.controller.vo.IngestionTaskVO;
+import com.nageoffer.ai.ragent.ingestion.dao.entity.IngestionTaskDO;
+import com.nageoffer.ai.ragent.ingestion.dao.entity.IngestionTaskNodeDO;
+import com.nageoffer.ai.ragent.ingestion.dao.mapper.IngestionTaskMapper;
+import com.nageoffer.ai.ragent.ingestion.dao.mapper.IngestionTaskNodeMapper;
 import com.nageoffer.ai.ragent.framework.context.UserContext;
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.ingestion.domain.context.DocumentSource;
@@ -46,8 +46,8 @@ import com.nageoffer.ai.ragent.ingestion.domain.result.IngestionResult;
 import com.nageoffer.ai.ragent.ingestion.engine.IngestionEngine;
 import com.nageoffer.ai.ragent.ingestion.util.MimeTypeDetector;
 import com.nageoffer.ai.ragent.rag.vector.VectorSpaceId;
-import com.nageoffer.ai.ragent.service.IngestionPipelineService;
-import com.nageoffer.ai.ragent.service.IngestionTaskService;
+import com.nageoffer.ai.ragent.ingestion.service.IngestionPipelineService;
+import com.nageoffer.ai.ragent.ingestion.service.IngestionTaskService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;

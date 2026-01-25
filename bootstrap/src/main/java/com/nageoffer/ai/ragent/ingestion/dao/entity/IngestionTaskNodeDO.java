@@ -15,94 +15,103 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.controller.vo;
+package com.nageoffer.ai.ragent.ingestion.dao.entity;
 
-import com.nageoffer.ai.ragent.ingestion.domain.context.NodeLog;
+import com.baomidou.mybatisplus.annotation.FieldFill;
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableLogic;
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.util.Date;
-import java.util.List;
-import java.util.Map;
 
 /**
- * 知识库摄取任务视图对象
+ * 知识库数据接入任务节点实体
  */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class IngestionTaskVO {
+@TableName("t_ingestion_task_node")
+public class IngestionTaskNodeDO {
+
+    /**
+     * ID
+     */
+    @TableId(type = IdType.ASSIGN_ID)
+    private Long id;
 
     /**
      * 任务ID
      */
-    private String id;
+    private Long taskId;
 
     /**
      * 流水线ID
      */
-    private String pipelineId;
+    private Long pipelineId;
 
     /**
-     * 数据源类型
+     * 节点ID
      */
-    private String sourceType;
+    private String nodeId;
 
     /**
-     * 数据源位置
+     * 节点类型
+     * 如 fetcher、parser、chunker 等
      */
-    private String sourceLocation;
+    private String nodeType;
 
     /**
-     * 数据源文件名
+     * 节点顺序
      */
-    private String sourceFileName;
+    private Integer nodeOrder;
 
     /**
-     * 任务状态
+     * 状态 (如: success, failed, skipped)
      */
     private String status;
 
     /**
-     * 分片数量
+     * 持续时间（毫秒）
      */
-    private Integer chunkCount;
+    private Long durationMs;
 
     /**
-     * 错误信息
+     * 消息
+     */
+    private String message;
+
+    /**
+     * 错误消息
      */
     private String errorMessage;
 
     /**
-     * 节点运行日志
+     * 输出JSON
      */
-    private List<NodeLog> logs;
-
-    /**
-     * 元数据信息
-     */
-    private Map<String, Object> metadata;
-
-    /**
-     * 任务开始时间
-     */
-    private Date startedAt;
-
-    /**
-     * 任务完成时间
-     */
-    private Date completedAt;
+    private String outputJson;
 
     /**
      * 创建时间
      */
+    @TableField(fill = FieldFill.INSERT)
     private Date createTime;
 
     /**
      * 更新时间
      */
+    @TableField(fill = FieldFill.INSERT_UPDATE)
     private Date updateTime;
+
+    /**
+     * 删除标记
+     */
+    @TableLogic
+    private Integer deleted;
 }

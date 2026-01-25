@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.service.impl;
+package com.nageoffer.ai.ragent.ingestion.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.lang.Assert;
@@ -24,21 +24,21 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.nageoffer.ai.ragent.controller.request.IngestionPipelineCreateRequest;
-import com.nageoffer.ai.ragent.controller.request.IngestionPipelineNodeRequest;
-import com.nageoffer.ai.ragent.controller.request.IngestionPipelineUpdateRequest;
-import com.nageoffer.ai.ragent.controller.vo.IngestionPipelineNodeVO;
-import com.nageoffer.ai.ragent.controller.vo.IngestionPipelineVO;
-import com.nageoffer.ai.ragent.dao.entity.IngestionPipelineDO;
-import com.nageoffer.ai.ragent.dao.entity.IngestionPipelineNodeDO;
-import com.nageoffer.ai.ragent.dao.mapper.IngestionPipelineMapper;
-import com.nageoffer.ai.ragent.dao.mapper.IngestionPipelineNodeMapper;
+import com.nageoffer.ai.ragent.ingestion.controller.request.IngestionPipelineCreateRequest;
+import com.nageoffer.ai.ragent.ingestion.controller.request.IngestionPipelineNodeRequest;
+import com.nageoffer.ai.ragent.ingestion.controller.request.IngestionPipelineUpdateRequest;
+import com.nageoffer.ai.ragent.ingestion.controller.vo.IngestionPipelineNodeVO;
+import com.nageoffer.ai.ragent.ingestion.controller.vo.IngestionPipelineVO;
+import com.nageoffer.ai.ragent.ingestion.dao.entity.IngestionPipelineDO;
+import com.nageoffer.ai.ragent.ingestion.dao.entity.IngestionPipelineNodeDO;
+import com.nageoffer.ai.ragent.ingestion.dao.mapper.IngestionPipelineMapper;
+import com.nageoffer.ai.ragent.ingestion.dao.mapper.IngestionPipelineNodeMapper;
 import com.nageoffer.ai.ragent.framework.context.UserContext;
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.ingestion.domain.enums.IngestionNodeType;
 import com.nageoffer.ai.ragent.ingestion.domain.pipeline.NodeConfig;
 import com.nageoffer.ai.ragent.ingestion.domain.pipeline.PipelineDefinition;
-import com.nageoffer.ai.ragent.service.IngestionPipelineService;
+import com.nageoffer.ai.ragent.ingestion.service.IngestionPipelineService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;

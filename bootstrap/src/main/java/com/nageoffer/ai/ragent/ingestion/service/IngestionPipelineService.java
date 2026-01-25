@@ -15,13 +15,13 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.service;
+package com.nageoffer.ai.ragent.ingestion.service;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.nageoffer.ai.ragent.controller.request.IngestionPipelineCreateRequest;
-import com.nageoffer.ai.ragent.controller.request.IngestionPipelineUpdateRequest;
-import com.nageoffer.ai.ragent.controller.vo.IngestionPipelineVO;
+import com.nageoffer.ai.ragent.ingestion.controller.request.IngestionPipelineCreateRequest;
+import com.nageoffer.ai.ragent.ingestion.controller.request.IngestionPipelineUpdateRequest;
+import com.nageoffer.ai.ragent.ingestion.controller.vo.IngestionPipelineVO;
 import com.nageoffer.ai.ragent.ingestion.domain.pipeline.PipelineDefinition;
 
 /**

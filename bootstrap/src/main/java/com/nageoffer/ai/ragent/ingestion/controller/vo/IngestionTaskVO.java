@@ -15,117 +15,94 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.dao.entity;
+package com.nageoffer.ai.ragent.ingestion.controller.vo;
 
-import com.baomidou.mybatisplus.annotation.FieldFill;
-import com.baomidou.mybatisplus.annotation.IdType;
-import com.baomidou.mybatisplus.annotation.TableField;
-import com.baomidou.mybatisplus.annotation.TableId;
-import com.baomidou.mybatisplus.annotation.TableLogic;
-import com.baomidou.mybatisplus.annotation.TableName;
+import com.nageoffer.ai.ragent.ingestion.domain.context.NodeLog;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.util.Date;
+import java.util.List;
+import java.util.Map;
 
 /**
- * 知识库摄取任务实体类
+ * 知识库摄取任务视图对象
  */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@TableName("t_ingestion_task")
-public class IngestionTaskDO {
+public class IngestionTaskVO {
 
     /**
-     * 主键 ID
+     * 任务ID
      */
-    @TableId(type = IdType.ASSIGN_ID)
-    private Long id;
+    private String id;
 
     /**
-     * 管道 ID
+     * 流水线ID
      */
-    private Long pipelineId;
+    private String pipelineId;
 
     /**
-     * 数据源类型 (如: file, url, feishu, s3)
+     * 数据源类型
      */
     private String sourceType;
 
     /**
-     * 数据源位置 (文件路径或 URL)
+     * 数据源位置
      */
     private String sourceLocation;
 
     /**
-     * 源文件名
+     * 数据源文件名
      */
     private String sourceFileName;
 
     /**
-     * 任务状态 (如: pending, running, completed, failed)
+     * 任务状态
      */
     private String status;
 
     /**
-     * 切片数量
+     * 分片数量
      */
     private Integer chunkCount;
 
     /**
-     * 错误详情信息
+     * 错误信息
      */
     private String errorMessage;
 
     /**
-     * 日志 JSON
+     * 节点运行日志
      */
-    private String logsJson;
+    private List<NodeLog> logs;
 
     /**
-     * 元数据 JSON
+     * 元数据信息
      */
-    private String metadataJson;
+    private Map<String, Object> metadata;
 
     /**
-     * 开始时间
+     * 任务开始时间
      */
     private Date startedAt;
 
     /**
-     * 完成时间
+     * 任务完成时间
      */
     private Date completedAt;
 
     /**
-     * 创建者
-     */
-    private String createdBy;
-
-    /**
-     * 更新者
-     */
-    private String updatedBy;
-
-    /**
      * 创建时间
      */
-    @TableField(fill = FieldFill.INSERT)
     private Date createTime;
 
     /**
-     * 修改时间
+     * 更新时间
      */
-    @TableField(fill = FieldFill.INSERT_UPDATE)
     private Date updateTime;
-
-    /**
-     * 删除标记 (0: 未删除, 1: 已删除)
-     */
-    @TableLogic
-    private Integer deleted;
 }
