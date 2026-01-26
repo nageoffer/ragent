@@ -54,6 +54,26 @@ public class KnowledgeDocumentDO {
     private String docName;
 
     /**
+     * 来源类型：file / url
+     */
+    private String sourceType;
+
+    /**
+     * 来源位置（URL）
+     */
+    private String sourceLocation;
+
+    /**
+     * 是否开启定时拉取：1-启用，0-禁用
+     */
+    private Integer scheduleEnabled;
+
+    /**
+     * 定时表达式（cron）
+     */
+    private String scheduleCron;
+
+    /**
      * 是否启用：1-启用，0-禁用
      */
     private Integer enabled;
@@ -77,6 +97,16 @@ public class KnowledgeDocumentDO {
      * 文件大小（单位字节）
      */
     private Long fileSize;
+
+    /**
+     * 分块策略
+     */
+    private String chunkStrategy;
+
+    /**
+     * 分块参数配置（JSON）
+     */
+    private String chunkConfig;
 
     /**
      * 状态：

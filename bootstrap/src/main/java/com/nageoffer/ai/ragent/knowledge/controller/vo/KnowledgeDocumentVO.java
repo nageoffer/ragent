@@ -43,6 +43,26 @@ public class KnowledgeDocumentVO {
     private String docName;
 
     /**
+     * 来源类型
+     */
+    private String sourceType;
+
+    /**
+     * 来源位置
+     */
+    private String sourceLocation;
+
+    /**
+     * 是否开启定时拉取
+     */
+    private Integer scheduleEnabled;
+
+    /**
+     * 定时表达式
+     */
+    private String scheduleCron;
+
+    /**
      * 是否启用
      */
     private Boolean enabled;
@@ -66,6 +86,16 @@ public class KnowledgeDocumentVO {
      * 文件大小（字节）
      */
     private Long fileSize;
+
+    /**
+     * 分块策略
+     */
+    private String chunkStrategy;
+
+    /**
+     * 分块参数配置（JSON）
+     */
+    private String chunkConfig;
 
     /**
      * 状态（如：解析中、已解析、解析失败等）

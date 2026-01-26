@@ -48,6 +48,16 @@ public class KnowledgeBaseVO {
     private String collectionName;
 
     /**
+     * 文档数量
+     */
+    private Long documentCount;
+
+    /**
+     * 创建人
+     */
+    private String createdBy;
+
+    /**
      * 创建时间
      */
     private Date createTime;

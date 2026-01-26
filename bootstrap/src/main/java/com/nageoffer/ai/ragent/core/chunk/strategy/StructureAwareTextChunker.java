@@ -88,6 +88,11 @@ public class StructureAwareTextChunker extends AbstractEmbeddingChunker {
     protected List<VectorChunk> doChunk(String text, ChunkingOptions config) {
         if (StrUtil.isBlank(text)) return List.of();
 
+        int effectiveTarget = config == null ? targetChars : config.getMetadata("targetChars", targetChars);
+        int effectiveMax = config == null ? maxChars : config.getMetadata("maxChars", maxChars);
+        int effectiveMin = config == null ? minChars : config.getMetadata("minChars", minChars);
+        int effectiveOverlap = config == null ? overlapChars : config.getMetadata("overlapChars", overlapChars);
+
         // 1) 扫描成“块”（记录原文的 start/end 下标，确保输出 substring 完全等于原文）
         List<Block> blocks = segmentToBlocks(text);
 
@@ -101,10 +106,10 @@ public class StructureAwareTextChunker extends AbstractEmbeddingChunker {
         }
 
         // 2) 依据 min/target/max 打包成 chunk（只在块边界切分）
-        List<int[]> ranges = packBlocksToChunks(blocks, text.length());
+        List<int[]> ranges = packBlocksToChunks(blocks, text.length(), effectiveMin, effectiveTarget, effectiveMax);
 
         // 3)（可选）加入重叠：为保持“只在块边界切分”，这里不在中间加重叠，若开启 overlap，仅复制“上一 chunk 的尾部全文子串”到下一 chunk 的开头
-        List<VectorChunk> out = materialize(text, ranges, overlapChars);
+        List<VectorChunk> out = materialize(text, ranges, effectiveOverlap);
 
         // 编号从 0 递增
         for (int i = 0; i < out.size(); i++) {
@@ -243,7 +248,7 @@ public class StructureAwareTextChunker extends AbstractEmbeddingChunker {
     }
 
     // ----------- 2) 打包成 chunk（仅在块边界切） -----------
-    private List<int[]> packBlocksToChunks(List<Block> blocks, int textLen) {
+    private List<int[]> packBlocksToChunks(List<Block> blocks, int textLen, int min, int target, int max) {
         List<int[]> ranges = new ArrayList<>();
         int i = 0;
         while (i < blocks.size()) {
@@ -256,14 +261,14 @@ public class StructureAwareTextChunker extends AbstractEmbeddingChunker {
                 Block b = blocks.get(j);
                 int afterAdd = (b.end - chunkStart); // 等同于 size + nextSize + 中间空白（已包含）
 
-                if (afterAdd <= maxChars) {
+                if (afterAdd <= max) {
                     // 还能加
                     chunkEnd = b.end;
                     size = afterAdd;
                     j++;
                 } else {
                     // 超过 max：若当前 size < min，则“忍一次超限”，把这个块也吸进去（保证不要太小）
-                    if (size < minChars) {
+                    if (size < min) {
                         chunkEnd = b.end;
                         size = afterAdd;
                         j++;
@@ -279,9 +284,9 @@ public class StructureAwareTextChunker extends AbstractEmbeddingChunker {
         // 若最后一个 chunk 明显过小，尝试与前一个合并（仍不跨越 max 过多）
         if (ranges.size() >= 2) {
             int[] last = ranges.get(ranges.size() - 1);
-            if (last[1] - last[0] < Math.min(minChars, targetChars / 2)) {
+            if (last[1] - last[0] < Math.min(min, target / 2)) {
                 int[] prev = ranges.get(ranges.size() - 2);
-                if (last[1] - prev[0] <= maxChars * 2) { // 放宽一下，尽量合并到可接受大小
+                if (last[1] - prev[0] <= max * 2) { // 放宽一下，尽量合并到可接受大小
                     prev[1] = last[1];
                     ranges.remove(ranges.size() - 1);
                 }

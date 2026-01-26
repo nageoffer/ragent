@@ -64,6 +64,14 @@ public class FixedSizeTextChunker extends AbstractEmbeddingChunker {
         int chunkSize = Math.max(1, config.getChunkSize());
         int overlap = Math.max(0, config.getOverlapSize());
 
+        if (chunkSize == Integer.MAX_VALUE) {
+            return List.of(VectorChunk.builder()
+                    .chunkId(IdUtil.getSnowflakeNextIdStr())
+                    .index(0)
+                    .content(normalized)
+                    .build());
+        }
+
         if (chunkSize > 1) {
             overlap = Math.min(overlap, chunkSize - 1);
         } else {

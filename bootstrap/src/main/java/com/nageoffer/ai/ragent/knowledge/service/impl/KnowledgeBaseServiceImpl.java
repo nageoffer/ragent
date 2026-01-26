@@ -18,6 +18,7 @@
 package com.nageoffer.ai.ragent.knowledge.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.collection.CollUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -45,6 +46,12 @@ import org.springframework.util.StringUtils;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.BucketAlreadyExistsException;
 import software.amazon.awssdk.services.s3.model.BucketAlreadyOwnedByYouException;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -168,14 +175,14 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
 
     @Override
     public void delete(String kbId) {
-        // 可选：限制删除前需要确保没有文档
+        // 限制删除前需要确保没有文档
         Long docCount = knowledgeDocumentMapper.selectCount(
                 Wrappers.lambdaQuery(KnowledgeDocumentDO.class)
                         .eq(KnowledgeDocumentDO::getKbId, kbId)
                         .eq(KnowledgeDocumentDO::getDeleted, 0)
         );
         if (docCount > 0) {
-            throw new IllegalStateException("知识库下仍有关联文档，无法删除");
+            throw new ClientException("知识库下仍有关联文档，无法删除");
         }
 
         knowledgeBaseMapper.deleteById(kbId);
@@ -199,6 +206,41 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
 
         Page<KnowledgeBaseDO> page = new Page<>(requestParam.getCurrent(), requestParam.getSize());
         IPage<KnowledgeBaseDO> result = knowledgeBaseMapper.selectPage(page, queryWrapper);
-        return result.convert(each -> BeanUtil.toBean(each, KnowledgeBaseVO.class));
+        Map<Long, Long> docCountMap = new HashMap<>();
+        if (CollUtil.isNotEmpty(result.getRecords())) {
+            List<Long> kbIds = result.getRecords().stream()
+                    .map(KnowledgeBaseDO::getId)
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toList());
+            if (!kbIds.isEmpty()) {
+                List<Map<String, Object>> rows = knowledgeDocumentMapper.selectMaps(
+                        Wrappers.query(KnowledgeDocumentDO.class)
+                                .select("kb_id AS kbId", "COUNT(1) AS docCount")
+                                .in("kb_id", kbIds)
+                                .eq("deleted", 0)
+                                .groupBy("kb_id")
+                );
+                for (Map<String, Object> row : rows) {
+                    Object kbIdValue = row.get("kbId");
+                    Object countValue = row.get("docCount");
+                    if (kbIdValue == null) {
+                        continue;
+                    }
+                    Long kbId = kbIdValue instanceof Number
+                            ? ((Number) kbIdValue).longValue()
+                            : Long.parseLong(kbIdValue.toString());
+                    Long count = countValue instanceof Number
+                            ? ((Number) countValue).longValue()
+                            : countValue != null ? Long.parseLong(countValue.toString()) : 0L;
+                    docCountMap.put(kbId, count);
+                }
+            }
+        }
+        return result.convert(each -> {
+            KnowledgeBaseVO vo = BeanUtil.toBean(each, KnowledgeBaseVO.class);
+            Long docCount = docCountMap.get(each.getId());
+            vo.setDocumentCount(docCount != null ? docCount : 0L);
+            return vo;
+        });
     }
 }

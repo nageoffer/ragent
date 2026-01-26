@@ -2,17 +2,22 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { FileUp, FolderOpen, PlayCircle, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm } from "react-hook-form";
+import * as z from "zod";
 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-import type { KnowledgeBase, KnowledgeDocument, PageResult } from "@/services/knowledgeService";
+import type { KnowledgeBase, KnowledgeDocument, KnowledgeDocumentUploadPayload, PageResult } from "@/services/knowledgeService";
 import {
   deleteDocument,
   enableDocument,
@@ -21,6 +26,7 @@ import {
   startDocumentChunk,
   uploadDocument
 } from "@/services/knowledgeService";
+import { getErrorMessage } from "@/utils/error";
 
 const PAGE_SIZE = 10;
 
@@ -30,6 +36,18 @@ const STATUS_OPTIONS = [
   { value: "failed", label: "failed" },
   { value: "success", label: "success" }
 ];
+
+const SOURCE_OPTIONS = [
+  { value: "file", label: "本地文件" },
+  { value: "url", label: "远程URL" }
+];
+
+const CHUNK_STRATEGY_OPTIONS = [
+  { value: "fixed_size", label: "fixed_size" },
+  { value: "structure_aware", label: "structure_aware" }
+];
+
+const INT_MAX = 2147483647;
 
 const statusBadgeVariant = (status?: string | null) => {
   if (!status) return "outline";
@@ -77,7 +95,7 @@ export function KnowledgeDocumentsPage() {
       const data = await getKnowledgeBase(kbId);
       setKb(data);
     } catch (error) {
-      toast.error("加载知识库失败");
+      toast.error(getErrorMessage(error, "加载知识库失败"));
       console.error(error);
     }
   };
@@ -94,7 +112,7 @@ export function KnowledgeDocumentsPage() {
       });
       setPageData(data);
     } catch (error) {
-      toast.error("加载文档失败");
+      toast.error(getErrorMessage(error, "加载文档失败"));
       console.error(error);
     } finally {
       setLoading(false);
@@ -128,7 +146,7 @@ export function KnowledgeDocumentsPage() {
       setPageNo(1);
       await loadDocuments(1, statusFilter, keyword);
     } catch (error) {
-      toast.error("删除失败");
+      toast.error(getErrorMessage(error, "删除失败"));
       console.error(error);
     }
   };
@@ -141,7 +159,7 @@ export function KnowledgeDocumentsPage() {
       setChunkTarget(null);
       await loadDocuments(pageNo, statusFilter, keyword);
     } catch (error) {
-      toast.error("分块失败");
+      toast.error(getErrorMessage(error, "分块失败"));
       console.error(error);
     }
   };
@@ -153,7 +171,7 @@ export function KnowledgeDocumentsPage() {
       toast.success(!enabled ? "已启用" : "已禁用");
       await loadDocuments(pageNo, statusFilter, keyword);
     } catch (error) {
-      toast.error("操作失败");
+      toast.error(getErrorMessage(error, "操作失败"));
       console.error(error);
     }
   };
@@ -325,9 +343,9 @@ export function KnowledgeDocumentsPage() {
       <UploadDialog
         open={uploadOpen}
         onOpenChange={setUploadOpen}
-        onSubmit={async (file) => {
+        onSubmit={async (payload) => {
           if (!kbId) return;
-          await uploadDocument(kbId, file);
+          await uploadDocument(kbId, payload);
           toast.success("上传成功");
           setUploadOpen(false);
           setPageNo(1);
@@ -373,29 +391,149 @@ export function KnowledgeDocumentsPage() {
 interface UploadDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (file: File) => Promise<void>;
+  onSubmit: (payload: KnowledgeDocumentUploadPayload) => Promise<void>;
 }
+
+const uploadSchema = z
+  .object({
+    sourceType: z.enum(["file", "url"]),
+    sourceLocation: z.string().optional(),
+    scheduleEnabled: z.boolean().default(false),
+    scheduleCron: z.string().optional(),
+    chunkStrategy: z.enum(["fixed_size", "structure_aware"]),
+    chunkSize: z.string().optional(),
+    overlapSize: z.string().optional(),
+    targetChars: z.string().optional(),
+    maxChars: z.string().optional(),
+    minChars: z.string().optional(),
+    overlapChars: z.string().optional()
+  })
+  .superRefine((values, ctx) => {
+    const isBlank = (value?: string) => !value || value.trim() === "";
+    const requireNumber = (value: string | undefined, field: keyof typeof values, label: string) => {
+      if (isBlank(value)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [field],
+          message: `请输入${label}`
+        });
+        return;
+      }
+      if (Number.isNaN(Number(value))) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [field],
+          message: `${label}必须是数字`
+        });
+      }
+    };
+
+    if (values.sourceType === "url" && isBlank(values.sourceLocation)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["sourceLocation"],
+        message: "请输入来源位置"
+      });
+    }
+    if (values.scheduleEnabled && isBlank(values.scheduleCron)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["scheduleCron"],
+        message: "请输入定时频率"
+      });
+    }
+    if (values.chunkStrategy === "fixed_size") {
+      requireNumber(values.chunkSize, "chunkSize", "块大小");
+      requireNumber(values.overlapSize, "overlapSize", "重叠大小");
+    } else {
+      requireNumber(values.targetChars, "targetChars", "理想块大小");
+      requireNumber(values.maxChars, "maxChars", "块上限");
+      requireNumber(values.minChars, "minChars", "块下限");
+      requireNumber(values.overlapChars, "overlapChars", "重叠大小");
+    }
+  });
+
+type UploadFormValues = z.infer<typeof uploadSchema>;
 
 function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
   const [file, setFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
+  const form = useForm<UploadFormValues>({
+    resolver: zodResolver(uploadSchema),
+    defaultValues: {
+      sourceType: "file",
+      sourceLocation: "",
+      scheduleEnabled: false,
+      scheduleCron: "",
+      chunkStrategy: "fixed_size",
+      chunkSize: "512",
+      overlapSize: "128",
+      targetChars: "1400",
+      maxChars: "1800",
+      minChars: "600",
+      overlapChars: "0"
+    }
+  });
+
+  const sourceType = form.watch("sourceType");
+  const chunkStrategy = form.watch("chunkStrategy");
+  const scheduleEnabled = form.watch("scheduleEnabled");
+  const isUrlSource = sourceType === "url";
+  const isFixedSize = chunkStrategy === "fixed_size";
 
   useEffect(() => {
     if (open) {
       setFile(null);
+      form.reset();
     }
-  }, [open]);
+  }, [open, form]);
 
-  const handleSubmit = async () => {
-    if (!file) {
+  useEffect(() => {
+    if (isUrlSource) {
+      setFile(null);
+    }
+  }, [isUrlSource]);
+
+  const parseNumber = (value?: string) => {
+    if (!value || !value.trim()) return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  const handleSubmit = async (values: UploadFormValues) => {
+    if (values.sourceType === "file" && !file) {
       toast.error("请选择文件");
       return;
     }
+    const chunkSize = parseNumber(values.chunkSize);
+    const overlapSize = parseNumber(values.overlapSize);
+    const targetChars = parseNumber(values.targetChars);
+    const maxChars = parseNumber(values.maxChars);
+    const minChars = parseNumber(values.minChars);
+    const overlapChars = parseNumber(values.overlapChars);
+
     setSaving(true);
     try {
-      await onSubmit(file);
+      const payload: KnowledgeDocumentUploadPayload = {
+        sourceType: values.sourceType,
+        file: values.sourceType === "file" ? file : null,
+        sourceLocation: values.sourceType === "url" ? values.sourceLocation.trim() : null,
+        scheduleEnabled: values.sourceType === "url" ? values.scheduleEnabled : false,
+        scheduleCron:
+          values.sourceType === "url" && values.scheduleEnabled
+            ? values.scheduleCron.trim()
+            : null,
+        chunkStrategy: values.chunkStrategy,
+        chunkSize: values.chunkStrategy === "fixed_size" ? chunkSize : null,
+        overlapSize: values.chunkStrategy === "fixed_size" ? overlapSize : null,
+        targetChars: values.chunkStrategy === "structure_aware" ? targetChars : null,
+        maxChars: values.chunkStrategy === "structure_aware" ? maxChars : null,
+        minChars: values.chunkStrategy === "structure_aware" ? minChars : null,
+        overlapChars: values.chunkStrategy === "structure_aware" ? overlapChars : null
+      };
+      await onSubmit(payload);
     } catch (error) {
-      toast.error("上传失败");
+      toast.error(getErrorMessage(error, "上传失败"));
       console.error(error);
     } finally {
       setSaving(false);
@@ -404,27 +542,234 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[520px]">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[620px]">
         <DialogHeader>
           <DialogTitle>上传文档</DialogTitle>
-          <DialogDescription>上传文档后可执行分块流程</DialogDescription>
+          <DialogDescription>支持本地文件或远程URL，并配置分块策略</DialogDescription>
         </DialogHeader>
-        <div className="space-y-2">
-          <label className="text-sm font-medium">文件</label>
-          <Input
-            type="file"
-            className="mt-1"
-            onChange={(event) => setFile(event.target.files?.[0] || null)}
-          />
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
-            取消
-          </Button>
-          <Button onClick={handleSubmit} disabled={saving}>
-            {saving ? "上传中..." : "上传"}
-          </Button>
-        </DialogFooter>
+        <Form {...form}>
+          <form className="space-y-4" onSubmit={form.handleSubmit(handleSubmit)}>
+            <FormField
+              control={form.control}
+              name="sourceType"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>来源类型</FormLabel>
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="选择来源类型" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {SOURCE_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {isUrlSource ? (
+              <FormField
+                control={form.control}
+                name="sourceLocation"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>来源位置</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="https://raw.githubusercontent.com/bytedance/deer-flow/main/docs/API.md"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormDescription>填写远程文档 URL</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            ) : (
+              <FormItem>
+                <FormLabel>本地文件</FormLabel>
+                <FormControl>
+                  <Input type="file" onChange={(event) => setFile(event.target.files?.[0] || null)} />
+                </FormControl>
+              </FormItem>
+            )}
+
+            {isUrlSource ? (
+              <div className="space-y-3 rounded-lg border p-3">
+                <FormField
+                  control={form.control}
+                  name="scheduleEnabled"
+                  render={({ field }) => (
+                    <FormItem className="flex items-center justify-between">
+                      <div>
+                        <FormLabel>开启定时拉取</FormLabel>
+                        <FormDescription>开启后按频率自动更新文档</FormDescription>
+                      </div>
+                      <FormControl>
+                        <Checkbox checked={field.value} onCheckedChange={(value) => field.onChange(Boolean(value))} />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+                {scheduleEnabled ? (
+                  <FormField
+                    control={form.control}
+                    name="scheduleCron"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>拉取频率</FormLabel>
+                        <FormControl>
+                          <Input placeholder="例如：0 0 0 * * ?" {...field} />
+                        </FormControl>
+                        <FormDescription>支持 cron 表达式，例如每天凌晨</FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                ) : null}
+              </div>
+            ) : null}
+
+            <div className="space-y-3 rounded-lg border p-3">
+              <FormField
+                control={form.control}
+                name="chunkStrategy"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>分块策略</FormLabel>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="选择分块策略" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {CHUNK_STRATEGY_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {isFixedSize ? (
+                <div className="grid gap-4 md:grid-cols-2">
+                  <FormField
+                    control={form.control}
+                    name="chunkSize"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>块大小</FormLabel>
+                        <FormControl>
+                          <div className="flex items-center gap-2">
+                            <Input type="number" {...field} />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() => form.setValue("chunkSize", String(INT_MAX))}
+                            >
+                              不分块
+                            </Button>
+                          </div>
+                        </FormControl>
+                        <FormDescription>字符数，选择不分块会写入最大值</FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="overlapSize"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>重叠大小</FormLabel>
+                        <FormControl>
+                          <Input type="number" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              ) : (
+                <div className="grid gap-4 md:grid-cols-2">
+                  <FormField
+                    control={form.control}
+                    name="targetChars"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>理想块大小</FormLabel>
+                        <FormControl>
+                          <Input type="number" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="maxChars"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>块上限</FormLabel>
+                        <FormControl>
+                          <Input type="number" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="minChars"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>块下限</FormLabel>
+                        <FormControl>
+                          <Input type="number" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="overlapChars"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>重叠大小</FormLabel>
+                        <FormControl>
+                          <Input type="number" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              )}
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+                取消
+              </Button>
+              <Button type="submit" disabled={saving}>
+                {saving ? "上传中..." : "上传"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </Form>
       </DialogContent>
     </Dialog>
   );

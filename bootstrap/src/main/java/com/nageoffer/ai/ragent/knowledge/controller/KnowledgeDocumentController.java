@@ -19,6 +19,7 @@ package com.nageoffer.ai.ragent.knowledge.controller;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.nageoffer.ai.ragent.knowledge.controller.request.KnowledgeDocumentUploadRequest;
 import com.nageoffer.ai.ragent.knowledge.controller.vo.KnowledgeDocumentVO;
 import com.nageoffer.ai.ragent.framework.convention.Result;
 import com.nageoffer.ai.ragent.framework.web.Results;
@@ -28,6 +29,7 @@ import org.springframework.http.MediaType;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -52,8 +54,9 @@ public class KnowledgeDocumentController {
      */
     @PostMapping(value = "/knowledge-base/{kb-id}/docs/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Result<KnowledgeDocumentVO> upload(@PathVariable("kb-id") String kbId,
-                                              @RequestPart("file") MultipartFile file) {
-        return Results.success(documentService.upload(kbId, file));
+                                              @RequestPart(value = "file", required = false) MultipartFile file,
+                                              @ModelAttribute KnowledgeDocumentUploadRequest requestParam) {
+        return Results.success(documentService.upload(kbId, requestParam, file));
     }
 
     /**
@@ -104,4 +107,3 @@ public class KnowledgeDocumentController {
         return Results.success();
     }
 }
-

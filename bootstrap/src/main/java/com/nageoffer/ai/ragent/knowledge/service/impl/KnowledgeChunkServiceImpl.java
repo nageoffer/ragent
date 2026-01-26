@@ -251,6 +251,40 @@ public class KnowledgeChunkServiceImpl implements KnowledgeChunkService {
         doRebuildByDocId(docId);
     }
 
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updateEnabledByDocId(String docId, boolean enabled) {
+        KnowledgeDocumentDO documentDO = documentMapper.selectById(docId);
+        Assert.notNull(documentDO, () -> new ClientException("文档不存在"));
+
+        int enabledValue = enabled ? 1 : 0;
+        chunkMapper.update(
+                Wrappers.lambdaUpdate(KnowledgeChunkDO.class)
+                        .eq(KnowledgeChunkDO::getDocId, docId)
+                        .set(KnowledgeChunkDO::getEnabled, enabledValue)
+                        .set(KnowledgeChunkDO::getUpdatedBy, UserContext.getUsername())
+        );
+
+        String kbId = String.valueOf(documentDO.getKbId());
+        log.info("根据文档ID更新所有Chunk启用状态, kbId={}, docId={}, enabled={}", kbId, docId, enabled);
+    }
+
+    @Override
+    public List<KnowledgeChunkVO> listByDocId(String docId) {
+        KnowledgeDocumentDO documentDO = documentMapper.selectById(docId);
+        Assert.notNull(documentDO, () -> new ClientException("文档不存在"));
+
+        List<KnowledgeChunkDO> chunkDOList = chunkMapper.selectList(
+                Wrappers.lambdaQuery(KnowledgeChunkDO.class)
+                        .eq(KnowledgeChunkDO::getDocId, docId)
+                        .orderByAsc(KnowledgeChunkDO::getChunkIndex)
+        );
+
+        return chunkDOList.stream()
+                .map(each -> BeanUtil.toBean(each, KnowledgeChunkVO.class))
+                .collect(Collectors.toList());
+    }
+
     private void doRebuildByDocId(String docId) {
         KnowledgeDocumentDO documentDO = documentMapper.selectById(docId);
         Assert.notNull(documentDO, () -> new ClientException("文档不存在"));

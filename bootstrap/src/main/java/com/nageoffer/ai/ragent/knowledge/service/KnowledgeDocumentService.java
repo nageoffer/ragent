@@ -19,6 +19,7 @@ package com.nageoffer.ai.ragent.knowledge.service;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.nageoffer.ai.ragent.knowledge.controller.request.KnowledgeDocumentUploadRequest;
 import com.nageoffer.ai.ragent.knowledge.controller.vo.KnowledgeDocumentVO;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -30,11 +31,12 @@ public interface KnowledgeDocumentService {
     /**
      * 上传文档
      *
-     * @param kbId 知识库 ID
-     * @param file 待上传的文件
+     * @param kbId         知识库 ID
+     * @param requestParam 请求对象参数
+     * @param file         待上传的文件
      * @return 知识库文档视图对象
      */
-    KnowledgeDocumentVO upload(String kbId, MultipartFile file);
+    KnowledgeDocumentVO upload(String kbId, KnowledgeDocumentUploadRequest requestParam, MultipartFile file);
 
     /**
      * 开始文档分片处理

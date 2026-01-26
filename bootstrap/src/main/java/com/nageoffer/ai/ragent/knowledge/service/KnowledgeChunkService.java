@@ -109,9 +109,25 @@ public interface KnowledgeChunkService {
 
     /**
      * 根据文档 ID 重建向量索引
-     * 以数据库中状态为“已启用（enabled=1）”的分片为基准重新生成向量
+     * 以数据库中状态为"已启用（enabled=1）"的分片为基准重新生成向量
      *
      * @param docId 文档 ID
      */
     void rebuildByDocId(String docId);
+
+    /**
+     * 根据文档 ID 批量更新所有分片的启用状态
+     *
+     * @param docId   文档 ID
+     * @param enabled 是否启用
+     */
+    void updateEnabledByDocId(String docId, boolean enabled);
+
+    /**
+     * 根据文档 ID 查询所有分片列表
+     *
+     * @param docId 文档 ID
+     * @return 分片列表
+     */
+    List<KnowledgeChunkVO> listByDocId(String docId);
 }

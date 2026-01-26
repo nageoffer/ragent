@@ -5,6 +5,7 @@ export interface KnowledgeBase {
   name: string;
   embeddingModel: string;
   collectionName: string;
+  createdBy?: string | null;
   documentCount?: number;
   createTime?: string;
   updateTime?: string;
@@ -14,11 +15,23 @@ export interface KnowledgeDocument {
   id: string;
   kbId: string;
   docName: string;
+  sourceType?: string | null;
+  sourceLocation?: string | null;
+  scheduleEnabled?: number | null;
+  scheduleCron?: string | null;
   enabled?: boolean | null;
   chunkCount?: number | null;
   fileUrl?: string | null;
   fileType?: string | null;
   fileSize?: number | null;
+  chunkStrategy?: string | null;
+  chunkConfig?: string | null;
+  chunkSize?: number | null;
+  overlapSize?: number | null;
+  targetChars?: number | null;
+  maxChars?: number | null;
+  minChars?: number | null;
+  overlapChars?: number | null;
   status?: string | null;
   createdBy?: string | null;
   updatedBy?: string | null;
@@ -58,6 +71,21 @@ export interface KnowledgeDocumentPageParams {
   pageSize?: number;
   status?: string;
   keyword?: string;
+}
+
+export interface KnowledgeDocumentUploadPayload {
+  sourceType: "file" | "url";
+  file?: File | null;
+  sourceLocation?: string | null;
+  scheduleEnabled?: boolean;
+  scheduleCron?: string | null;
+  chunkStrategy: "fixed_size" | "structure_aware";
+  chunkSize?: number | null;
+  overlapSize?: number | null;
+  targetChars?: number | null;
+  maxChars?: number | null;
+  minChars?: number | null;
+  overlapChars?: number | null;
 }
 
 export interface KnowledgeChunkPageParams {
@@ -127,9 +155,43 @@ export const getDocuments = async (
   return page.records || [];
 };
 
-export const uploadDocument = async (kbId: string, file: File): Promise<KnowledgeDocument> => {
+export const uploadDocument = async (
+  kbId: string,
+  payload: KnowledgeDocumentUploadPayload
+): Promise<KnowledgeDocument> => {
   const formData = new FormData();
-  formData.append("file", file);
+  formData.append("sourceType", payload.sourceType);
+  if (payload.file) {
+    formData.append("file", payload.file);
+  }
+  if (payload.sourceLocation) {
+    formData.append("sourceLocation", payload.sourceLocation);
+  }
+  if (payload.scheduleEnabled !== undefined) {
+    formData.append("scheduleEnabled", String(payload.scheduleEnabled));
+  }
+  if (payload.scheduleCron) {
+    formData.append("scheduleCron", payload.scheduleCron);
+  }
+  formData.append("chunkStrategy", payload.chunkStrategy);
+  if (payload.chunkSize !== undefined && payload.chunkSize !== null) {
+    formData.append("chunkSize", String(payload.chunkSize));
+  }
+  if (payload.overlapSize !== undefined && payload.overlapSize !== null) {
+    formData.append("overlapSize", String(payload.overlapSize));
+  }
+  if (payload.targetChars !== undefined && payload.targetChars !== null) {
+    formData.append("targetChars", String(payload.targetChars));
+  }
+  if (payload.maxChars !== undefined && payload.maxChars !== null) {
+    formData.append("maxChars", String(payload.maxChars));
+  }
+  if (payload.minChars !== undefined && payload.minChars !== null) {
+    formData.append("minChars", String(payload.minChars));
+  }
+  if (payload.overlapChars !== undefined && payload.overlapChars !== null) {
+    formData.append("overlapChars", String(payload.overlapChars));
+  }
   return api.post<KnowledgeDocument, KnowledgeDocument>(`/knowledge-base/${kbId}/docs/upload`, formData, {
     headers: {
       "Content-Type": "multipart/form-data"
