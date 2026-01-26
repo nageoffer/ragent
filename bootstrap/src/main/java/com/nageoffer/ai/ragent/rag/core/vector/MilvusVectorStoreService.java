@@ -159,7 +159,7 @@ public class MilvusVectorStoreService implements VectorStoreService {
     @Override
     public void deleteDocumentVectors(String kbId, String docId) {
         KnowledgeBaseDO kbDO = kbMapper.selectById(kbId);
-        Assert.isNull(kbDO, () -> new ClientException("知识库不存在"));
+        Assert.notNull(kbDO, () -> new ClientException("知识库不存在"));
 
         String collection = kbDO.getCollectionName();
 
