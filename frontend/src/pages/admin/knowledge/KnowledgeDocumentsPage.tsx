@@ -38,8 +38,8 @@ const STATUS_OPTIONS = [
 ];
 
 const SOURCE_OPTIONS = [
-  { value: "file", label: "本地文件" },
-  { value: "url", label: "远程URL" }
+  { value: "file", label: "Local File" },
+  { value: "url", label: "URL" }
 ];
 
 const CHUNK_STRATEGY_OPTIONS = [
@@ -71,6 +71,13 @@ const formatSize = (size?: number | null) => {
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
   if (size < 1024 * 1024 * 1024) return `${(size / 1024 / 1024).toFixed(1)} MB`;
   return `${(size / 1024 / 1024 / 1024).toFixed(1)} GB`;
+};
+
+const formatSourceLabel = (sourceType?: string | null) => {
+  const normalized = sourceType?.toLowerCase();
+  if (normalized === "url") return "URL";
+  if (normalized === "file") return "Local File";
+  return "-";
 };
 
 export function KnowledgeDocumentsPage() {
@@ -249,6 +256,7 @@ export function KnowledgeDocumentsPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>文档</TableHead>
+                  <TableHead>来源</TableHead>
                   <TableHead>状态</TableHead>
                   <TableHead>启用</TableHead>
                   <TableHead>分块数</TableHead>
@@ -267,6 +275,18 @@ export function KnowledgeDocumentsPage() {
                         <span className="flex-1 truncate" title={doc.docName || ""}>
                           {doc.docName || "-"}
                         </span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex min-w-0 max-w-[240px] items-center gap-2">
+                        <span className="shrink-0 text-xs text-muted-foreground">
+                          {formatSourceLabel(doc.sourceType)}
+                        </span>
+                        {doc.sourceType?.toLowerCase() === "url" && doc.sourceLocation ? (
+                          <span className="truncate" title={doc.sourceLocation}>
+                            {doc.sourceLocation}
+                          </span>
+                        ) : null}
                       </div>
                     </TableCell>
                     <TableCell>
