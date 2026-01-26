@@ -172,4 +172,23 @@ public class ThreadPoolExecutorConfig {
         );
         return TtlExecutors.getTtlExecutor(executor);
     }
+
+    /**
+     * 知识库文档分块线程池
+     */
+    @Bean
+    public Executor knowledgeChunkExecutor() {
+        ThreadPoolExecutor executor = new ThreadPoolExecutor(
+                Math.max(2, CPU_COUNT >> 1),
+                Math.max(4, CPU_COUNT),
+                60,
+                TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>(200),
+                ThreadFactoryBuilder.create()
+                        .setNamePrefix("kb_chunk_executor_")
+                        .build(),
+                new ThreadPoolExecutor.CallerRunsPolicy()
+        );
+        return TtlExecutors.getTtlExecutor(executor);
+    }
 }

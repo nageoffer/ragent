@@ -51,9 +51,13 @@ import com.nageoffer.ai.ragent.knowledge.service.KnowledgeDocumentService;
 import com.nageoffer.ai.ragent.ingestion.util.HttpClientHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.util.StringUtils;
 
@@ -61,6 +65,8 @@ import java.io.InputStream;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
 
 @Slf4j
 @Service
@@ -77,6 +83,9 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
     private final EmbeddingService embeddingService;
     private final HttpClientHelper httpClientHelper;
     private final ObjectMapper objectMapper;
+    @Qualifier("knowledgeChunkExecutor")
+    private final Executor knowledgeChunkExecutor;
+    private final PlatformTransactionManager transactionManager;
 
     @Value("${kb.chunk.semantic.targetChars:1400}")
     private int targetChars;
@@ -153,37 +162,69 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
         Assert.isFalse(alreadyChunked, () -> new ClientException("文档已分块"));
 
         patchStatus(documentDO, DocumentStatus.RUNNING);
+        try {
+            knowledgeChunkExecutor.execute(() -> runChunkTask(documentDO));
+        } catch (RejectedExecutionException e) {
+            log.error("分块任务提交失败: docId={}", docId, e);
+            throw new ServiceException("分块任务排队失败");
+        }
+    }
 
+    private void runChunkTask(KnowledgeDocumentDO documentDO) {
+        String docId = String.valueOf(documentDO.getId());
         ChunkingMode chunkingMode = resolveChunkingMode(documentDO.getChunkStrategy());
         ChunkingOptions config = buildChunkingOptions(chunkingMode, documentDO);
 
+        List<VectorChunk> chunkResults;
         try (InputStream is = fileStorageService.openStream(documentDO.getFileUrl())) {
             String text = textExtractor.extract(is, documentDO.getDocName());
-
             ChunkingStrategy chunkingStrategy = chunkingStrategyFactory.requireStrategy(chunkingMode);
+            chunkResults = chunkingStrategy.chunk(text, config);
+        } catch (Exception e) {
+            log.error("文件分块失败：docId={}", docId, e);
+            markChunkFailed(documentDO.getId());
+            return;
+        }
 
-            List<VectorChunk> chunkResults = chunkingStrategy.chunk(text, config);
-            List<KnowledgeChunkCreateRequest> chunks = chunkResults.stream()
-                    .map(result -> {
-                        KnowledgeChunkCreateRequest req = new KnowledgeChunkCreateRequest();
-                        req.setChunkId(result.getChunkId());
-                        req.setIndex(result.getIndex());
-                        req.setContent(result.getContent());
-                        return req;
-                    })
-                    .toList();
-            knowledgeChunkService.batchCreate(docId, chunks);
+        try {
+            TransactionTemplate txTemplate = new TransactionTemplate(transactionManager);
+            txTemplate.executeWithoutResult(status -> {
+                List<KnowledgeChunkCreateRequest> chunks = chunkResults.stream()
+                        .map(result -> {
+                            KnowledgeChunkCreateRequest req = new KnowledgeChunkCreateRequest();
+                            req.setChunkId(result.getChunkId());
+                            req.setIndex(result.getIndex());
+                            req.setContent(result.getContent());
+                            return req;
+                        })
+                        .toList();
+                knowledgeChunkService.batchCreate(docId, chunks);
 
-            documentDO.setChunkCount(chunks.size());
-            patchStatus(documentDO, DocumentStatus.SUCCESS);
-            docMapper.updateById(documentDO);
+                KnowledgeDocumentDO update = new KnowledgeDocumentDO();
+                update.setId(documentDO.getId());
+                update.setChunkCount(chunks.size());
+                update.setStatus(DocumentStatus.SUCCESS.getCode());
+                update.setUpdatedBy(UserContext.getUsername());
+                docMapper.updateById(update);
+            });
 
             vectorStoreService.indexDocumentChunks(String.valueOf(documentDO.getKbId()), docId, chunkResults);
         } catch (Exception e) {
             log.error("文件分块失败：docId={}", docId, e);
-            patchStatus(documentDO, DocumentStatus.FAILED);
-            throw new ServiceException("分块失败");
+            markChunkFailed(documentDO.getId());
         }
+    }
+
+    private void markChunkFailed(Long docId) {
+        TransactionTemplate txTemplate = new TransactionTemplate(transactionManager);
+        txTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        txTemplate.executeWithoutResult(status -> {
+            KnowledgeDocumentDO update = new KnowledgeDocumentDO();
+            update.setId(docId);
+            update.setStatus(DocumentStatus.FAILED.getCode());
+            update.setUpdatedBy(UserContext.getUsername());
+            docMapper.updateById(update);
+        });
     }
 
     @Override
