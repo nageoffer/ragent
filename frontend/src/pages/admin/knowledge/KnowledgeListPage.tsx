@@ -30,6 +30,7 @@ import { Input } from "@/components/ui/input";
 import type { KnowledgeBase, PageResult } from "@/services/knowledgeService";
 import { deleteKnowledgeBase, getKnowledgeBasesPage, renameKnowledgeBase } from "@/services/knowledgeService";
 import { CreateKnowledgeBaseDialog } from "@/components/admin/CreateKnowledgeBaseDialog";
+import { getErrorMessage } from "@/utils/error";
 
 const PAGE_SIZE = 10;
 
@@ -56,7 +57,7 @@ export function KnowledgeListPage() {
       const data = await getKnowledgeBasesPage(current, PAGE_SIZE, name || undefined);
       setPageData(data);
     } catch (error) {
-      toast.error("加载知识库列表失败");
+      toast.error(getErrorMessage(error, "加载知识库列表失败"));
       console.error(error);
     } finally {
       setLoading(false);
@@ -93,7 +94,7 @@ export function KnowledgeListPage() {
       setPageNo(1);
       await loadKnowledgeBases(1, keyword);
     } catch (error) {
-      toast.error("删除失败");
+      toast.error(getErrorMessage(error, "删除失败"));
       console.error(error);
     } finally {
       setDeleteTarget(null);
@@ -122,7 +123,7 @@ export function KnowledgeListPage() {
       setRenameDialog({ open: false, kb: null });
       await loadKnowledgeBases(pageNo, keyword);
     } catch (error) {
-      toast.error("重命名失败");
+      toast.error(getErrorMessage(error, "重命名失败"));
       console.error(error);
     }
   };
@@ -172,6 +173,7 @@ export function KnowledgeListPage() {
                   <TableHead>Embedding模型</TableHead>
                   <TableHead>Collection</TableHead>
                   <TableHead>文档数</TableHead>
+                  <TableHead>负责人</TableHead>
                   <TableHead>创建时间</TableHead>
                   <TableHead className="text-right">操作</TableHead>
                 </TableRow>
@@ -189,6 +191,7 @@ export function KnowledgeListPage() {
                       </code>
                     </TableCell>
                     <TableCell>{kb.documentCount ?? "-"}</TableCell>
+                    <TableCell>{kb.createdBy || "-"}</TableCell>
                     <TableCell className="text-muted-foreground">
                       {formatDate(kb.createTime)}
                     </TableCell>

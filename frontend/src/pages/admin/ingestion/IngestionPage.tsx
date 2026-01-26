@@ -44,6 +44,7 @@ import {
   updateIngestionPipeline,
   uploadIngestionTask
 } from "@/services/ingestionService";
+import { getErrorMessage } from "@/utils/error";
 
 const PIPELINE_PAGE_SIZE = 10;
 const TASK_PAGE_SIZE = 10;
@@ -183,14 +184,24 @@ interface PipelineNodeForm {
   };
 }
 
-const taskSchema = z.object({
-  pipelineId: z.string().min(1, "请选择流水线"),
-  sourceType: z.string().min(1, "请选择来源类型"),
-  location: z.string().min(1, "请输入来源位置"),
-  fileName: z.string().optional(),
-  credentialsJson: z.string().optional(),
-  metadataJson: z.string().optional()
-});
+const taskSchema = z
+  .object({
+    pipelineId: z.string().min(1, "请选择流水线"),
+    sourceType: z.string().min(1, "请选择来源类型"),
+    location: z.string().optional(),
+    fileName: z.string().optional(),
+    credentialsJson: z.string().optional(),
+    metadataJson: z.string().optional()
+  })
+  .superRefine((values, ctx) => {
+    if (values.sourceType !== "file" && !values.location?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["location"],
+        message: "请输入来源位置"
+      });
+    }
+  });
 
 type TaskFormValues = z.infer<typeof taskSchema>;
 
@@ -234,7 +245,7 @@ export function IngestionPage() {
       const data = await getIngestionPipelines(pageNo, PIPELINE_PAGE_SIZE, keyword || undefined);
       setPipelinePage(data);
     } catch (error) {
-      toast.error("加载流水线失败");
+      toast.error(getErrorMessage(error, "加载流水线失败"));
       console.error(error);
     } finally {
       setPipelineLoading(false);
@@ -256,7 +267,7 @@ export function IngestionPage() {
       const data = await getIngestionTasks(pageNo, TASK_PAGE_SIZE, status);
       setTaskPage(data);
     } catch (error) {
-      toast.error("加载任务失败");
+      toast.error(getErrorMessage(error, "加载任务失败"));
       console.error(error);
     } finally {
       setTaskLoading(false);
@@ -301,7 +312,7 @@ export function IngestionPage() {
       await loadPipelines(1, pipelineKeyword);
       await loadPipelineOptions();
     } catch (error) {
-      toast.error("删除失败");
+      toast.error(getErrorMessage(error, "删除失败"));
       console.error(error);
     }
   };
@@ -311,7 +322,7 @@ export function IngestionPage() {
       const detail = await getIngestionPipeline(pipeline.id);
       setPipelineNodesDialog({ open: true, pipeline: detail });
     } catch (error) {
-      toast.error("获取流水线详情失败");
+      toast.error(getErrorMessage(error, "获取流水线详情失败"));
       console.error(error);
     }
   };
@@ -323,8 +334,8 @@ export function IngestionPage() {
     <div className="p-8">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">数据摄入</h1>
-          <p className="text-sm text-muted-foreground">管理采集流水线与任务执行情况</p>
+          <h1 className="text-2xl font-semibold">数据通道</h1>
+          <p className="text-sm text-muted-foreground">管理通道流水线与任务执行情况</p>
         </div>
         <div className="flex items-center gap-2">
           <Button
@@ -351,7 +362,7 @@ export function IngestionPage() {
           <CardHeader>
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div>
-                <CardTitle>采集流水线</CardTitle>
+                <CardTitle>通道流水线</CardTitle>
                 <CardDescription>配置节点顺序与处理逻辑</CardDescription>
               </div>
               <div className="flex flex-1 items-center justify-end gap-2">
@@ -387,6 +398,7 @@ export function IngestionPage() {
                     <TableHead>名称</TableHead>
                     <TableHead>描述</TableHead>
                     <TableHead>节点数</TableHead>
+                    <TableHead>负责人</TableHead>
                     <TableHead>更新时间</TableHead>
                     <TableHead className="text-right">操作</TableHead>
                   </TableRow>
@@ -399,6 +411,7 @@ export function IngestionPage() {
                         {pipeline.description || "-"}
                       </TableCell>
                       <TableCell>{pipeline.nodes?.length ?? 0}</TableCell>
+                      <TableCell>{pipeline.createdBy || "-"}</TableCell>
                       <TableCell>{formatDate(pipeline.updateTime)}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
@@ -446,7 +459,7 @@ export function IngestionPage() {
           <CardHeader>
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div>
-                <CardTitle>采集任务</CardTitle>
+                <CardTitle>通道任务</CardTitle>
                 <CardDescription>监控执行状态与节点日志</CardDescription>
               </div>
               <div className="flex flex-1 flex-wrap items-center justify-end gap-2">
@@ -496,6 +509,7 @@ export function IngestionPage() {
                     <TableHead>任务ID</TableHead>
                     <TableHead>来源</TableHead>
                     <TableHead>状态</TableHead>
+                    <TableHead>负责人</TableHead>
                     <TableHead>分片数</TableHead>
                     <TableHead>创建时间</TableHead>
                     <TableHead className="text-right">操作</TableHead>
@@ -519,6 +533,7 @@ export function IngestionPage() {
                           {taskStatusLabel(task.status)}
                         </Badge>
                       </TableCell>
+                      <TableCell>{task.createdBy || "-"}</TableCell>
                       <TableCell>{task.chunkCount ?? "-"}</TableCell>
                       <TableCell>{formatDate(task.createTime)}</TableCell>
                       <TableCell className="text-right">
@@ -592,6 +607,12 @@ export function IngestionPage() {
         onSubmit={async (payload) => {
           const result = await createIngestionTask(payload);
           toast.success(`任务已创建：${result.taskId}`);
+          setTaskDialogOpen(false);
+          await loadTasks(1, taskStatus);
+        }}
+        onUpload={async (pipelineId, file) => {
+          const result = await uploadIngestionTask(pipelineId, file);
+          toast.success(`上传成功：${result.taskId}`);
           setTaskDialogOpen(false);
           await loadTasks(1, taskStatus);
         }}
@@ -999,7 +1020,7 @@ function PipelineDialog({ open, mode, pipeline, onOpenChange, onSubmit }: Pipeli
       };
       await onSubmit(payload, mode);
     } catch (error) {
-      toast.error(mode === "create" ? "创建失败" : "更新失败");
+      toast.error(getErrorMessage(error, mode === "create" ? "创建失败" : "更新失败"));
       console.error(error);
     } finally {
       setSaving(false);
@@ -1023,7 +1044,7 @@ function PipelineDialog({ open, mode, pipeline, onOpenChange, onSubmit }: Pipeli
                 <FormItem>
                   <FormLabel>流水线名称</FormLabel>
                   <FormControl>
-                    <Input placeholder="例如：通用文档摄入" {...field} />
+                    <Input placeholder="例如：通用文档通道" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -1738,7 +1759,10 @@ function PipelineNodesDialog({ open, pipeline, onOpenChange }: PipelineNodesDial
   const nodes = pipeline?.nodes || [];
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[720px]">
+      <DialogContent
+        className="max-h-[90vh] overflow-y-auto sm:max-w-[720px]"
+        onOpenAutoFocus={(event) => event.preventDefault()}
+      >
         <DialogHeader>
           <DialogTitle>流水线节点</DialogTitle>
           <DialogDescription>{pipeline?.name || ""}</DialogDescription>
@@ -1785,15 +1809,17 @@ interface TaskDialogProps {
   pipelineOptions: IngestionPipeline[];
   onOpenChange: (open: boolean) => void;
   onSubmit: (payload: IngestionTaskCreatePayload) => Promise<void>;
+  onUpload: (pipelineId: string, file: File) => Promise<void>;
 }
 
-function TaskDialog({ open, pipelineOptions, onOpenChange, onSubmit }: TaskDialogProps) {
+function TaskDialog({ open, pipelineOptions, onOpenChange, onSubmit, onUpload }: TaskDialogProps) {
   const [saving, setSaving] = useState(false);
+  const [localFile, setLocalFile] = useState<File | null>(null);
   const form = useForm<TaskFormValues>({
     resolver: zodResolver(taskSchema),
     defaultValues: {
       pipelineId: pipelineOptions[0]?.id || "",
-      sourceType: "url",
+      sourceType: "file",
       location: "",
       fileName: "",
       credentialsJson: "",
@@ -1802,6 +1828,7 @@ function TaskDialog({ open, pipelineOptions, onOpenChange, onSubmit }: TaskDialo
   });
 
   const sourceType = form.watch("sourceType");
+  const isLocalFile = sourceType === "file";
 
   const sourceMeta = (() => {
     switch (sourceType) {
@@ -1839,14 +1866,21 @@ function TaskDialog({ open, pipelineOptions, onOpenChange, onSubmit }: TaskDialo
     if (open) {
       form.reset({
         pipelineId: pipelineOptions[0]?.id || "",
-        sourceType: "url",
+        sourceType: "file",
         location: "",
         fileName: "",
         credentialsJson: "",
         metadataJson: ""
       });
+      setLocalFile(null);
     }
   }, [open, pipelineOptions, form]);
+
+  useEffect(() => {
+    if (!isLocalFile) {
+      setLocalFile(null);
+    }
+  }, [isLocalFile]);
 
   const parseJsonField = (value?: string) => {
     if (!value || !value.trim()) return undefined;
@@ -1858,6 +1892,23 @@ function TaskDialog({ open, pipelineOptions, onOpenChange, onSubmit }: TaskDialo
   };
 
   const handleSubmit = async (values: TaskFormValues) => {
+    if (values.sourceType === "file") {
+      if (!localFile) {
+        toast.error("请选择文件");
+        return;
+      }
+      setSaving(true);
+      try {
+        await onUpload(values.pipelineId, localFile);
+      } catch (error) {
+        toast.error(getErrorMessage(error, "上传失败"));
+        console.error(error);
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+
     const credentials = parseJsonField(values.credentialsJson);
     if (credentials === null) {
       form.setError("credentialsJson", { message: "凭证JSON格式错误" });
@@ -1871,12 +1922,17 @@ function TaskDialog({ open, pipelineOptions, onOpenChange, onSubmit }: TaskDialo
 
     setSaving(true);
     try {
+      const location = values.location?.trim() || "";
+      if (!location) {
+        form.setError("location", { message: "请输入来源位置" });
+        return;
+      }
       const normalizedType = values.sourceType ? values.sourceType.toUpperCase() : values.sourceType;
       const payload: IngestionTaskCreatePayload = {
         pipelineId: values.pipelineId,
         source: {
           type: normalizedType,
-          location: values.location.trim(),
+          location,
           fileName: values.fileName?.trim() || undefined,
           credentials: credentials as Record<string, string> | undefined
         },
@@ -1884,7 +1940,7 @@ function TaskDialog({ open, pipelineOptions, onOpenChange, onSubmit }: TaskDialo
       };
       await onSubmit(payload);
     } catch (error) {
-      toast.error("创建失败");
+      toast.error(getErrorMessage(error, "创建失败"));
       console.error(error);
     } finally {
       setSaving(false);
@@ -1895,8 +1951,8 @@ function TaskDialog({ open, pipelineOptions, onOpenChange, onSubmit }: TaskDialo
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[720px]">
         <DialogHeader>
-          <DialogTitle>新建采集任务</DialogTitle>
-          <DialogDescription>支持 Local File / URL / Feishu / S3 来源，上传文件请使用上传任务</DialogDescription>
+          <DialogTitle>新建通道任务</DialogTitle>
+          <DialogDescription>支持 Local File / URL / Feishu / S3 来源，Local File 会直接上传文件</DialogDescription>
         </DialogHeader>
         <Form {...form}>
           <form className="space-y-4" onSubmit={form.handleSubmit(handleSubmit)}>
@@ -1951,35 +2007,49 @@ function TaskDialog({ open, pipelineOptions, onOpenChange, onSubmit }: TaskDialo
                 )}
               />
 
+              {isLocalFile ? (
+                <FormItem>
+                  <FormLabel>本地文件</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="file"
+                      onChange={(event) => setLocalFile(event.target.files?.[0] || null)}
+                    />
+                  </FormControl>
+                </FormItem>
+              ) : (
+                <FormField
+                  control={form.control}
+                  name="fileName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>文件名（可选）</FormLabel>
+                      <FormControl>
+                        <Input placeholder="例如：doc.md" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
+            </div>
+
+            {isLocalFile ? null : (
               <FormField
                 control={form.control}
-                name="fileName"
+                name="location"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>文件名（可选）</FormLabel>
+                    <FormLabel>来源位置</FormLabel>
                     <FormControl>
-                      <Input placeholder="例如：doc.md" {...field} />
+                      <Input placeholder={sourceMeta.locationPlaceholder} {...field} />
                     </FormControl>
+                    <FormDescription>{sourceMeta.locationHint}</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-            </div>
-
-            <FormField
-              control={form.control}
-              name="location"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>来源位置</FormLabel>
-                  <FormControl>
-                    <Input placeholder={sourceMeta.locationPlaceholder} {...field} />
-                  </FormControl>
-                  <FormDescription>{sourceMeta.locationHint}</FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            )}
 
             {showCredentials ? (
               <FormField
@@ -2061,7 +2131,7 @@ function UploadDialog({ open, pipelineOptions, onOpenChange, onSubmit }: UploadD
     try {
       await onSubmit(pipelineId, file);
     } catch (error) {
-      toast.error("上传失败");
+      toast.error(getErrorMessage(error, "上传失败"));
       console.error(error);
     } finally {
       setSaving(false);
@@ -2072,8 +2142,8 @@ function UploadDialog({ open, pipelineOptions, onOpenChange, onSubmit }: UploadD
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[520px]">
         <DialogHeader>
-          <DialogTitle>上传文件并采集</DialogTitle>
-          <DialogDescription>上传文件后立即触发摄取任务</DialogDescription>
+          <DialogTitle>上传文件并进入通道</DialogTitle>
+          <DialogDescription>上传文件后立即触发通道任务</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div>
@@ -2138,7 +2208,7 @@ function TaskDetailDialog({ open, taskId, onOpenChange }: TaskDetailDialogProps)
         setTask(detail);
         setNodes(nodeLogs || []);
       } catch (error) {
-        toast.error("加载任务详情失败");
+        toast.error(getErrorMessage(error, "加载任务详情失败"));
         console.error(error);
       } finally {
         if (active) setLoading(false);
@@ -2176,9 +2246,9 @@ function TaskDetailDialog({ open, taskId, onOpenChange }: TaskDetailDialogProps)
                 <div className="text-sm text-muted-foreground">Chunks: {task.chunkCount ?? "-"}</div>
               </div>
               <div className="space-y-2 text-sm text-muted-foreground">
-                <div>开始时间: {formatDate(task.startedAt)}</div>
-                <div>完成时间: {formatDate(task.completedAt)}</div>
-                <div>创建时间: {formatDate(task.createTime)}</div>
+                <div>Created: {formatDate(task.createTime)}</div>
+                <div>Started: {formatDate(task.startedAt)}</div>
+                <div>Completed: {formatDate(task.completedAt)}</div>
               </div>
             </div>
 

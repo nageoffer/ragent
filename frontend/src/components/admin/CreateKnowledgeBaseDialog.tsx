@@ -32,6 +32,7 @@ import {
 import { Button } from "@/components/ui/button";
 
 import { createKnowledgeBase } from "@/services/knowledgeService";
+import { getErrorMessage } from "@/utils/error";
 
 const formSchema = z.object({
   name: z.string().min(1, "请输入知识库名称").max(50, "名称不能超过50个字符"),
@@ -76,7 +77,7 @@ export function CreateKnowledgeBaseDialog({
       onOpenChange(false);
       onSuccess();
     } catch (error) {
-      toast.error("创建失败");
+      toast.error(getErrorMessage(error, "创建失败"));
       console.error(error);
     } finally {
       setLoading(false);

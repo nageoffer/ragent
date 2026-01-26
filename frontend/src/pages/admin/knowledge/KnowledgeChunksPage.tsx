@@ -26,6 +26,7 @@ import {
   rebuildChunks,
   updateChunk
 } from "@/services/knowledgeService";
+import { getErrorMessage } from "@/utils/error";
 
 const PAGE_SIZE = 12;
 
@@ -72,7 +73,7 @@ export function KnowledgeChunksPage() {
       const data = await getDocument(docId);
       setDoc(data);
     } catch (error) {
-      toast.error("加载文档失败");
+      toast.error(getErrorMessage(error, "加载文档失败"));
       console.error(error);
     }
   };
@@ -88,7 +89,7 @@ export function KnowledgeChunksPage() {
       });
       setPageData(data);
     } catch (error) {
-      toast.error("加载分块失败");
+      toast.error(getErrorMessage(error, "加载分块失败"));
       console.error(error);
     } finally {
       setLoading(false);
@@ -143,7 +144,7 @@ export function KnowledgeChunksPage() {
       setSelectedIds(new Set());
       await loadChunks(pageNo, enabledFilter);
     } catch (error) {
-      toast.error("批量启用失败");
+      toast.error(getErrorMessage(error, "批量启用失败"));
       console.error(error);
     }
   };
@@ -160,7 +161,7 @@ export function KnowledgeChunksPage() {
       setSelectedIds(new Set());
       await loadChunks(pageNo, enabledFilter);
     } catch (error) {
-      toast.error("批量禁用失败");
+      toast.error(getErrorMessage(error, "批量禁用失败"));
       console.error(error);
     }
   };
@@ -178,7 +179,7 @@ export function KnowledgeChunksPage() {
       setPageNo(1);
       await loadChunks(1, enabledFilter);
     } catch (error) {
-      toast.error("批量操作失败");
+      toast.error(getErrorMessage(error, "批量操作失败"));
       console.error(error);
     }
   };
@@ -191,7 +192,7 @@ export function KnowledgeChunksPage() {
       setDeleteTarget(null);
       await loadChunks(pageNo, enabledFilter);
     } catch (error) {
-      toast.error("删除失败");
+      toast.error(getErrorMessage(error, "删除失败"));
       console.error(error);
     }
   };
@@ -203,7 +204,7 @@ export function KnowledgeChunksPage() {
       toast.success("重建完成");
       setRebuildOpen(false);
     } catch (error) {
-      toast.error("重建失败");
+      toast.error(getErrorMessage(error, "重建失败"));
       console.error(error);
     }
   };
@@ -220,7 +221,7 @@ export function KnowledgeChunksPage() {
       }
       await loadChunks(pageNo, enabledFilter);
     } catch (error) {
-      toast.error("操作失败");
+      toast.error(getErrorMessage(error, "操作失败"));
       console.error(error);
     }
   };
@@ -516,7 +517,7 @@ function ChunkDialog({ mode, open, chunk, onOpenChange, onSubmit }: ChunkDialogP
     try {
       await onSubmit(payload);
     } catch (error) {
-      toast.error(mode === "create" ? "创建失败" : "更新失败");
+      toast.error(getErrorMessage(error, mode === "create" ? "创建失败" : "更新失败"));
       console.error(error);
     } finally {
       setSaving(false);

@@ -40,6 +40,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { KnowledgeBase } from "@/services/knowledgeService";
 import { getKnowledgeBases } from "@/services/knowledgeService";
+import { getErrorMessage } from "@/utils/error";
 import type {
   IntentNodeCreatePayload,
   IntentNodeTree,
@@ -180,7 +181,7 @@ export function IntentTreePage() {
         return data?.[0]?.intentCode ?? null;
       });
     } catch (error) {
-      toast.error("加载意图树失败");
+      toast.error(getErrorMessage(error, "加载意图树失败"));
       console.error(error);
     } finally {
       setLoading(false);
@@ -226,7 +227,7 @@ export function IntentTreePage() {
       toast.success("删除成功");
       await loadTree();
     } catch (error) {
-      toast.error("删除失败");
+      toast.error(getErrorMessage(error, "删除失败"));
       console.error(error);
     } finally {
       setDeleteTarget(null);
@@ -584,7 +585,7 @@ function IntentNodeDialog({
       onOpenChange(false);
     } catch (error) {
       console.error(error);
-      toast.error(mode === "create" ? "创建失败" : "更新失败");
+      toast.error(getErrorMessage(error, mode === "create" ? "创建失败" : "更新失败"));
     } finally {
       setSaving(false);
     }
