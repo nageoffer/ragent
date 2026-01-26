@@ -272,9 +272,14 @@ export function KnowledgeDocumentsPage() {
                     <TableCell className="font-medium">
                       <div className="flex min-w-0 max-w-[280px] items-center gap-2">
                         <FolderOpen className="h-4 w-4 text-muted-foreground" />
-                        <span className="flex-1 truncate" title={doc.docName || ""}>
+                        <button
+                          type="button"
+                          className="flex-1 truncate text-left text-primary underline-offset-4 hover:underline"
+                          title={doc.docName || ""}
+                          onClick={() => navigate(`/admin/knowledge/${kbId}/docs/${doc.id}`)}
+                        >
                           {doc.docName || "-"}
-                        </span>
+                        </button>
                       </div>
                     </TableCell>
                     <TableCell>
@@ -299,13 +304,6 @@ export function KnowledgeDocumentsPage() {
                     <TableCell>{formatDate(doc.updateTime)}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => navigate(`/admin/knowledge/${kbId}/docs/${doc.id}`)}
-                        >
-                          管理分块
-                        </Button>
                         <Button
                           size="sm"
                           variant="outline"
