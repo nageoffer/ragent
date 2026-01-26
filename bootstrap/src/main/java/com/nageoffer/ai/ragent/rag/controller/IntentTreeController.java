@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.ingestion.controller;
+package com.nageoffer.ai.ragent.rag.controller;
 
 import com.nageoffer.ai.ragent.rag.controller.request.IntentNodeCreateRequest;
 import com.nageoffer.ai.ragent.rag.controller.vo.IntentNodeTreeVO;
