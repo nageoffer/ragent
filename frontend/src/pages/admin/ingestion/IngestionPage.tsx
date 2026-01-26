@@ -18,7 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -56,6 +56,7 @@ const STATUS_OPTIONS = [
 ];
 
 const SOURCE_OPTIONS = [
+  { value: "file", label: "Local File" },
   { value: "url", label: "URL" },
   { value: "feishu", label: "Feishu" },
   { value: "s3", label: "S3" }
@@ -1800,6 +1801,40 @@ function TaskDialog({ open, pipelineOptions, onOpenChange, onSubmit }: TaskDialo
     }
   });
 
+  const sourceType = form.watch("sourceType");
+
+  const sourceMeta = (() => {
+    switch (sourceType) {
+      case "file":
+        return {
+          locationPlaceholder: "/path/to/file 或 file://path/to/file",
+          locationHint: "支持本地文件路径或 file:// 协议",
+          credentialsHint: ""
+        };
+      case "feishu":
+        return {
+          locationPlaceholder: "https://open.feishu.cn/...",
+          locationHint: "填写飞书文档链接",
+          credentialsHint: '{"tenantAccessToken":"..."} 或 {"app_id":"...","app_secret":"..."}'
+        };
+      case "s3":
+        return {
+          locationPlaceholder: "s3://bucket/key",
+          locationHint: "填写 S3 路径，例如 s3://biz/file.md",
+          credentialsHint: ""
+        };
+      case "url":
+      default:
+        return {
+          locationPlaceholder: "https://example.com/file.pdf",
+          locationHint: "支持 http/https 链接",
+          credentialsHint: '{"token":"xxx"} 或 {"Authorization":"Bearer xxx"}'
+        };
+    }
+  })();
+
+  const showCredentials = sourceType === "url" || sourceType === "feishu";
+
   useEffect(() => {
     if (open) {
       form.reset({
@@ -1836,10 +1871,11 @@ function TaskDialog({ open, pipelineOptions, onOpenChange, onSubmit }: TaskDialo
 
     setSaving(true);
     try {
+      const normalizedType = values.sourceType ? values.sourceType.toUpperCase() : values.sourceType;
       const payload: IngestionTaskCreatePayload = {
         pipelineId: values.pipelineId,
         source: {
-          type: values.sourceType,
+          type: normalizedType,
           location: values.location.trim(),
           fileName: values.fileName?.trim() || undefined,
           credentials: credentials as Record<string, string> | undefined
@@ -1860,7 +1896,7 @@ function TaskDialog({ open, pipelineOptions, onOpenChange, onSubmit }: TaskDialo
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[720px]">
         <DialogHeader>
           <DialogTitle>新建采集任务</DialogTitle>
-          <DialogDescription>支持 URL / Feishu / S3 来源，文件上传请使用上传任务</DialogDescription>
+          <DialogDescription>支持 Local File / URL / Feishu / S3 来源，上传文件请使用上传任务</DialogDescription>
         </DialogHeader>
         <Form {...form}>
           <form className="space-y-4" onSubmit={form.handleSubmit(handleSubmit)}>
@@ -1937,26 +1973,32 @@ function TaskDialog({ open, pipelineOptions, onOpenChange, onSubmit }: TaskDialo
                 <FormItem>
                   <FormLabel>来源位置</FormLabel>
                   <FormControl>
-                    <Input placeholder="URL / 文档ID / 对象路径" {...field} />
+                    <Input placeholder={sourceMeta.locationPlaceholder} {...field} />
                   </FormControl>
+                  <FormDescription>{sourceMeta.locationHint}</FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
             />
 
-            <FormField
-              control={form.control}
-              name="credentialsJson"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>访问凭证（JSON，可选）</FormLabel>
-                  <FormControl>
-                    <Textarea placeholder='{"token":"xxx"}' rows={4} {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            {showCredentials ? (
+              <FormField
+                control={form.control}
+                name="credentialsJson"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>访问凭证（JSON，可选）</FormLabel>
+                    <FormControl>
+                      <Textarea placeholder={sourceMeta.credentialsHint || '{"token":"xxx"}'} rows={4} {...field} />
+                    </FormControl>
+                    {sourceMeta.credentialsHint ? (
+                      <FormDescription>示例：{sourceMeta.credentialsHint}</FormDescription>
+                    ) : null}
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            ) : null}
 
             <FormField
               control={form.control}
@@ -2134,10 +2176,9 @@ function TaskDetailDialog({ open, taskId, onOpenChange }: TaskDetailDialogProps)
                 <div className="text-sm text-muted-foreground">Chunks: {task.chunkCount ?? "-"}</div>
               </div>
               <div className="space-y-2 text-sm text-muted-foreground">
-                <div>Started: {formatDate(task.startedAt)}</div>
-                <div>Completed: {formatDate(task.completedAt)}</div>
-                <div>Created: {formatDate(task.createTime)}</div>
-                <div>Updated: {formatDate(task.updateTime)}</div>
+                <div>开始时间: {formatDate(task.startedAt)}</div>
+                <div>完成时间: {formatDate(task.completedAt)}</div>
+                <div>创建时间: {formatDate(task.createTime)}</div>
               </div>
             </div>
 
