@@ -34,6 +34,7 @@ import com.nageoffer.ai.ragent.framework.context.UserContext;
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.framework.exception.ServiceException;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentNode;
+import com.nageoffer.ai.ragent.rag.core.intent.IntentTreeCacheManager;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentTreeFactory;
 import com.nageoffer.ai.ragent.ingestion.service.IntentTreeService;
 import lombok.RequiredArgsConstructor;
@@ -56,6 +57,7 @@ import static com.nageoffer.ai.ragent.rag.enums.IntentLevel.DOMAIN;
 public class IntentTreeServiceImpl extends ServiceImpl<IntentNodeMapper, IntentNodeDO> implements IntentTreeService {
 
     private final KnowledgeBaseMapper knowledgeBaseMapper;
+    private final IntentTreeCacheManager intentTreeCacheManager;
 
     private static final Gson GSON = new Gson();
 
@@ -149,6 +151,10 @@ public class IntentTreeServiceImpl extends ServiceImpl<IntentNodeMapper, IntentN
                 .build();
 
         this.save(node);
+
+        // 清除Redis缓存，下次读取时会重新从数据库加载
+        intentTreeCacheManager.clearIntentTreeCache();
+
         return String.valueOf(node.getId());
     }
 
@@ -188,11 +194,17 @@ public class IntentTreeServiceImpl extends ServiceImpl<IntentNodeMapper, IntentN
         }
         node.setUpdateBy(UserContext.getUsername());
         this.updateById(node);
+
+        // 清除Redis缓存，下次读取时会重新从数据库加载
+        intentTreeCacheManager.clearIntentTreeCache();
     }
 
     @Override
     public void deleteNode(String id) {
         this.removeById(id);
+
+        // 清除Redis缓存，下次读取时会重新从数据库加载
+        intentTreeCacheManager.clearIntentTreeCache();
     }
 
     @Override

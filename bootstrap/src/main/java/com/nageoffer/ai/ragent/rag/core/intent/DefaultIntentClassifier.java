@@ -18,6 +18,7 @@
 package com.nageoffer.ai.ragent.rag.core.intent;
 
 import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.collection.CollUtil;
 import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.google.gson.JsonArray;
@@ -59,38 +60,60 @@ public class DefaultIntentClassifier implements IntentClassifier, IntentNodeRegi
     private final LLMService llmService;
     private final IntentNodeMapper intentNodeMapper;
     private final PromptTemplateLoader promptTemplateLoader;
-
-    /**
-     * 整棵树所有节点（可选，用于调试）
-     */
-    private List<IntentNode> allNodes;
-
-    /**
-     * 只包含“最终分类节点”（叶子），即真正挂知识库 / Milvus Collection 的节点
-     */
-    private List<IntentNode> leafNodes;
-
-    /**
-     * id -> node 映射，方便 LLM 结果反查
-     */
-    private Map<String, IntentNode> id2Node;
+    private final IntentTreeCacheManager intentTreeCacheManager;
 
     @PostConstruct
     public void init() {
-        // 1. 构建 Tree
-        List<IntentNode> roots = loadIntentTreeFromDB();
-        this.allNodes = flatten(roots);
+        // 初始化时确保Redis缓存存在
+        ensureIntentTreeCached();
+        log.info("意图分类器初始化完成");
+    }
 
-        // 2. 提取叶子节点（最终分类）
-        this.leafNodes = allNodes.stream()
+    /**
+     * 确保Redis缓存中有意图树数据
+     * 如果缓存不存在，从数据库加载并保存到Redis
+     */
+    private void ensureIntentTreeCached() {
+        if (!intentTreeCacheManager.isCacheExists()) {
+            List<IntentNode> roots = loadIntentTreeFromDB();
+            if (!roots.isEmpty()) {
+                intentTreeCacheManager.saveIntentTreeToCache(roots);
+                log.info("意图树已从数据库加载并缓存到Redis");
+            }
+        }
+    }
+
+    /**
+     * 从Redis加载意图树并构建内存结构
+     * 每次调用都会重新从Redis读取，确保数据是最新的
+     */
+    private IntentTreeData loadIntentTreeData() {
+        // 1. 从Redis读取（如果不存在会自动从数据库加载）
+        List<IntentNode> roots = intentTreeCacheManager.getIntentTreeFromCache();
+
+        // 2. 如果Redis也没有，从数据库加载并缓存
+        if (CollUtil.isEmpty(roots)) {
+            roots = loadIntentTreeFromDB();
+            if (!roots.isEmpty()) {
+                intentTreeCacheManager.saveIntentTreeToCache(roots);
+            }
+        }
+
+        // 3. 构建内存结构（临时使用）
+        if (CollUtil.isEmpty(roots)) {
+            return new IntentTreeData(List.of(), List.of(), Map.of());
+        }
+
+        List<IntentNode> allNodes = flatten(roots);
+        List<IntentNode> leafNodes = allNodes.stream()
                 .filter(IntentNode::isLeaf)
                 .collect(Collectors.toList());
-
-        this.id2Node = allNodes.stream()
+        Map<String, IntentNode> id2Node = allNodes.stream()
                 .collect(Collectors.toMap(IntentNode::getId, n -> n));
 
-        log.info("意图分类器初始化完成, 总节点数: {}, 叶子节点数: {}",
-                allNodes.size(), leafNodes.size());
+        log.debug("意图树数据加载完成, 总节点数: {}, 叶子节点数: {}", allNodes.size(), leafNodes.size());
+
+        return new IntentTreeData(allNodes, leafNodes, id2Node);
     }
 
     @Override
@@ -98,7 +121,18 @@ public class DefaultIntentClassifier implements IntentClassifier, IntentNodeRegi
         if (id == null || id.isBlank()) {
             return null;
         }
-        return id2Node == null ? null : id2Node.get(id);
+        IntentTreeData data = loadIntentTreeData();
+        return data.id2Node.get(id);
+    }
+
+    /**
+     * 意图树数据结构（临时对象，不持久化）
+     */
+    private record IntentTreeData(
+            List<IntentNode> allNodes,
+            List<IntentNode> leafNodes,
+            Map<String, IntentNode> id2Node
+    ) {
     }
 
     private List<IntentNode> flatten(List<IntentNode> roots) {
@@ -122,7 +156,10 @@ public class DefaultIntentClassifier implements IntentClassifier, IntentNodeRegi
      */
     @Override
     public List<NodeScore> classifyTargets(String question) {
-        String systemPrompt = buildPrompt();
+        // 每次都从Redis读取最新数据
+        IntentTreeData data = loadIntentTreeData();
+
+        String systemPrompt = buildPrompt(data.leafNodes);
         ChatRequest request = ChatRequest.builder()
                 .messages(List.of(
                         ChatMessage.system(systemPrompt),
@@ -158,7 +195,7 @@ public class DefaultIntentClassifier implements IntentClassifier, IntentNodeRegi
                 String id = obj.get("id").getAsString();
                 double score = obj.get("score").getAsDouble();
 
-                IntentNode node = id2Node.get(id);
+                IntentNode node = data.id2Node.get(id);
                 if (node == null) {
                     log.warn("LLM 返回了未知的意图节点 ID: {}, 已跳过", id);
                     continue;
@@ -206,7 +243,7 @@ public class DefaultIntentClassifier implements IntentClassifier, IntentNodeRegi
      * - 特别强调：如果问题里只提到 "OA系统"，不要选 "保险系统" 的分类
      * - 如果存在 MCP 类型节点，使用增强版 Prompt 并添加 type/toolId 标识
      */
-    private String buildPrompt() {
+    private String buildPrompt(List<IntentNode> leafNodes) {
         StringBuilder sb = new StringBuilder();
 
         for (IntentNode node : leafNodes) {
