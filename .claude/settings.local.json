@@ -7,7 +7,10 @@
       "Bash(npm run build)",
       "Bash(npx shadcn@latest add:*)",
       "Bash(curl:*)",
-      "Bash(kill:*)"
+      "Bash(kill:*)",
+      "Bash(find:*)",
+      "Bash(mvn clean compile:*)",
+      "Bash(javac:*)"
     ]
   }
 }
