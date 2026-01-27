@@ -528,7 +528,19 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
   useEffect(() => {
     if (open) {
       setFile(null);
-      form.reset();
+      form.reset({
+        sourceType: "file",
+        sourceLocation: "",
+        scheduleEnabled: false,
+        scheduleCron: "",
+        chunkStrategy: "fixed_size",
+        chunkSize: "512",
+        overlapSize: "128",
+        targetChars: "1400",
+        maxChars: "1800",
+        minChars: "600",
+        overlapChars: "0"
+      });
       setNoChunk(false); // 重置不分块状态
       setOriginalChunkSize("512"); // 重置原始值
     }
