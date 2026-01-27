@@ -9,9 +9,13 @@ export interface IntentNodeTree {
   description?: string | null;
   examples?: string | null;
   collectionName?: string | null;
+  mcpToolId?: string | null;
   kind?: number | null;
   sortOrder?: number | null;
   enabled?: number | null;
+  promptSnippet?: string | null;
+  promptTemplate?: string | null;
+  paramPromptTemplate?: string | null;
   children?: IntentNodeTree[];
 }
 
@@ -39,9 +43,13 @@ export interface IntentNodeUpdatePayload {
   description?: string | null;
   examples?: string[];
   collectionName?: string | null;
+  mcpToolId?: string | null;
   kind?: number | null;
   sortOrder?: number | null;
   enabled?: number | null;
+  promptSnippet?: string | null;
+  promptTemplate?: string | null;
+  paramPromptTemplate?: string | null;
 }
 
 export async function getIntentTree() {
