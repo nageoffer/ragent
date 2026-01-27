@@ -52,7 +52,7 @@ public class RAGSettingsController {
     /**
      * 获取系统 RAG、AI 模型等配置信息
      */
-    @GetMapping("/api/ragent/rag/settings")
+    @GetMapping("/rag/settings")
     public Result<SystemSettingsVO> settings() {
         SystemSettingsVO response = SystemSettingsVO.builder()
                 .rag(SystemSettingsVO.RagSettings.builder()
