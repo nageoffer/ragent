@@ -531,7 +531,7 @@ function ChunkDialog({ mode, open, chunk, onOpenChange, onSubmit }: ChunkDialogP
           <DialogTitle>{mode === "create" ? "新建分块" : "编辑分块"}</DialogTitle>
           <DialogDescription>手动维护分块内容</DialogDescription>
         </DialogHeader>
-        <div className="space-y-4 overflow-y-auto flex-1 px-1 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:opacity-0 hover:[&::-webkit-scrollbar-thumb]:opacity-100 [&::-webkit-scrollbar-thumb]:transition-opacity">
+        <div className="space-y-4 overflow-y-auto flex-1 px-1 sidebar-scroll">
           {mode === "create" ? (
             <>
               <div>

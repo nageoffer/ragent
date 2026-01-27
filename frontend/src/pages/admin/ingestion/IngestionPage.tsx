@@ -1029,7 +1029,7 @@ function PipelineDialog({ open, mode, pipeline, onOpenChange, onSubmit }: Pipeli
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[880px]">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sidebar-scroll sm:max-w-[880px]">
         <DialogHeader>
           <DialogTitle>{mode === "create" ? "新建流水线" : "编辑流水线"}</DialogTitle>
           <DialogDescription>配置节点顺序与处理逻辑</DialogDescription>
@@ -1760,7 +1760,7 @@ function PipelineNodesDialog({ open, pipeline, onOpenChange }: PipelineNodesDial
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-h-[90vh] overflow-y-auto sm:max-w-[720px]"
+        className="max-h-[90vh] overflow-y-auto sidebar-scroll sm:max-w-[720px]"
         onOpenAutoFocus={(event) => event.preventDefault()}
       >
         <DialogHeader>
@@ -1949,7 +1949,7 @@ function TaskDialog({ open, pipelineOptions, onOpenChange, onSubmit, onUpload }:
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[720px]">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sidebar-scroll sm:max-w-[720px]">
         <DialogHeader>
           <DialogTitle>新建通道任务</DialogTitle>
           <DialogDescription>支持 Local File / URL / Feishu / S3 来源，Local File 会直接上传文件</DialogDescription>
@@ -2222,7 +2222,7 @@ function TaskDetailDialog({ open, taskId, onOpenChange }: TaskDetailDialogProps)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[820px]">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sidebar-scroll sm:max-w-[820px]">
         <DialogHeader>
           <DialogTitle>任务详情</DialogTitle>
           <DialogDescription>{taskId || ""}</DialogDescription>
