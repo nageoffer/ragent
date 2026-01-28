@@ -20,6 +20,7 @@ package com.nageoffer.ai.ragent.knowledge.controller;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.nageoffer.ai.ragent.knowledge.controller.request.KnowledgeDocumentUploadRequest;
+import com.nageoffer.ai.ragent.knowledge.controller.request.KnowledgeDocumentUpdateRequest;
 import com.nageoffer.ai.ragent.knowledge.controller.vo.KnowledgeDocumentVO;
 import com.nageoffer.ai.ragent.framework.convention.Result;
 import com.nageoffer.ai.ragent.framework.web.Results;
@@ -33,6 +34,8 @@ import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
@@ -83,6 +86,16 @@ public class KnowledgeDocumentController {
     @GetMapping("/knowledge-base/docs/{docId}")
     public Result<KnowledgeDocumentVO> get(@PathVariable String docId) {
         return Results.success(documentService.get(docId));
+    }
+
+    /**
+     * 更新文档信息
+     */
+    @PutMapping("/knowledge-base/docs/{docId}")
+    public Result<Void> update(@PathVariable String docId,
+                               @RequestBody KnowledgeDocumentUpdateRequest requestParam) {
+        documentService.update(docId, requestParam);
+        return Results.success();
     }
 
     /**

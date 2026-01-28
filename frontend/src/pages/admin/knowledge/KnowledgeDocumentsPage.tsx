@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Check, FileUp, FolderOpen, PlayCircle, RefreshCw, Trash2 } from "lucide-react";
+import { Check, FileUp, FolderOpen, PlayCircle, RefreshCw, Trash2, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -23,6 +23,8 @@ import {
   enableDocument,
   getKnowledgeBase,
   getDocumentsPage,
+  getDocument,
+  updateDocument,
   startDocumentChunk,
   uploadDocument
 } from "@/services/knowledgeService";
@@ -54,6 +56,37 @@ const PROCESS_MODE_OPTIONS = [
 ];
 
 const INT_MAX = 2147483647;
+const DEFAULT_CHUNK_SIZE = 512;
+const DEFAULT_OVERLAP_SIZE = 128;
+const DEFAULT_TARGET_CHARS = 1400;
+const DEFAULT_MAX_CHARS = 1800;
+const DEFAULT_MIN_CHARS = 600;
+const DEFAULT_OVERLAP_CHARS = 0;
+
+const parseChunkConfig = (raw?: string | null): Record<string, unknown> => {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") {
+      return parsed as Record<string, unknown>;
+    }
+    return {};
+  } catch {
+    return {};
+  }
+};
+
+const getConfigNumber = (config: Record<string, unknown>, key: string, fallback: number) => {
+  const value = config[key];
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+  return fallback;
+};
 
 const statusDotClass = (status?: string | null) => {
   if (!status) return "bg-muted-foreground/40";
@@ -87,6 +120,13 @@ const formatSourceLabel = (sourceType?: string | null) => {
   return "-";
 };
 
+const formatProcessMode = (processMode?: string | null) => {
+  const normalized = processMode?.toLowerCase();
+  if (normalized === "pipeline") return "数据通道";
+  if (normalized === "chunk") return "分块策略";
+  return "分块策略"; // 默认值
+};
+
 export function KnowledgeDocumentsPage() {
   const { kbId } = useParams();
   const navigate = useNavigate();
@@ -100,6 +140,10 @@ export function KnowledgeDocumentsPage() {
   const [uploadOpen, setUploadOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<KnowledgeDocument | null>(null);
   const [chunkTarget, setChunkTarget] = useState<KnowledgeDocument | null>(null);
+  const [detailTarget, setDetailTarget] = useState<KnowledgeDocument | null>(null);
+  const [detailName, setDetailName] = useState("");
+  const [detailSaving, setDetailSaving] = useState(false);
+  const [detailPipelineName, setDetailPipelineName] = useState<string>("");
 
   const documents = pageData?.records || [];
 
@@ -140,6 +184,31 @@ export function KnowledgeDocumentsPage() {
   useEffect(() => {
     loadDocuments();
   }, [kbId, pageNo, statusFilter, keyword]);
+
+  useEffect(() => {
+    if (detailTarget) {
+      setDetailName(detailTarget.docName || "");
+      // 如果是 pipeline 模式，加载 pipeline 名称
+      if (detailTarget.processMode?.toLowerCase() === "pipeline" && detailTarget.pipelineId) {
+        const loadPipelineName = async () => {
+          try {
+            const result = await getIngestionPipelines(1, 100);
+            const pipeline = result.records?.find(p => p.id === String(detailTarget.pipelineId));
+            setDetailPipelineName(pipeline?.name || String(detailTarget.pipelineId));
+          } catch (error) {
+            console.error("加载Pipeline失败", error);
+            setDetailPipelineName(String(detailTarget.pipelineId));
+          }
+        };
+        loadPipelineName();
+      } else {
+        setDetailPipelineName("");
+      }
+    } else {
+      setDetailName("");
+      setDetailPipelineName("");
+    }
+  }, [detailTarget]);
 
   const handleSearch = () => {
     setPageNo(1);
@@ -189,6 +258,48 @@ export function KnowledgeDocumentsPage() {
       console.error(error);
     }
   };
+
+  const handleDetailSave = async () => {
+    if (!detailTarget) return;
+    const nextName = detailName.trim();
+    if (!nextName) {
+      toast.error("文档名称不能为空");
+      return;
+    }
+    setDetailSaving(true);
+    try {
+      await updateDocument(String(detailTarget.id), { docName: nextName });
+      toast.success("更新成功");
+      await loadDocuments(pageNo, statusFilter, keyword);
+      setDetailTarget(null);
+    } catch (error) {
+      toast.error(getErrorMessage(error, "更新失败"));
+      console.error(error);
+    } finally {
+      setDetailSaving(false);
+    }
+  };
+
+  const detailSourceType = detailTarget?.sourceType?.toLowerCase();
+  const detailIsUrlSource = detailSourceType === "url";
+  const detailNameLabel = detailIsUrlSource ? "文档名称" : "本地文件";
+  const detailNameHint = detailIsUrlSource ? "仅支持修改文档名称" : "仅支持修改文件名";
+  const detailConfig = detailTarget ? parseChunkConfig(detailTarget.chunkConfig) : {};
+  const detailChunkStrategy = (detailTarget?.chunkStrategy || "structure_aware").toLowerCase();
+  const detailChunkSize =
+    detailTarget?.chunkSize ?? getConfigNumber(detailConfig, "chunkSize", DEFAULT_CHUNK_SIZE);
+  const detailOverlapSize =
+    detailTarget?.overlapSize ?? getConfigNumber(detailConfig, "overlapSize", DEFAULT_OVERLAP_SIZE);
+  const detailTargetChars =
+    detailTarget?.targetChars ?? getConfigNumber(detailConfig, "targetChars", DEFAULT_TARGET_CHARS);
+  const detailMaxChars =
+    detailTarget?.maxChars ?? getConfigNumber(detailConfig, "maxChars", DEFAULT_MAX_CHARS);
+  const detailMinChars =
+    detailTarget?.minChars ?? getConfigNumber(detailConfig, "minChars", DEFAULT_MIN_CHARS);
+  const detailOverlapChars =
+    detailTarget?.overlapChars ?? getConfigNumber(detailConfig, "overlapChars", DEFAULT_OVERLAP_CHARS);
+  const detailNameChanged = detailTarget ? detailName.trim() !== (detailTarget.docName || "") : false;
+  const detailChunkSizeDisplay = detailChunkSize === INT_MAX ? "不分块" : detailChunkSize;
 
   return (
     <div className="p-8">
@@ -264,6 +375,7 @@ export function KnowledgeDocumentsPage() {
                 <TableRow>
                   <TableHead>文档</TableHead>
                   <TableHead>来源</TableHead>
+                  <TableHead>处理模式</TableHead>
                   <TableHead>状态</TableHead>
                   <TableHead>启用</TableHead>
                   <TableHead>分块数</TableHead>
@@ -290,16 +402,14 @@ export function KnowledgeDocumentsPage() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <div className="flex min-w-0 max-w-[240px] items-center gap-2">
-                        <span className="shrink-0 text-xs text-muted-foreground">
-                          {formatSourceLabel(doc.sourceType)}
-                        </span>
-                        {doc.sourceType?.toLowerCase() === "url" && doc.sourceLocation ? (
-                          <span className="truncate" title={doc.sourceLocation}>
-                            {doc.sourceLocation}
-                          </span>
-                        ) : null}
-                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        {formatSourceLabel(doc.sourceType)}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-xs text-muted-foreground">
+                        {doc.processMode || "-"}
+                      </span>
                     </TableCell>
                     <TableCell>
                       <div className="inline-flex items-center gap-2 text-xs text-muted-foreground">
@@ -337,23 +447,38 @@ export function KnowledgeDocumentsPage() {
                     <TableCell>{formatSize(doc.fileSize)}</TableCell>
                     <TableCell>{formatDate(doc.updateTime)}</TableCell>
                     <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
+                      <div className="flex justify-end gap-1">
                         <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setChunkTarget(doc)}
+                          size="icon"
+                          variant="ghost"
+                          onClick={async () => {
+                            try {
+                              const detail = await getDocument(String(doc.id));
+                              setDetailTarget(detail);
+                            } catch (error) {
+                              toast.error(getErrorMessage(error, "加载文档详情失败"));
+                            }
+                          }}
+                          title="编辑"
                         >
-                          <PlayCircle className="mr-0.1 h-4 w-4" />
-                          分块
+                          <Pencil className="h-4 w-4" />
                         </Button>
                         <Button
-                          size="sm"
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => setChunkTarget(doc)}
+                          title="分块"
+                        >
+                          <PlayCircle className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="icon"
                           variant="ghost"
                           className="text-destructive hover:text-destructive"
                           onClick={() => setDeleteTarget(doc)}
+                          title="删除"
                         >
-                          <Trash2 className="mr-0.1 h-4 w-4" />
-                          删除
+                          <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
                     </TableCell>
@@ -431,6 +556,129 @@ export function KnowledgeDocumentsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={Boolean(detailTarget)} onOpenChange={(open) => (!open ? setDetailTarget(null) : null)}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sidebar-scroll sm:max-w-[620px]">
+          <DialogHeader>
+            <DialogTitle>编辑文档</DialogTitle>
+            <DialogDescription>修改文档名称，查看文档配置信息</DialogDescription>
+          </DialogHeader>
+          {detailTarget ? (
+            <div className="space-y-4">
+              <div>
+                <div className="text-sm font-medium mb-2">来源类型</div>
+                <Input value={formatSourceLabel(detailTarget.sourceType)} disabled />
+              </div>
+
+              <div>
+                <div className="text-sm font-medium mb-2">{detailNameLabel}</div>
+                <Input value={detailName} onChange={(event) => setDetailName(event.target.value)} />
+                <div className="text-sm text-muted-foreground mt-1">{detailNameHint}</div>
+              </div>
+
+              {detailIsUrlSource && detailTarget.sourceLocation ? (
+                <>
+                  <div>
+                    <div className="text-sm font-medium mb-2">来源地址</div>
+                    <Input value={detailTarget.sourceLocation} disabled />
+                  </div>
+                  {detailTarget.scheduleEnabled ? (
+                    <>
+                      <div className="space-y-3 rounded-lg border p-3">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="text-sm font-medium">开启定时拉取</div>
+                            <div className="text-sm text-muted-foreground">开启后按频率自动更新文档</div>
+                          </div>
+                          <Checkbox checked={Boolean(detailTarget.scheduleEnabled)} disabled />
+                        </div>
+                        {detailTarget.scheduleCron ? (
+                          <div>
+                            <div className="text-sm font-medium mb-2">拉取频率</div>
+                            <Input value={detailTarget.scheduleCron} disabled />
+                            <div className="text-sm text-muted-foreground mt-1">支持 cron 表达式</div>
+                          </div>
+                        ) : null}
+                      </div>
+                    </>
+                  ) : null}
+                </>
+              ) : null}
+
+              <div>
+                <div className="text-sm font-medium mb-2">处理模式</div>
+                <Input value={formatProcessMode(detailTarget.processMode)} disabled />
+                <div className="text-sm text-muted-foreground mt-1">
+                  分块策略：直接分块；数据通道：使用Pipeline清洗
+                </div>
+              </div>
+
+              {detailTarget.processMode?.toLowerCase() === "pipeline" ? (
+                <div>
+                  <div className="text-sm font-medium mb-2">数据通道名称</div>
+                  <Input value={detailPipelineName || "-"} disabled />
+                </div>
+              ) : null}
+
+              {(!detailTarget.processMode || detailTarget.processMode?.toLowerCase() === "chunk") ? (
+                <div className="space-y-3 rounded-lg border p-3">
+                  <div>
+                    <div className="text-sm font-medium mb-2">分块策略</div>
+                    <Input
+                      value={detailChunkStrategy === "fixed_size" ? "fixed_size" : "structure_aware"}
+                      disabled
+                    />
+                  </div>
+
+                  {detailChunkStrategy === "fixed_size" ? (
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div>
+                        <div className="text-sm font-medium mb-2">块大小</div>
+                        <Input value={detailChunkSizeDisplay ?? "-"} disabled />
+                        <div className="text-sm text-muted-foreground mt-1">字符数</div>
+                      </div>
+                      <div>
+                        <div className="text-sm font-medium mb-2">重叠大小</div>
+                        <Input value={detailOverlapSize ?? "-"} disabled />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div>
+                        <div className="text-sm font-medium mb-2">理想块大小</div>
+                        <Input value={detailTargetChars ?? "-"} disabled />
+                      </div>
+                      <div>
+                        <div className="text-sm font-medium mb-2">块上限</div>
+                        <Input value={detailMaxChars ?? "-"} disabled />
+                      </div>
+                      <div>
+                        <div className="text-sm font-medium mb-2">块下限</div>
+                        <Input value={detailMinChars ?? "-"} disabled />
+                      </div>
+                      <div>
+                        <div className="text-sm font-medium mb-2">重叠大小</div>
+                        <Input value={detailOverlapChars ?? "-"} disabled />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDetailTarget(null)} disabled={detailSaving}>
+              关闭
+            </Button>
+            <Button
+              onClick={handleDetailSave}
+              disabled={detailSaving || !detailName.trim() || !detailNameChanged}
+            >
+              {detailSaving ? "保存中..." : "保存"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

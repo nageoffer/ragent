@@ -26,6 +26,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nageoffer.ai.ragent.infra.embedding.EmbeddingService;
 import com.nageoffer.ai.ragent.knowledge.controller.request.KnowledgeChunkCreateRequest;
+import com.nageoffer.ai.ragent.knowledge.controller.request.KnowledgeDocumentUpdateRequest;
 import com.nageoffer.ai.ragent.knowledge.controller.request.KnowledgeDocumentUploadRequest;
 import com.nageoffer.ai.ragent.knowledge.controller.vo.KnowledgeChunkVO;
 import com.nageoffer.ai.ragent.knowledge.controller.vo.KnowledgeDocumentVO;
@@ -390,6 +391,24 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void update(String docId, KnowledgeDocumentUpdateRequest requestParam) {
+        KnowledgeDocumentDO documentDO = docMapper.selectById(docId);
+        Assert.notNull(documentDO, () -> new ClientException("文档不存在"));
+
+        String docName = requestParam == null ? null : requestParam.getDocName();
+        if (!StringUtils.hasText(docName)) {
+            throw new ClientException("文档名称不能为空");
+        }
+
+        KnowledgeDocumentDO update = new KnowledgeDocumentDO();
+        update.setId(documentDO.getId());
+        update.setDocName(docName.trim());
+        update.setUpdatedBy(UserContext.getUsername());
+        docMapper.updateById(update);
+    }
+
+    @Override
     public IPage<KnowledgeDocumentVO> page(String kbId, Page<KnowledgeDocumentVO> page, String status, String keyword) {
         Page<KnowledgeDocumentDO> mpPage = new Page<>(page.getCurrent(), page.getSize());
         LambdaQueryWrapper<KnowledgeDocumentDO> qw = new LambdaQueryWrapper<KnowledgeDocumentDO>()
@@ -397,7 +416,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
                 .eq(KnowledgeDocumentDO::getDeleted, 0)
                 .like(keyword != null && !keyword.isBlank(), KnowledgeDocumentDO::getDocName, keyword)
                 .eq(status != null && !status.isBlank(), KnowledgeDocumentDO::getStatus, status)
-                .orderByDesc(KnowledgeDocumentDO::getUpdateTime);
+                .orderByDesc(KnowledgeDocumentDO::getCreateTime);
 
         IPage<KnowledgeDocumentDO> result = docMapper.selectPage(mpPage, qw);
 

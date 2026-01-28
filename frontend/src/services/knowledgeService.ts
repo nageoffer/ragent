@@ -24,6 +24,7 @@ export interface KnowledgeDocument {
   fileUrl?: string | null;
   fileType?: string | null;
   fileSize?: number | null;
+  processMode?: string | null;
   chunkStrategy?: string | null;
   chunkConfig?: string | null;
   chunkSize?: number | null;
@@ -32,6 +33,7 @@ export interface KnowledgeDocument {
   maxChars?: number | null;
   minChars?: number | null;
   overlapChars?: number | null;
+  pipelineId?: string | number | null;
   status?: string | null;
   createdBy?: string | null;
   updatedBy?: string | null;
@@ -209,6 +211,14 @@ export const uploadDocument = async (
   });
 };
 
+export const getDocument = async (docId: string): Promise<KnowledgeDocument> => {
+  return api.get<KnowledgeDocument, KnowledgeDocument>(`/knowledge-base/docs/${docId}`);
+};
+
+export const updateDocument = async (docId: string, data: { docName?: string }): Promise<void> => {
+  await api.put(`/knowledge-base/docs/${docId}`, data);
+};
+
 export const startDocumentChunk = async (docId: string): Promise<void> => {
   await api.post(`/knowledge-base/docs/${docId}/chunk`);
 };
@@ -217,10 +227,6 @@ export const enableDocument = async (docId: string, enabled: boolean): Promise<v
   await api.patch(`/knowledge-base/docs/${docId}/enable`, null, {
     params: { value: enabled }
   });
-};
-
-export const getDocument = async (docId: string): Promise<KnowledgeDocument> => {
-  return api.get<KnowledgeDocument, KnowledgeDocument>(`/knowledge-base/docs/${docId}`);
 };
 
 export const deleteDocument = async (docId: string): Promise<void> => {

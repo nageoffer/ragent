@@ -20,6 +20,7 @@ package com.nageoffer.ai.ragent.knowledge.service;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.nageoffer.ai.ragent.knowledge.controller.request.KnowledgeDocumentUploadRequest;
+import com.nageoffer.ai.ragent.knowledge.controller.request.KnowledgeDocumentUpdateRequest;
 import com.nageoffer.ai.ragent.knowledge.controller.vo.KnowledgeDocumentVO;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -59,6 +60,14 @@ public interface KnowledgeDocumentService {
      * @return 知识库文档视图对象
      */
     KnowledgeDocumentVO get(String docId);
+
+    /**
+     * 更新文档信息
+     *
+     * @param docId        文档 ID
+     * @param requestParam 更新请求参数
+     */
+    void update(String docId, KnowledgeDocumentUpdateRequest requestParam);
 
     /**
      * 分页查询文档

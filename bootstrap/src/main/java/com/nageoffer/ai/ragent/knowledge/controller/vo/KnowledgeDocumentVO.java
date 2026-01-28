@@ -93,9 +93,22 @@ public class KnowledgeDocumentVO {
     private String chunkStrategy;
 
     /**
+     * 处理模式：chunk / pipeline
+     * - chunk: 使用分块策略直接分块
+     * - pipeline: 使用数据通道进行清洗处理
+     */
+    private String processMode;
+
+    /**
      * 分块参数配置（JSON）
      */
     private String chunkConfig;
+
+    /**
+     * 数据通道（Pipeline）ID
+     * 仅在 processMode=pipeline 时有效
+     */
+    private String pipelineId;
 
     /**
      * 状态（如：解析中、已解析、解析失败等）
