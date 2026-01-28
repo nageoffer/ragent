@@ -73,6 +73,10 @@ public class ParserNode implements IngestionNode {
 
         ParserSettings settings = parseSettings(config.getSettings());
         String fileName = context.getSource() == null ? null : context.getSource().getFileName();
+
+        // 验证文件类型是否符合配置
+        validateMimeType(settings, mimeType, fileName);
+
         ParserSettings.ParserRule rule = matchRule(settings, mimeType, fileName);
         DocumentParser parser = parserMap.get("TIKA");
         if (parser == null) {
@@ -84,6 +88,51 @@ public class ParserNode implements IngestionNode {
         context.setRawText(result.text());
         context.setDocument(result.document());
         return NodeResult.ok("解析文本长度=" + (result.text() == null ? 0 : result.text().length()));
+    }
+
+    /**
+     * 验证文件类型是否符合配置的规则
+     * 如果配置了规则但文件类型不匹配，则抛出异常
+     */
+    private void validateMimeType(ParserSettings settings, String mimeType, String fileName) {
+        if (settings == null || settings.getRules() == null || settings.getRules().isEmpty()) {
+            // 没有配置规则，允许所有类型
+            return;
+        }
+
+        String resolvedType = resolveType(mimeType, fileName);
+
+        // 检查是否有匹配的规则
+        boolean hasMatch = false;
+        for (ParserSettings.ParserRule rule : settings.getRules()) {
+            if (rule == null || !StringUtils.hasText(rule.getMimeType())) {
+                continue;
+            }
+            String configured = normalizeType(rule.getMimeType());
+            if (!StringUtils.hasText(configured)) {
+                continue;
+            }
+            if ("ALL".equals(configured) || configured.equalsIgnoreCase(resolvedType)) {
+                hasMatch = true;
+                break;
+            }
+        }
+
+        if (!hasMatch) {
+            // 构建允许的类型列表用于错误提示
+            List<String> allowedTypes = settings.getRules().stream()
+                    .filter(rule -> rule != null && StringUtils.hasText(rule.getMimeType()))
+                    .map(rule -> normalizeType(rule.getMimeType()))
+                    .filter(StringUtils::hasText)
+                    .distinct()
+                    .toList();
+
+            throw new ClientException(
+                    String.format("文件类型不符合要求。当前文件类型: %s，允许的类型: %s",
+                            resolvedType,
+                            String.join(", ", allowedTypes))
+            );
+        }
     }
 
     private ParserSettings parseSettings(JsonNode node) {
