@@ -79,13 +79,15 @@ export interface KnowledgeDocumentUploadPayload {
   sourceLocation?: string | null;
   scheduleEnabled?: boolean;
   scheduleCron?: string | null;
-  chunkStrategy: "fixed_size" | "structure_aware";
+  processMode?: "chunk" | "pipeline";
+  chunkStrategy?: "fixed_size" | "structure_aware";
   chunkSize?: number | null;
   overlapSize?: number | null;
   targetChars?: number | null;
   maxChars?: number | null;
   minChars?: number | null;
   overlapChars?: number | null;
+  pipelineId?: string | null;
 }
 
 export interface KnowledgeChunkPageParams {
@@ -173,7 +175,12 @@ export const uploadDocument = async (
   if (payload.scheduleCron) {
     formData.append("scheduleCron", payload.scheduleCron);
   }
-  formData.append("chunkStrategy", payload.chunkStrategy);
+  if (payload.processMode) {
+    formData.append("processMode", payload.processMode);
+  }
+  if (payload.chunkStrategy) {
+    formData.append("chunkStrategy", payload.chunkStrategy);
+  }
   if (payload.chunkSize !== undefined && payload.chunkSize !== null) {
     formData.append("chunkSize", String(payload.chunkSize));
   }
@@ -191,6 +198,9 @@ export const uploadDocument = async (
   }
   if (payload.overlapChars !== undefined && payload.overlapChars !== null) {
     formData.append("overlapChars", String(payload.overlapChars));
+  }
+  if (payload.pipelineId) {
+    formData.append("pipelineId", payload.pipelineId);
   }
   return api.post<KnowledgeDocument, KnowledgeDocument>(`/knowledge-base/${kbId}/docs/upload`, formData, {
     headers: {

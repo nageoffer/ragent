@@ -26,6 +26,7 @@ import {
   startDocumentChunk,
   uploadDocument
 } from "@/services/knowledgeService";
+import { getIngestionPipelines, type IngestionPipeline } from "@/services/ingestionService";
 import { getErrorMessage } from "@/utils/error";
 
 const PAGE_SIZE = 10;
@@ -45,6 +46,11 @@ const SOURCE_OPTIONS = [
 const CHUNK_STRATEGY_OPTIONS = [
   { value: "fixed_size", label: "fixed_size" },
   { value: "structure_aware", label: "structure_aware" }
+];
+
+const PROCESS_MODE_OPTIONS = [
+  { value: "chunk", label: "分块策略" },
+  { value: "pipeline", label: "数据通道" }
 ];
 
 const INT_MAX = 2147483647;
@@ -441,7 +447,9 @@ const uploadSchema = z
     sourceLocation: z.string().optional(),
     scheduleEnabled: z.boolean().default(false),
     scheduleCron: z.string().optional(),
-    chunkStrategy: z.enum(["fixed_size", "structure_aware"]),
+    processMode: z.enum(["chunk", "pipeline"]).default("chunk"),
+    chunkStrategy: z.enum(["fixed_size", "structure_aware"]).optional(),
+    pipelineId: z.string().optional(),
     chunkSize: z.string().optional(),
     overlapSize: z.string().optional(),
     targetChars: z.string().optional(),
@@ -483,14 +491,33 @@ const uploadSchema = z
         message: "请输入定时频率"
       });
     }
-    if (values.chunkStrategy === "fixed_size") {
-      requireNumber(values.chunkSize, "chunkSize", "块大小");
-      requireNumber(values.overlapSize, "overlapSize", "重叠大小");
-    } else {
-      requireNumber(values.targetChars, "targetChars", "理想块大小");
-      requireNumber(values.maxChars, "maxChars", "块上限");
-      requireNumber(values.minChars, "minChars", "块下限");
-      requireNumber(values.overlapChars, "overlapChars", "重叠大小");
+
+    if (values.processMode === "chunk") {
+      if (!values.chunkStrategy) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["chunkStrategy"],
+          message: "请选择分块策略"
+        });
+        return;
+      }
+      if (values.chunkStrategy === "fixed_size") {
+        requireNumber(values.chunkSize, "chunkSize", "块大小");
+        requireNumber(values.overlapSize, "overlapSize", "重叠大小");
+      } else {
+        requireNumber(values.targetChars, "targetChars", "理想块大小");
+        requireNumber(values.maxChars, "maxChars", "块上限");
+        requireNumber(values.minChars, "minChars", "块下限");
+        requireNumber(values.overlapChars, "overlapChars", "重叠大小");
+      }
+    } else if (values.processMode === "pipeline") {
+      if (isBlank(values.pipelineId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["pipelineId"],
+          message: "请选择数据通道"
+        });
+      }
     }
   });
 
@@ -499,8 +526,11 @@ type UploadFormValues = z.infer<typeof uploadSchema>;
 function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
   const [file, setFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
-  const [noChunk, setNoChunk] = useState(false); // 不分块状态
-  const [originalChunkSize, setOriginalChunkSize] = useState("512"); // 保存原始块大小
+  const [noChunk, setNoChunk] = useState(false);
+  const [originalChunkSize, setOriginalChunkSize] = useState("512");
+  const [pipelines, setPipelines] = useState<IngestionPipeline[]>([]);
+  const [loadingPipelines, setLoadingPipelines] = useState(false);
+
   const form = useForm<UploadFormValues>({
     resolver: zodResolver(uploadSchema),
     defaultValues: {
@@ -508,7 +538,9 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
       sourceLocation: "",
       scheduleEnabled: false,
       scheduleCron: "",
+      processMode: "chunk",
       chunkStrategy: "fixed_size",
+      pipelineId: "",
       chunkSize: "512",
       overlapSize: "128",
       targetChars: "1400",
@@ -519,11 +551,27 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
   });
 
   const sourceType = form.watch("sourceType");
+  const processMode = form.watch("processMode");
   const chunkStrategy = form.watch("chunkStrategy");
   const scheduleEnabled = form.watch("scheduleEnabled");
-  const chunkSize = form.watch("chunkSize"); // 监听块大小变化
+  const chunkSize = form.watch("chunkSize");
   const isUrlSource = sourceType === "url";
+  const isChunkMode = processMode === "chunk";
+  const isPipelineMode = processMode === "pipeline";
   const isFixedSize = chunkStrategy === "fixed_size";
+
+  const loadPipelines = async () => {
+    setLoadingPipelines(true);
+    try {
+      const result = await getIngestionPipelines(1, 100);
+      setPipelines(result.records || []);
+    } catch (error) {
+      console.error("加载Pipeline失败", error);
+      toast.error("加载Pipeline失败");
+    } finally {
+      setLoadingPipelines(false);
+    }
+  };
 
   useEffect(() => {
     if (open) {
@@ -533,7 +581,9 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
         sourceLocation: "",
         scheduleEnabled: false,
         scheduleCron: "",
+        processMode: "chunk",
         chunkStrategy: "fixed_size",
+        pipelineId: "",
         chunkSize: "512",
         overlapSize: "128",
         targetChars: "1400",
@@ -541,8 +591,9 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
         minChars: "600",
         overlapChars: "0"
       });
-      setNoChunk(false); // 重置不分块状态
-      setOriginalChunkSize("512"); // 重置原始值
+      setNoChunk(false);
+      setOriginalChunkSize("512");
+      loadPipelines();
     }
   }, [open, form]);
 
@@ -602,13 +653,15 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
           values.sourceType === "url" && values.scheduleEnabled
             ? values.scheduleCron.trim()
             : null,
-        chunkStrategy: values.chunkStrategy,
-        chunkSize: values.chunkStrategy === "fixed_size" ? chunkSize : null,
-        overlapSize: values.chunkStrategy === "fixed_size" ? overlapSize : null,
-        targetChars: values.chunkStrategy === "structure_aware" ? targetChars : null,
-        maxChars: values.chunkStrategy === "structure_aware" ? maxChars : null,
-        minChars: values.chunkStrategy === "structure_aware" ? minChars : null,
-        overlapChars: values.chunkStrategy === "structure_aware" ? overlapChars : null
+        processMode: values.processMode,
+        chunkStrategy: values.processMode === "chunk" ? values.chunkStrategy : undefined,
+        chunkSize: values.processMode === "chunk" && values.chunkStrategy === "fixed_size" ? chunkSize : null,
+        overlapSize: values.processMode === "chunk" && values.chunkStrategy === "fixed_size" ? overlapSize : null,
+        targetChars: values.processMode === "chunk" && values.chunkStrategy === "structure_aware" ? targetChars : null,
+        maxChars: values.processMode === "chunk" && values.chunkStrategy === "structure_aware" ? maxChars : null,
+        minChars: values.processMode === "chunk" && values.chunkStrategy === "structure_aware" ? minChars : null,
+        overlapChars: values.processMode === "chunk" && values.chunkStrategy === "structure_aware" ? overlapChars : null,
+        pipelineId: values.processMode === "pipeline" ? values.pipelineId : null
       };
       await onSubmit(payload);
     } catch (error) {
@@ -719,7 +772,64 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
               </div>
             ) : null}
 
-            <div className="space-y-3 rounded-lg border p-3">
+            <FormField
+              control={form.control}
+              name="processMode"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>处理模式</FormLabel>
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="选择处理模式" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {PROCESS_MODE_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormDescription>
+                    分块策略：直接分块；数据通道：使用Pipeline清洗
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {isPipelineMode ? (
+              <FormField
+                control={form.control}
+                name="pipelineId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>数据通道</FormLabel>
+                    <Select value={field.value} onValueChange={field.onChange} disabled={loadingPipelines}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder={loadingPipelines ? "加载中..." : "选择数据通道"} />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {pipelines.map((pipeline) => (
+                          <SelectItem key={pipeline.id} value={pipeline.id}>
+                            {pipeline.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>选择用于数据清洗的Pipeline</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            ) : null}
+
+            {isChunkMode ? (
+              <div className="space-y-3 rounded-lg border p-3">
               <FormField
                 control={form.control}
                 name="chunkStrategy"
@@ -846,6 +956,7 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
                 </div>
               )}
             </div>
+            ) : null}
 
             <DialogFooter>
               <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
