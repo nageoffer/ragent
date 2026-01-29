@@ -59,6 +59,8 @@ import com.nageoffer.ai.ragent.ingestion.domain.context.IngestionContext;
 import com.nageoffer.ai.ragent.ingestion.domain.pipeline.PipelineDefinition;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -75,6 +77,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Service
@@ -94,6 +97,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
     private final KnowledgeDocumentScheduleService scheduleService;
     private final IngestionPipelineService ingestionPipelineService;
     private final IngestionEngine ingestionEngine;
+    private final RedissonClient redissonClient;
     @Qualifier("knowledgeChunkExecutor")
     private final Executor knowledgeChunkExecutor;
     private final PlatformTransactionManager transactionManager;
@@ -196,22 +200,53 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public void startChunk(String docId) {
-        KnowledgeDocumentDO documentDO = docMapper.selectById(docId);
-        Assert.notNull(documentDO, () -> new ClientException("文档不存在"));
-        Assert.isTrue(!DocumentStatus.RUNNING.getCode().equals(documentDO.getStatus()), () -> new ClientException("文档分块进行中"));
+        // 使用分布式锁避免同一文档的并发分块
+        String lockKey = String.format("knowledge:chunk:lock:%s", docId);
+        RLock lock = redissonClient.getLock(lockKey);
 
-        boolean alreadyChunked = knowledgeChunkService.existsByDocId(docId);
-        Assert.isFalse(alreadyChunked, () -> new ClientException("文档已分块"));
-
-        scheduleService.upsertSchedule(documentDO);
-        patchStatus(documentDO, DocumentStatus.RUNNING);
+        // 尝试获取锁，最多等待5秒，锁自动过期时间30秒
+        boolean locked = false;
         try {
-            knowledgeChunkExecutor.execute(() -> runChunkTask(documentDO));
-        } catch (RejectedExecutionException e) {
-            log.error("分块任务提交失败: docId={}", docId, e);
-            throw new ServiceException("分块任务排队失败");
+            locked = lock.tryLock(5, 30, TimeUnit.SECONDS);
+            if (!locked) {
+                throw new ClientException("文档分块操作正在进行中，请稍后再试");
+            }
+
+            // 在锁保护下，使用 TransactionTemplate 手动管理事务
+            TransactionTemplate txTemplate = new TransactionTemplate(transactionManager);
+            txTemplate.executeWithoutResult(status -> {
+                KnowledgeDocumentDO documentDO = docMapper.selectById(docId);
+                Assert.notNull(documentDO, () -> new ClientException("文档不存在"));
+                Assert.isTrue(!DocumentStatus.RUNNING.getCode().equals(documentDO.getStatus()), () -> new ClientException("文档分块进行中"));
+
+                // 允许重复分块：如果已经分块过，先删除历史分块记录
+                boolean alreadyChunked = knowledgeChunkService.existsByDocId(docId);
+                if (alreadyChunked) {
+                    log.info("文档已存在分块记录，将删除历史分块并重新分块: docId={}", docId);
+                    // 删除数据库中的历史分块记录
+                    knowledgeChunkService.deleteByDocId(docId);
+                    // 删除向量库中的历史向量（在事务提交后异步执行分块任务时也会删除，这里提前删除确保一致性）
+                    String kbId = String.valueOf(documentDO.getKbId());
+                    vectorStoreService.deleteDocumentVectors(kbId, docId);
+                }
+
+                scheduleService.upsertSchedule(documentDO);
+                patchStatus(documentDO, DocumentStatus.RUNNING);
+                try {
+                    knowledgeChunkExecutor.execute(() -> runChunkTask(documentDO));
+                } catch (RejectedExecutionException e) {
+                    log.error("分块任务提交失败: docId={}", docId, e);
+                    throw new ServiceException("分块任务排队失败");
+                }
+            });
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ServiceException("获取分块锁被中断");
+        } finally {
+            if (locked && lock.isHeldByCurrentThread()) {
+                lock.unlock();
+            }
         }
     }
 
