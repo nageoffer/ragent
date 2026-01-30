@@ -22,6 +22,7 @@ import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.knowledge.dao.entity.KnowledgeDocumentDO;
 import com.nageoffer.ai.ragent.knowledge.dao.entity.KnowledgeDocumentScheduleDO;
 import com.nageoffer.ai.ragent.knowledge.dao.mapper.KnowledgeDocumentScheduleMapper;
+import com.nageoffer.ai.ragent.knowledge.enums.SourceType;
 import com.nageoffer.ai.ragent.knowledge.schedule.CronScheduleHelper;
 import com.nageoffer.ai.ragent.knowledge.service.KnowledgeDocumentScheduleService;
 import lombok.RequiredArgsConstructor;
@@ -58,7 +59,7 @@ public class KnowledgeDocumentScheduleServiceImpl implements KnowledgeDocumentSc
         if (documentDO.getId() == null || documentDO.getKbId() == null) {
             return;
         }
-        if (!"url".equalsIgnoreCase(documentDO.getSourceType())) {
+        if (!SourceType.URL.getValue().equalsIgnoreCase(documentDO.getSourceType())) {
             return;
         }
         boolean docEnabled = documentDO.getEnabled() == null || documentDO.getEnabled() == 1;

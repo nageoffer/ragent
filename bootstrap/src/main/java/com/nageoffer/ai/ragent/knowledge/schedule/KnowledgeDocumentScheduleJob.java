@@ -32,6 +32,7 @@ import com.nageoffer.ai.ragent.knowledge.dao.mapper.KnowledgeDocumentScheduleExe
 import com.nageoffer.ai.ragent.knowledge.dao.mapper.KnowledgeDocumentScheduleMapper;
 import com.nageoffer.ai.ragent.knowledge.enums.DocumentStatus;
 import com.nageoffer.ai.ragent.knowledge.enums.ScheduleRunStatus;
+import com.nageoffer.ai.ragent.knowledge.enums.SourceType;
 import com.nageoffer.ai.ragent.knowledge.service.KnowledgeChunkService;
 import com.nageoffer.ai.ragent.knowledge.service.impl.KnowledgeDocumentServiceImpl;
 import com.nageoffer.ai.ragent.rag.dto.StoredFileDTO;
@@ -160,7 +161,7 @@ public class KnowledgeDocumentScheduleJob {
 
         String cron = document.getScheduleCron();
         boolean enabled = document.getScheduleEnabled() != null && document.getScheduleEnabled() == 1;
-        if (!StringUtils.hasText(cron) || !"url".equalsIgnoreCase(document.getSourceType())) {
+        if (!StringUtils.hasText(cron) || !SourceType.URL.getValue().equalsIgnoreCase(document.getSourceType())) {
             enabled = false;
         }
 

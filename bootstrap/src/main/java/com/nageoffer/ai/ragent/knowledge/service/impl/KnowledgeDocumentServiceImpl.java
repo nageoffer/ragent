@@ -44,6 +44,8 @@ import com.nageoffer.ai.ragent.knowledge.dao.mapper.KnowledgeDocumentMapper;
 import com.nageoffer.ai.ragent.knowledge.dao.mapper.KnowledgeDocumentChunkLogMapper;
 import com.nageoffer.ai.ragent.rag.dto.StoredFileDTO;
 import com.nageoffer.ai.ragent.knowledge.enums.DocumentStatus;
+import com.nageoffer.ai.ragent.knowledge.enums.ProcessMode;
+import com.nageoffer.ai.ragent.knowledge.enums.SourceType;
 import com.nageoffer.ai.ragent.framework.context.UserContext;
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.framework.exception.ServiceException;
@@ -129,13 +131,13 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
         KnowledgeBaseDO kbDO = kbMapper.selectById(kbId);
         Assert.notNull(kbDO, () -> new ClientException("知识库不存在"));
 
-        String sourceType = normalizeSourceType(request == null ? null : request.getSourceType(), file);
+        SourceType sourceType = normalizeSourceType(request == null ? null : request.getSourceType(), file);
         String sourceLocation = request == null ? null : request.getSourceLocation();
         if (StringUtils.hasText(sourceLocation)) {
             sourceLocation = sourceLocation.trim();
         }
         boolean scheduleEnabled = request != null && Boolean.TRUE.equals(request.getScheduleEnabled());
-        if ("file".equals(sourceType)) {
+        if (SourceType.FILE == sourceType) {
             scheduleEnabled = false;
         }
         String scheduleCron = request == null ? null : request.getScheduleCron();
@@ -143,7 +145,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
             scheduleCron = scheduleCron.trim();
         }
 
-        if ("url".equals(sourceType) && !StringUtils.hasText(sourceLocation)) {
+        if (SourceType.URL == sourceType && !StringUtils.hasText(sourceLocation)) {
             throw new ClientException("来源地址不能为空");
         }
         if (scheduleEnabled && !StringUtils.hasText(scheduleCron)) {
@@ -161,16 +163,16 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
 
         StoredFileDTO stored = resolveStoredFile(kbDO.getCollectionName(), sourceType, sourceLocation, file);
 
-        String processMode = normalizeProcessMode(request == null ? null : request.getProcessMode());
+        ProcessMode processMode = normalizeProcessMode(request == null ? null : request.getProcessMode());
         ChunkingMode chunkingMode = null;
         String chunkConfig = null;
         Long pipelineId = null;
 
-        if ("chunk".equals(processMode)) {
+        if (ProcessMode.CHUNK == processMode) {
             // 分块模式：解析分块策略和配置
             chunkingMode = resolveChunkingMode(request == null ? null : request.getChunkStrategy());
             chunkConfig = buildChunkConfigJson(chunkingMode, request);
-        } else if ("pipeline".equals(processMode)) {
+        } else if (ProcessMode.PIPELINE == processMode) {
             // Pipeline模式：验证Pipeline ID
             if (request == null || !StringUtils.hasText(request.getPipelineId())) {
                 throw new ClientException("使用Pipeline模式时，必须指定Pipeline ID");
@@ -193,11 +195,11 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
                 .fileType(stored.getDetectedType())
                 .fileSize(stored.getSize())
                 .status(DocumentStatus.PENDING.getCode())
-                .sourceType(sourceType)
-                .sourceLocation("url".equals(sourceType) ? sourceLocation : null)
+                .sourceType(sourceType.getValue())
+                .sourceLocation(SourceType.URL == sourceType ? sourceLocation : null)
                 .scheduleEnabled(scheduleEnabled ? 1 : 0)
                 .scheduleCron(scheduleEnabled ? scheduleCron : null)
-                .processMode(processMode)
+                .processMode(processMode.getValue())
                 .chunkStrategy(chunkingMode != null ? chunkingMode.getValue() : null)
                 .chunkConfig(chunkConfig)
                 .pipelineId(pipelineId)
@@ -262,13 +264,13 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
 
     private void runChunkTask(KnowledgeDocumentDO documentDO) {
         String docId = String.valueOf(documentDO.getId());
-        String processMode = normalizeProcessMode(documentDO.getProcessMode());
+        ProcessMode processMode = normalizeProcessMode(documentDO.getProcessMode());
 
         // 创建分块日志记录
         KnowledgeDocumentChunkLogDO chunkLog = KnowledgeDocumentChunkLogDO.builder()
                 .docId(documentDO.getId())
                 .status("running")
-                .processMode(processMode)
+                .processMode(processMode.getValue())
                 .chunkStrategy(documentDO.getChunkStrategy())
                 .pipelineId(documentDO.getPipelineId())
                 .startTime(new Date())
@@ -283,7 +285,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
         List<VectorChunk> chunkResults;
 
         try {
-            if ("pipeline".equals(processMode)) {
+            if (ProcessMode.PIPELINE == processMode) {
                 // 使用Pipeline模式处理
                 long start = System.currentTimeMillis();
                 chunkResults = runPipelineProcess(documentDO);
@@ -327,7 +329,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
             });
 
             // 向量化：仅分块模式由知识库服务写入，Pipeline 模式依赖管道自身的 indexer
-            if (!"pipeline".equals(processMode)) {
+            if (ProcessMode.PIPELINE != processMode) {
                 String kbId = String.valueOf(documentDO.getKbId());
                 long embeddingStart = System.currentTimeMillis();
                 vectorStoreService.deleteDocumentVectors(kbId, docId);
@@ -617,7 +619,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
                 }
             }
             if (!pipelineIds.isEmpty()) {
-                List<IngestionPipelineDO> pipelines = ingestionPipelineMapper.selectBatchIds(pipelineIds);
+                List<IngestionPipelineDO> pipelines = ingestionPipelineMapper.selectByIds(pipelineIds);
                 if (CollUtil.isNotEmpty(pipelines)) {
                     for (IngestionPipelineDO pipeline : pipelines) {
                         pipelineNameMap.put(pipeline.getId(), pipeline.getName());
@@ -644,7 +646,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
 
     private static long getOther(KnowledgeDocumentChunkLogDO each, Long totalDuration) {
         String mode = each.getProcessMode();
-        boolean pipelineMode = mode != null && mode.equalsIgnoreCase("pipeline");
+        boolean pipelineMode = ProcessMode.PIPELINE.getValue().equalsIgnoreCase(mode);
         long extract = each.getExtractDuration() == null ? 0 : each.getExtractDuration();
         long chunk = each.getChunkDuration() == null ? 0 : each.getChunkDuration();
         long embedding = each.getEmbeddingDuration() == null ? 0 : each.getEmbeddingDuration();
@@ -659,36 +661,30 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
         docMapper.updateById(doc);
     }
 
-    private String normalizeSourceType(String sourceType, MultipartFile file) {
+    private SourceType normalizeSourceType(String sourceType, MultipartFile file) {
         if (!StringUtils.hasText(sourceType)) {
-            return file == null ? "url" : "file";
+            return file == null ? SourceType.URL : SourceType.FILE;
         }
-        String normalized = sourceType.trim().toLowerCase();
-        if ("file".equals(normalized) || "localfile".equals(normalized) || "local_file".equals(normalized)) {
-            return "file";
+        SourceType result = SourceType.fromValue(sourceType);
+        if (result == null) {
+            throw new ClientException("不支持的来源类型: " + sourceType);
         }
-        if ("url".equals(normalized)) {
-            return "url";
-        }
-        throw new ClientException("不支持的来源类型: " + sourceType);
+        return result;
     }
 
-    private String normalizeProcessMode(String processMode) {
+    private ProcessMode normalizeProcessMode(String processMode) {
         if (!StringUtils.hasText(processMode)) {
-            return "chunk"; // 默认使用分块模式
+            return ProcessMode.CHUNK; // 默认使用分块模式
         }
-        String normalized = processMode.trim().toLowerCase();
-        if ("chunk".equals(normalized)) {
-            return "chunk";
+        ProcessMode result = ProcessMode.fromValue(processMode);
+        if (result == null) {
+            throw new ClientException("不支持的处理模式: " + processMode);
         }
-        if ("pipeline".equals(normalized)) {
-            return "pipeline";
-        }
-        throw new ClientException("不支持的处理模式: " + processMode);
+        return result;
     }
 
-    private StoredFileDTO resolveStoredFile(String bucketName, String sourceType, String sourceLocation, MultipartFile file) {
-        if ("file".equals(sourceType)) {
+    private StoredFileDTO resolveStoredFile(String bucketName, SourceType sourceType, String sourceLocation, MultipartFile file) {
+        if (SourceType.FILE == sourceType) {
             Assert.notNull(file, () -> new ClientException("上传文件不能为空"));
             return fileStorageService.upload(bucketName, file);
         }
