@@ -395,12 +395,12 @@ export function IngestionPage() {
               <Table className="min-w-[920px]">
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[180px]">名称</TableHead>
+                    <TableHead className="w-[260px]">名称</TableHead>
                     <TableHead>描述</TableHead>
                     <TableHead className="w-[90px]">节点数</TableHead>
                     <TableHead className="w-[120px]">负责人</TableHead>
                     <TableHead className="w-[170px]">更新时间</TableHead>
-                    <TableHead className="w-[180px] text-right">操作</TableHead>
+                    <TableHead className="w-[180px] text-left">操作</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -423,7 +423,7 @@ export function IngestionPage() {
                             variant="outline"
                             onClick={() => setPipelineDialog({ open: true, mode: "edit", pipeline })}
                           >
-                            <Pencil className="mr-2 h-4 w-4" />
+                            <Pencil className="mr-0.1 h-4 w-4" />
                             编辑
                           </Button>
                           <Button
@@ -432,7 +432,7 @@ export function IngestionPage() {
                             className="text-destructive hover:text-destructive"
                             onClick={() => setPipelineDeleteTarget(pipeline)}
                           >
-                            <Trash2 className="mr-2 h-4 w-4" />
+                            <Trash2 className="mr-0.1 h-4 w-4" />
                             删除
                           </Button>
                         </div>
@@ -512,7 +512,7 @@ export function IngestionPage() {
                     <TableHead className="w-[120px]">负责人</TableHead>
                     <TableHead className="w-[90px]">分片数</TableHead>
                     <TableHead className="w-[170px]">创建时间</TableHead>
-                    <TableHead className="w-[140px] text-right">操作</TableHead>
+                    <TableHead className="w-[140px] text-left">操作</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>

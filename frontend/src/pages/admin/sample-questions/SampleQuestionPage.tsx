@@ -205,7 +205,7 @@ export function SampleQuestionPage() {
                   <TableHead className="w-[220px]">描述</TableHead>
                   <TableHead>示例问题</TableHead>
                   <TableHead className="w-[170px]">更新时间</TableHead>
-                  <TableHead className="w-[140px] text-right">操作</TableHead>
+                  <TableHead className="w-[140px] text-left">操作</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>

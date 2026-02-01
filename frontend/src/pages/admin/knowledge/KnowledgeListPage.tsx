@@ -175,7 +175,7 @@ export function KnowledgeListPage() {
                   <TableHead className="w-[120px]">负责人</TableHead>
                   <TableHead className="w-[160px]">创建时间</TableHead>
                   <TableHead className="w-[160px]">修改时间</TableHead>
-                  <TableHead className="w-[150px] text-right">操作</TableHead>
+                  <TableHead className="w-[150px] text-left">操作</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -191,7 +191,7 @@ export function KnowledgeListPage() {
                       </button>
                     </TableCell>
                     <TableCell>
-                      <Badge variant="secondary">{kb.embeddingModel}</Badge>
+                      {kb.embeddingModel}
                     </TableCell>
                     <TableCell>
                       <code className="admin-code">

@@ -261,15 +261,15 @@ body {
   }
 
   .admin-layout .ui-table-wrap {
-    @apply rounded-2xl border border-slate-200/70 bg-white;
+    @apply rounded-2xl border border-slate-200/70 bg-white overflow-hidden;
   }
 
   .admin-layout .ui-card .ui-table-wrap {
-    @apply border-0 bg-transparent shadow-none rounded-none;
+    @apply -mx-6 w-[calc(100%+3rem)] border-0 bg-transparent shadow-none rounded-none;
   }
 
   .admin-layout .ui-table {
-    @apply text-[13px] text-slate-700;
+    @apply text-[13px] text-slate-700 border-separate border-spacing-0;
   }
 
   .admin-layout .ui-table-header {
@@ -286,6 +286,16 @@ body {
 
   .admin-layout .ui-table-cell {
     @apply px-3 py-2;
+  }
+
+  .admin-layout .ui-table-head:first-child,
+  .admin-layout .ui-table-cell:first-child {
+    @apply pl-9;
+  }
+
+  .admin-layout .ui-table-head:last-child,
+  .admin-layout .ui-table-cell:last-child {
+    @apply pr-9;
   }
 
   .admin-layout .ui-table-caption {

@@ -417,7 +417,7 @@ export function KnowledgeDocumentsPage() {
                   <TableHead className="w-[90px]">类型</TableHead>
                   <TableHead className="w-[90px]">大小</TableHead>
                   <TableHead className="w-[170px]">更新时间</TableHead>
-                  <TableHead className="w-[160px] text-right">操作</TableHead>
+                  <TableHead className="w-[160px] text-left">操作</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
