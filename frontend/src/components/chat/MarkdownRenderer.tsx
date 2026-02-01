@@ -30,15 +30,15 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps) {
 
           if (inline) {
             return (
-              <code className={cn("rounded bg-gray-100 px-1 py-0.5 text-xs", className)} {...props}>
+              <code className={cn("rounded bg-[#F5F5F5] px-1.5 py-0.5 text-xs text-[#333333]", className)} {...props}>
                 {children}
               </code>
             );
           }
 
           return (
-            <div className="mt-3 overflow-hidden rounded-2xl border border-gray-200 bg-gray-50">
-              <div className="flex items-center justify-between border-b border-gray-200 bg-gray-100 px-3 py-2 text-xs text-gray-500">
+            <div className="mt-3 overflow-hidden rounded-lg border border-[#E5E5E5] bg-[#FAFAFA]">
+              <div className="flex items-center justify-between border-b border-[#E5E5E5] bg-[#F5F5F5] px-3 py-2 text-xs text-[#666666]">
                 <span className="font-mono uppercase tracking-wider">{language}</span>
                 <CopyButton value={value} />
               </div>
@@ -56,7 +56,7 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps) {
         a({ children, ...props }) {
           return (
             <a
-              className="text-indigo-600 underline-offset-4 hover:underline"
+              className="text-[#3B82F6] underline-offset-4 hover:underline"
               target="_blank"
               rel="noreferrer"
               {...props}
@@ -66,7 +66,7 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps) {
           );
         }
       }}
-      className="prose prose-gray max-w-none dark:prose-invert"
+      className="prose prose-gray max-w-none dark:prose-invert prose-headings:text-[#1A1A1A] prose-p:text-[#333333] prose-p:leading-relaxed prose-li:text-[#333333] prose-strong:text-[#1A1A1A]"
     >
       {content}
     </ReactMarkdown>

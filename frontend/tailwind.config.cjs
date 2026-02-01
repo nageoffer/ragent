@@ -34,8 +34,8 @@ module.exports = {
       },
       boxShadow: {
         soft: "0 24px 60px -30px rgba(10, 10, 15, 0.65)",
-        glow: "0 0 0 1px rgba(99, 102, 241, 0.2), 0 16px 40px rgba(99, 102, 241, 0.25)",
-        neon: "0 0 30px rgba(139, 92, 246, 0.35)"
+        glow: "0 0 0 1px rgba(59, 130, 246, 0.2), 0 16px 40px rgba(59, 130, 246, 0.25)",
+        neon: "0 0 30px rgba(59, 130, 246, 0.35)"
       },
       keyframes: {
         "fade-up": {

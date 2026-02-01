@@ -164,18 +164,18 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       />
       <aside
         className={cn(
-          "fixed left-0 top-0 z-40 flex h-screen w-[280px] flex-shrink-0 flex-col rounded-2xl bg-white p-3 shadow-[0_2px_12px_rgba(0,0,0,0.08)] transition-transform lg:static lg:h-screen lg:translate-x-0",
+          "fixed left-0 top-0 z-40 flex h-screen w-[280px] flex-shrink-0 flex-col bg-[#FAFAFA] p-3 transition-transform lg:static lg:h-screen lg:translate-x-0",
           isOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >
         <div className="border-b border-[#F0F0F0] pb-3">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-purple-500 shadow-md shadow-indigo-500/20">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#3B82F6]">
               <Bot className="h-5 w-5 text-white" />
             </div>
             <div style={{ fontFamily: sessionTitleFont }}>
-              <p className="text-base font-semibold text-gray-900">RAG 智能问答</p>
-              <p className="text-xs text-gray-400">Powered by AI</p>
+              <p className="text-base font-semibold text-[#1A1A1A]">RAG 智能问答</p>
+              <p className="text-xs text-[#999999]">Powered by AI</p>
             </div>
           </div>
         </div>
@@ -189,7 +189,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
               onClose();
             }}
           >
-            <span className="flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-500 px-4 py-3 text-sm font-medium text-white shadow-md shadow-indigo-500/25 transition hover:shadow-lg hover:shadow-indigo-500/30">
+            <span className="flex items-center justify-center gap-2 rounded-lg bg-[#F5F5F5] px-4 py-3 text-sm font-medium text-[#3B82F6] transition-colors hover:bg-[#EEEEEE]">
               <Plus className="h-4 w-4" />
               新建对话
             </span>
@@ -197,12 +197,12 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         </div>
         <div className="pb-3">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#999999]" />
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="搜索对话..."
-              className="h-10 w-full rounded-xl border border-gray-200 bg-gray-50 pl-9 pr-3 text-sm text-gray-700 placeholder:text-gray-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 focus:outline-none"
+              className="h-10 w-full rounded-lg border border-[#E5E5E5] bg-white pl-9 pr-3 text-sm text-[#333333] placeholder:text-[#999999] focus:border-[#D4D4D4] focus:outline-none transition-colors"
             />
           </div>
         </div>
@@ -234,9 +234,9 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                       <div
                         key={session.id}
                         className={cn(
-                          "group my-[1px] flex min-h-[40px] cursor-pointer items-center justify-between gap-2 rounded-lg px-3 py-2 text-[14px] leading-[22px] transition-[background-color] duration-200",
+                          "group my-[1px] flex min-h-[40px] cursor-pointer items-center justify-between gap-2 rounded-lg px-3 py-2 text-[14px] leading-[22px] transition-colors duration-200",
                           currentSessionId === session.id
-                            ? "bg-[#EBF5FF] text-[#1677FF] hover:bg-[#DDEEFF]"
+                            ? "bg-[#DBEAFE] text-[#2563EB]"
                             : "text-[#333333] hover:bg-[#F5F5F5]"
                         )}
                         role="button"
@@ -277,7 +277,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                             onBlur={() => {
                               commitRename().catch(() => null);
                             }}
-                            className="h-6 flex-1 rounded-md border border-gray-200 bg-white px-2 text-[14px] leading-[22px] text-[#333333] focus:border-[#1677FF] focus:outline-none"
+                            className="h-6 flex-1 rounded-md border border-[#E5E5E5] bg-white px-2 text-[14px] leading-[22px] text-[#333333] focus:border-[#2563EB] focus:outline-none"
                           />
                         ) : (
                           <span className="min-w-0 flex-1 truncate font-normal">
@@ -291,7 +291,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                               className={cn(
                                 "flex h-6 w-6 items-center justify-center rounded text-[#666666] transition-opacity duration-150 hover:bg-[rgba(0,0,0,0.06)]",
                                 currentSessionId === session.id
-                                  ? "pointer-events-auto opacity-100 text-[#1677FF]"
+                                  ? "pointer-events-auto opacity-100 text-[#2563EB]"
                                   : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100"
                               )}
                               onClick={(event) => event.stopPropagation()}
@@ -338,7 +338,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           </div>
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-5 bg-gradient-to-b from-transparent to-white/80"
+            className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-5 bg-gradient-to-b from-transparent to-[#FAFAFA]"
           />
         </div>
         <div className="mt-auto pt-3">
@@ -346,10 +346,10 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                className="flex w-full items-center gap-2 rounded-xl p-2 text-left transition-colors hover:bg-gray-50 data-[state=open]:bg-gray-100"
+                className="flex w-full items-center gap-2 rounded-lg p-2 text-left transition-colors hover:bg-[#F5F5F5] data-[state=open]:bg-[#EEEEEE]"
                 aria-label="用户菜单"
               >
-                <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 text-white shadow-md">
+                <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-[#3B82F6] text-white">
                   {showAvatar ? (
                     <img
                       src={avatarUrl}
@@ -361,13 +361,13 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                     <span className="text-sm font-medium">{avatarFallback}</span>
                   )}
                 </div>
-                <span className="flex-1 truncate text-sm font-medium text-gray-900">
+                <span className="flex-1 truncate text-sm font-medium text-[#1A1A1A]">
                   {(() => {
                     const fallback = user?.username || user?.userId || "用户";
                     return /^\d+$/.test(fallback) ? "用户" : fallback;
                   })()}
                 </span>
-                <MoreHorizontal className="h-4 w-4 text-gray-400" />
+                <MoreHorizontal className="h-4 w-4 text-[#999999]" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" side="top" sideOffset={8} className="w-48">

@@ -26,35 +26,111 @@
   --chat-user: 239 84% 96%;
   --chat-assistant: 0 0% 100%;
   --glow: 239 84% 67%;
-  --bg-primary: #ffffff;
-  --bg-secondary: #f8fafc;
-  --bg-tertiary: #f1f5f9;
-  --bg-hover: #f1f5f9;
-  --sidebar-bg: #ffffff;
-  --sidebar-item-active: #eff6ff;
-  --sidebar-item-hover: #f8fafc;
-  --primary-color: #6366f1;
-  --primary-light: #818cf8;
-  --primary-dark: #4f46e5;
-  --secondary-color: #8b5cf6;
-  --gradient-primary: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-  --gradient-light: linear-gradient(135deg, #eff6ff 0%, #f5f3ff 100%);
-  --dsw-alias-brand-primary-invert: #a5b4fc;
-  --dsw-specific-sidebar-nav-item-active-accent: #eff6ff;
-  --success: #22c55e;
-  --warning: #f59e0b;
-  --error: #ef4444;
-  --info: #3b82f6;
-  --text-primary: #1e293b;
-  --text-secondary: #64748b;
-  --text-muted: #94a3b8;
-  --text-on-primary: #ffffff;
-  --border-default: #e2e8f0;
-  --border-light: #f1f5f9;
-  --border-focus: #6366f1;
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
-  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+
+  /* ===== 新设计系统 - 背景 ===== */
+  --bg-primary: #FFFFFF;
+  --bg-secondary: #FAFAFA;
+  --bg-tertiary: #F5F5F5;
+  --bg-hover: #EEEEEE;
+  --bg-active: #FEF3C7;
+
+  /* ===== 新设计系统 - 文字 ===== */
+  --text-primary: #1A1A1A;
+  --text-secondary: #4A4A4A;
+  --text-tertiary: #999999;
+  --text-muted: #CCCCCC;
+  --text-on-accent: #FFFFFF;
+
+  /* ===== 新设计系统 - 强调色（蓝色系）===== */
+  --accent-primary: #3B82F6;
+  --accent-secondary: #2563EB;
+  --accent-light: #DBEAFE;
+  --accent-hover: #60A5FA;
+
+  /* ===== 新设计系统 - 边框 ===== */
+  --border-default: #E5E5E5;
+  --border-light: #F0F0F0;
+  --border-focus: #D4D4D4;
+  --border-accent: #BFDBFE;
+
+  /* ===== 新设计系统 - 状态色 ===== */
+  --success: #10B981;
+  --warning: #F59E0B;
+  --error: #EF4444;
+  --info: #3B82F6;
+
+  /* ===== 新设计系统 - 圆角 ===== */
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-full: 9999px;
+
+  /* ===== 新设计系统 - 间距 ===== */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 24px;
+  --spacing-2xl: 32px;
+  --spacing-3xl: 48px;
+  --spacing-4xl: 64px;
+
+  /* ===== 新设计系统 - 阴影 ===== */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 6px 16px rgba(0, 0, 0, 0.08);
+  --shadow-xl: 0 10px 24px rgba(0, 0, 0, 0.10);
+
+  /* ===== 新设计系统 - 字体 ===== */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-serif: Georgia, "Times New Roman", serif;
+  --font-mono: "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, monospace;
+
+  /* ===== 新设计系统 - 字号 ===== */
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 14px;
+  --text-lg: 15px;
+  --text-xl: 18px;
+  --text-2xl: 24px;
+  --text-3xl: 32px;
+  --text-4xl: 48px;
+
+  /* ===== 新设计系统 - 字重 ===== */
+  --font-normal: 400;
+  --font-medium: 500;
+  --font-semibold: 600;
+  --font-bold: 700;
+
+  /* ===== 新设计系统 - 行高 ===== */
+  --leading-tight: 1.25;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.75;
+
+  /* ===== 新设计系统 - 过渡 ===== */
+  --transition-fast: 150ms ease;
+  --transition-base: 200ms ease;
+  --transition-slow: 300ms ease;
+
+  /* ===== 新设计系统 - 布局 ===== */
+  --sidebar-width: 280px;
+  --content-max-width: 800px;
+  --header-height: 60px;
+
+  /* ===== 旧变量保留（兼容性）===== */
+  --sidebar-bg: #FAFAFA;
+  --sidebar-item-active: #DBEAFE;
+  --sidebar-item-hover: #F5F5F5;
+  --primary-color: #3B82F6;
+  --primary-light: #60A5FA;
+  --primary-dark: #2563EB;
+  --secondary-color: #3B82F6;
+  --gradient-primary: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%);
+  --gradient-light: linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%);
+  --dsw-alias-brand-primary-invert: #93C5FD;
+  --dsw-specific-sidebar-nav-item-active-accent: #EFF6FF;
 }
 
 .dark {
@@ -72,7 +148,7 @@ body {
 }
 
 body {
-  @apply bg-gray-50 text-gray-900 font-body antialiased min-h-screen;
+  @apply bg-[#FAFAFA] text-gray-900 font-body antialiased min-h-screen;
   background-color: var(--bg-secondary);
   overflow: hidden;
 }
@@ -139,7 +215,7 @@ textarea {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: #64748b;
+  color: #999999;
   font-size: 13px;
 }
 
@@ -154,7 +230,7 @@ textarea {
   width: 6px;
   height: 6px;
   border-radius: 999px;
-  background: #94a3b8;
+  background: #CCCCCC;
   animation: ai-wait-bounce 1.2s ease-in-out infinite;
 }
 
@@ -211,10 +287,10 @@ textarea {
 }
 
 .user-message {
-  background: #ebf5ff;
+  background: #F5F5F5;
   color: #333333;
   padding: 10px 16px;
-  border-radius: 18px 18px 4px 18px;
+  border-radius: 16px 16px 4px 16px;
   max-width: 80%;
   width: fit-content;
   margin-left: auto;
@@ -223,176 +299,4 @@ textarea {
   word-break: break-word;
   overflow-wrap: break-word;
   white-space: pre-wrap;
-}
-
-.chat-welcome {
-  min-height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #ffffff;
-  padding: 32px 16px 56px;
-}
-
-.chat-welcome-inner {
-  width: min(760px, 92vw);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 36px;
-}
-
-.chat-welcome-header {
-  display: inline-flex;
-  align-items: center;
-  gap: 12px;
-  color: #1a1a1a;
-  font-size: 26px;
-  font-weight: 600;
-  margin-top: -140px;
-}
-
-.chat-welcome-logo {
-  width: 32px;
-  height: 32px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: #3b82f6;
-}
-
-.chat-welcome-logo-icon {
-  width: 32px;
-  height: 32px;
-}
-
-.chat-welcome-input {
-  width: 100%;
-  border-radius: 18px;
-  background: #ffffff;
-  border: 2px solid #e5e5e5;
-  padding: 14px 18px 10px;
-  margin-top: -8px;
-  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
-}
-
-.chat-welcome-input.is-focused {
-  border-color: #cfcfcf;
-  box-shadow: 0 12px 32px rgba(124, 92, 252, 0.18);
-}
-
-.chat-welcome-textarea {
-  width: 100%;
-  min-height: 44px;
-  max-height: 160px;
-  resize: none;
-  border: none;
-  outline: none;
-  background: #ffffff;
-  font-size: 15px;
-  line-height: 1.5;
-  color: #1a1a1a;
-}
-
-.chat-welcome-textarea::placeholder {
-  color: #999999;
-}
-
-.chat-welcome-toolbar {
-  margin-top: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.chat-welcome-tags {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-left: -6px;
-}
-
-.chat-welcome-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 12px;
-  border-radius: 999px;
-  border: 1px solid #e5e5e5;
-  background: #ffffff;
-  color: #6b7280;
-  font-size: 12px;
-  box-shadow: 0 6px 14px rgba(15, 23, 42, 0.06);
-  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
-}
-
-.chat-welcome-tag:hover {
-  background: #f5f5f5;
-  border-color: #dddddd;
-  box-shadow: 0 8px 16px rgba(15, 23, 42, 0.08);
-}
-
-.chat-welcome-tag.is-active {
-  border-color: #fde68a;
-  background: #fef3c7;
-  color: #d97706;
-}
-
-.chat-welcome-tag:disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-
-.chat-welcome-send {
-  width: 40px;
-  height: 40px;
-  border-radius: 999px;
-  border: none;
-  background: linear-gradient(135deg, #7c5cfc 0%, #6d57f5 100%);
-  color: #ffffff;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: filter 0.2s ease, transform 0.2s ease;
-}
-
-.chat-welcome-send:hover {
-  filter: brightness(1.05);
-  transform: translateY(-1px);
-}
-
-.chat-welcome-send.is-cancel {
-  background: #fee2e2;
-  color: #ef4444;
-  filter: none;
-  transform: none;
-}
-
-.chat-welcome-send.is-cancel:hover {
-  background: #fecaca;
-}
-
-.chat-welcome-send:disabled {
-  background: #d8d8dd;
-  color: #9a9a9a;
-  cursor: not-allowed;
-  filter: none;
-  transform: none;
-}
-
-@media (max-width: 768px) {
-  .chat-welcome-header {
-    font-size: 20px;
-  }
-
-  .chat-welcome-toolbar {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .chat-welcome-send {
-    align-self: flex-end;
-  }
 }

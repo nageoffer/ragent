@@ -50,7 +50,7 @@ export function FeedbackButtons({
         size="icon"
         onClick={handleCopy}
         aria-label="复制内容"
-        className="h-8 w-8 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+        className="h-8 w-8 text-[#999999] hover:bg-[#F5F5F5] hover:text-[#666666]"
       >
         <Copy className="h-4 w-4" />
       </Button>
@@ -60,8 +60,8 @@ export function FeedbackButtons({
         onClick={() => handleFeedback("like")}
         aria-label="点赞"
         className={cn(
-          "h-8 w-8 text-gray-400 hover:text-emerald-600 hover:bg-gray-100",
-          feedback === "like" && "text-emerald-600"
+          "h-8 w-8 text-[#999999] hover:text-[#10B981] hover:bg-[#F5F5F5]",
+          feedback === "like" && "text-[#10B981]"
         )}
       >
         <ThumbsUp className="h-4 w-4" />
@@ -72,8 +72,8 @@ export function FeedbackButtons({
         onClick={() => handleFeedback("dislike")}
         aria-label="点踩"
         className={cn(
-          "h-8 w-8 text-gray-400 hover:text-rose-600 hover:bg-gray-100",
-          feedback === "dislike" && "text-rose-600"
+          "h-8 w-8 text-[#999999] hover:text-[#EF4444] hover:bg-[#F5F5F5]",
+          feedback === "dislike" && "text-[#EF4444]"
         )}
       >
         <ThumbsDown className="h-4 w-4" />

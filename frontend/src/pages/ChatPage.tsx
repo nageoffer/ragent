@@ -91,7 +91,7 @@ export function ChatPage() {
         </div>
         {showWelcome ? null : (
           <div className="relative z-20 bg-white">
-            <div className="mx-auto max-w-4xl px-6 pt-1 pb-4">
+            <div className="mx-auto max-w-[800px] px-6 pt-1 pb-4">
               <ChatInput />
             </div>
           </div>
