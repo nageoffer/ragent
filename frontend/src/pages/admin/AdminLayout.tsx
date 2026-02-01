@@ -48,16 +48,19 @@ export function AdminLayout() {
       <aside className="flex w-[260px] flex-col border-r border-slate-200/70 bg-white">
         <div className="px-6 pb-4 pt-6">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-sm font-semibold text-white">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600/10 text-xs font-semibold text-blue-700">
               R
             </div>
             <div>
-              <p className="text-xs font-medium text-slate-500">Ragent</p>
-              <h1 className="text-lg font-semibold text-slate-900">管理后台</h1>
+              <h1 className="text-base font-semibold text-slate-900">管理后台</h1>
+              <p className="text-xs text-slate-500">Ragent Console</p>
             </div>
           </div>
-          <div className="mt-4 rounded-xl border border-slate-200/70 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-            {user?.username || "管理员"} · 管理员
+          <div className="mt-3 flex items-center gap-2 text-xs text-slate-500">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500/70" />
+            <span className="truncate">{user?.username || "管理员"}</span>
+            <span className="text-slate-300">·</span>
+            <span>管理员</span>
           </div>
         </div>
 

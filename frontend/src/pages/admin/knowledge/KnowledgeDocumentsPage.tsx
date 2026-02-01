@@ -408,7 +408,7 @@ export function KnowledgeDocumentsPage() {
             <Table className="min-w-[1120px]">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[240px]">文档</TableHead>
+                  <TableHead className="w-[260px]">文档</TableHead>
                   <TableHead className="w-[120px]">来源</TableHead>
                   <TableHead className="w-[120px]">处理模式</TableHead>
                   <TableHead className="w-[120px]">状态</TableHead>
