@@ -1,5 +1,5 @@
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Database, GitBranch, Settings, Upload, MessageSquare, LogOut } from "lucide-react";
+import { Database, GitBranch, Lightbulb, Settings, Upload, MessageSquare, LogOut } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -29,6 +29,11 @@ export function AdminLayout() {
       path: "/admin/ingestion",
       label: "数据通道",
       icon: Upload
+    },
+    {
+      path: "/admin/sample-questions",
+      label: "示例问题",
+      icon: Lightbulb
     },
     {
       path: "/admin/settings",

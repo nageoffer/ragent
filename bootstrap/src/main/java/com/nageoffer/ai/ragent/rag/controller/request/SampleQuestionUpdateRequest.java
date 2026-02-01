@@ -15,28 +15,28 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.rag.controller.vo;
+package com.nageoffer.ai.ragent.rag.controller.request;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
 import lombok.Data;
-import lombok.NoArgsConstructor;
-
-import java.util.Date;
 
 /**
- * 示例问题视图对象
+ * 示例问题更新请求
  */
 @Data
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
-public class SampleQuestionVO {
+public class SampleQuestionUpdateRequest {
 
-    private String id;
+    /**
+     * 展示标题（可选）
+     */
     private String title;
+
+    /**
+     * 描述或提示（可选）
+     */
     private String description;
+
+    /**
+     * 示例问题内容
+     */
     private String question;
-    private Date createTime;
-    private Date updateTime;
 }
