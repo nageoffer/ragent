@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { FolderOpen, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { Database, FileBarChart, FolderOpen, Layers, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 
@@ -31,6 +31,7 @@ import type { KnowledgeBase, PageResult } from "@/services/knowledgeService";
 import { deleteKnowledgeBase, getKnowledgeBasesPage, renameKnowledgeBase } from "@/services/knowledgeService";
 import { CreateKnowledgeBaseDialog } from "@/components/admin/CreateKnowledgeBaseDialog";
 import { getErrorMessage } from "@/utils/error";
+import { cn } from "@/lib/utils";
 
 const PAGE_SIZE = 10;
 
@@ -50,6 +51,14 @@ export function KnowledgeListPage() {
   const [renameValue, setRenameValue] = useState("");
 
   const knowledgeBases = pageData?.records || [];
+  const totalCount = pageData?.total ?? knowledgeBases.length;
+  const documentCount = knowledgeBases.reduce((sum, kb) => sum + (kb.documentCount ?? 0), 0);
+  const activeCount = knowledgeBases.filter((kb) => (kb.documentCount ?? 0) > 0).length;
+  const collectionCount = new Set(
+    knowledgeBases
+      .map((kb) => kb.collectionName)
+      .filter((name): name is string => Boolean(name))
+  ).size;
 
   const loadKnowledgeBases = async (current = pageNo, name = keyword) => {
     try {
@@ -106,6 +115,38 @@ export function KnowledgeListPage() {
     return new Date(dateStr).toLocaleString("zh-CN");
   };
 
+  const formatStatValue = (value: number) => {
+    if (loading) return "--";
+    return value.toLocaleString("zh-CN");
+  };
+
+  const renderEmbeddingModel = (model?: string) => {
+    if (!model) return "-";
+    const parts = model.split("-");
+    if (parts.length < 2) {
+      return <span className="text-sm text-slate-700">{model}</span>;
+    }
+    const head = parts.slice(0, -1).join("-");
+    const tail = parts[parts.length - 1];
+    return (
+      <div className="flex flex-col text-xs text-slate-500">
+        <span className="font-medium text-slate-700">{head}</span>
+        <span>{tail}</span>
+      </div>
+    );
+  };
+
+  const getCollectionBadgeClass = (name?: string) => {
+    const value = (name || "").toLowerCase();
+    if (value.includes("biz")) {
+      return "border-blue-200 bg-blue-50 text-blue-700";
+    }
+    if (value.includes("group")) {
+      return "border-purple-200 bg-purple-50 text-purple-700";
+    }
+    return "border-slate-200 bg-slate-100 text-slate-600";
+  };
+
   const handleRename = async () => {
     if (!renameDialog.kb) return;
     const nextName = renameValue.trim();
@@ -149,11 +190,36 @@ export function KnowledgeListPage() {
             <RefreshCw className="w-4 h-4 mr-2" />
             刷新
           </Button>
-          <Button onClick={() => setCreateDialogOpen(true)}>
+          <Button className="admin-primary-gradient" onClick={() => setCreateDialogOpen(true)}>
             <Plus className="w-4 h-4 mr-2" />
             新建知识库
           </Button>
         </div>
+      </div>
+
+      <div className="admin-stat-grid">
+        {[
+          { label: "知识库总数", value: totalCount, icon: Database, hint: "总计" },
+          { label: "当前页文档", value: documentCount, icon: FileBarChart, hint: "当前页" },
+          { label: "含文档知识库", value: activeCount, icon: FolderOpen, hint: "当前页" },
+          { label: "Collection 数", value: collectionCount, icon: Layers, hint: "当前页" }
+        ].map((item) => {
+          const Icon = item.icon;
+          return (
+            <div key={item.label} className="admin-stat-card">
+              <div className="flex items-center gap-3">
+                <div className="admin-stat-icon">
+                  <Icon className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="admin-stat-label">{item.label}</div>
+                  <div className="admin-stat-value">{formatStatValue(item.value)}</div>
+                </div>
+              </div>
+              <span className="admin-stat-trend text-slate-400">{item.hint}</span>
+            </div>
+          );
+        })}
       </div>
 
       <Card>
@@ -191,12 +257,19 @@ export function KnowledgeListPage() {
                       </button>
                     </TableCell>
                     <TableCell>
-                      {kb.embeddingModel}
+                      {renderEmbeddingModel(kb.embeddingModel)}
                     </TableCell>
                     <TableCell>
-                      <code className="admin-code">
-                        {kb.collectionName}
-                      </code>
+                      {kb.collectionName ? (
+                        <Badge
+                          variant="outline"
+                          className={cn("px-3 py-1", getCollectionBadgeClass(kb.collectionName))}
+                        >
+                          {kb.collectionName}
+                        </Badge>
+                      ) : (
+                        "-"
+                      )}
                     </TableCell>
                     <TableCell>{kb.documentCount ?? "-"}</TableCell>
                     <TableCell>{kb.createdBy || "-"}</TableCell>

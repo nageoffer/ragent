@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   ClipboardList,
   FileUp,
@@ -206,7 +207,11 @@ const taskSchema = z
 type TaskFormValues = z.infer<typeof taskSchema>;
 
 export function IngestionPage() {
-  const [activeTab, setActiveTab] = useState<"pipelines" | "tasks">("pipelines");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get("tab");
+  const [activeTab, setActiveTab] = useState<"pipelines" | "tasks">(() =>
+    tabParam === "tasks" ? "tasks" : "pipelines"
+  );
   const [pipelinePage, setPipelinePage] = useState<PageResult<IngestionPipeline> | null>(null);
   const [pipelineKeyword, setPipelineKeyword] = useState("");
   const [pipelineSearch, setPipelineSearch] = useState("");
@@ -286,6 +291,19 @@ export function IngestionPage() {
     loadPipelineOptions();
   }, []);
 
+  useEffect(() => {
+    if (tabParam === "tasks" || tabParam === "pipelines") {
+      setActiveTab(tabParam);
+      return;
+    }
+    setSearchParams({ tab: "pipelines" }, { replace: true });
+  }, [tabParam, setSearchParams]);
+
+  const handleTabChange = (next: "pipelines" | "tasks") => {
+    setActiveTab(next);
+    setSearchParams({ tab: next }, { replace: true });
+  };
+
   const handlePipelineSearch = () => {
     setPipelinePageNo(1);
     setPipelineKeyword(pipelineSearch.trim());
@@ -341,7 +359,7 @@ export function IngestionPage() {
           <Button
             variant={activeTab === "pipelines" ? "default" : "outline"}
             size="sm"
-            onClick={() => setActiveTab("pipelines")}
+            onClick={() => handleTabChange("pipelines")}
           >
             <FolderKanban className="mr-2 h-4 w-4" />
             流水线
@@ -349,7 +367,7 @@ export function IngestionPage() {
           <Button
             variant={activeTab === "tasks" ? "default" : "outline"}
             size="sm"
-            onClick={() => setActiveTab("tasks")}
+            onClick={() => handleTabChange("tasks")}
           >
             <ClipboardList className="mr-2 h-4 w-4" />
             任务
@@ -379,7 +397,10 @@ export function IngestionPage() {
                   <RefreshCw className="mr-2 h-4 w-4" />
                   刷新
                 </Button>
-                <Button onClick={() => setPipelineDialog({ open: true, mode: "create", pipeline: null })}>
+                <Button
+                  className="admin-primary-gradient"
+                  onClick={() => setPipelineDialog({ open: true, mode: "create", pipeline: null })}
+                >
                   <Plus className="mr-2 h-4 w-4" />
                   新建流水线
                 </Button>
@@ -490,7 +511,7 @@ export function IngestionPage() {
                   <FileUp className="mr-2 h-4 w-4" />
                   上传文件
                 </Button>
-                <Button onClick={() => setTaskDialogOpen(true)}>
+                <Button className="admin-primary-gradient" onClick={() => setTaskDialogOpen(true)}>
                   <Plus className="mr-2 h-4 w-4" />
                   新建任务
                 </Button>

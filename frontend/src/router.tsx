@@ -11,6 +11,7 @@ import { IntentTreePage } from "@/pages/admin/intent-tree/IntentTreePage";
 import { IngestionPage } from "@/pages/admin/ingestion/IngestionPage";
 import { SystemSettingsPage } from "@/pages/admin/settings/SystemSettingsPage";
 import { SampleQuestionPage } from "@/pages/admin/sample-questions/SampleQuestionPage";
+import { UserListPage } from "@/pages/admin/users/UserListPage";
 import { useAuthStore } from "@/stores/authStore";
 
 function RequireAuth({ children }: { children: JSX.Element }) {
@@ -117,6 +118,10 @@ export const router = createBrowserRouter([
       {
         path: "sample-questions",
         element: <SampleQuestionPage />
+      },
+      {
+        path: "users",
+        element: <UserListPage />
       }
     ]
   },

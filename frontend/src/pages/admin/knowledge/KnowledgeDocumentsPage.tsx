@@ -349,7 +349,7 @@ export function KnowledgeDocumentsPage() {
           <Button variant="outline" onClick={() => navigate("/admin/knowledge")}>
             返回知识库
           </Button>
-          <Button onClick={() => setUploadOpen(true)}>
+          <Button className="admin-primary-gradient" onClick={() => setUploadOpen(true)}>
             <FileUp className="mr-2 h-4 w-4" />
             上传文档
           </Button>

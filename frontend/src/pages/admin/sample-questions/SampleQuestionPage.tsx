@@ -182,7 +182,7 @@ export function SampleQuestionPage() {
             <RefreshCw className="w-4 h-4 mr-2" />
             刷新
           </Button>
-          <Button onClick={openCreateDialog}>
+          <Button className="admin-primary-gradient" onClick={openCreateDialog}>
             <Plus className="w-4 h-4 mr-2" />
             新增示例
           </Button>

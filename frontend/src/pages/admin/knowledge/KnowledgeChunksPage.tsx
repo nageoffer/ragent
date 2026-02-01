@@ -242,7 +242,7 @@ export function KnowledgeChunksPage() {
           <Button variant="outline" onClick={() => setRebuildOpen(true)}>
             重建向量
           </Button>
-          <Button onClick={() => setCreateOpen(true)}>
+          <Button className="admin-primary-gradient" onClick={() => setCreateOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
             新建分块
           </Button>
