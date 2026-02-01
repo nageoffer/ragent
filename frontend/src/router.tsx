@@ -7,7 +7,6 @@ import { AdminLayout } from "@/pages/admin/AdminLayout";
 import { KnowledgeListPage } from "@/pages/admin/knowledge/KnowledgeListPage";
 import { KnowledgeDocumentsPage } from "@/pages/admin/knowledge/KnowledgeDocumentsPage";
 import { KnowledgeChunksPage } from "@/pages/admin/knowledge/KnowledgeChunksPage";
-import { KnowledgeAllDocumentsPage } from "@/pages/admin/knowledge/KnowledgeAllDocumentsPage";
 import { IntentTreePage } from "@/pages/admin/intent-tree/IntentTreePage";
 import { IngestionPage } from "@/pages/admin/ingestion/IngestionPage";
 import { SystemSettingsPage } from "@/pages/admin/settings/SystemSettingsPage";
@@ -95,10 +94,6 @@ export const router = createBrowserRouter([
       {
         path: "knowledge",
         element: <KnowledgeListPage />
-      },
-      {
-        path: "knowledge-documents",
-        element: <KnowledgeAllDocumentsPage />
       },
       {
         path: "knowledge/:kbId",

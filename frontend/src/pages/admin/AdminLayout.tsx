@@ -367,22 +367,22 @@ export function AdminLayout() {
                     });
                   }
 
-                  return (
-                    <div key={item.label} className="space-y-1">
-                      <button
-                        type="button"
-                        onClick={() => setOpenGroups((prev) => ({ ...prev, [groupId]: !prev[groupId] }))}
-                        className={cn(
-                          "admin-sidebar__item w-full text-white/60",
-                          isGroupActive && "admin-sidebar__item--active text-white"
-                        )}
-                      >
-                        <span
-                          className={cn(
-                            "admin-sidebar__item-indicator",
-                            isGroupActive && "is-active"
-                          )}
-                        />
+                      return (
+                        <div key={item.label} className="space-y-1">
+                          <button
+                            type="button"
+                            onClick={() => setOpenGroups((prev) => ({ ...prev, [groupId]: !prev[groupId] }))}
+                            className={cn(
+                              "admin-sidebar__item admin-sidebar__item--group w-full text-white/60",
+                              isGroupActive && "admin-sidebar__item--group-active text-white"
+                            )}
+                          >
+                            <span
+                              className={cn(
+                                "admin-sidebar__item-indicator",
+                                isGroupActive && "is-group-active"
+                              )}
+                            />
                         <item.icon className="admin-sidebar__item-icon" />
                         <span className="flex-1 text-left">{item.label}</span>
                         {isOpen ? (
@@ -464,6 +464,11 @@ export function AdminLayout() {
                     window.setTimeout(() => setKbOpen(false), 150);
                   }}
                   onKeyDown={handleSearchKeyDown}
+                  name="kb-search"
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
                   placeholder="筛选知识库..."
                   className="pl-10 pr-16"
                 />
@@ -595,6 +600,8 @@ export function AdminLayout() {
                 value={passwordForm.currentPassword}
                 onChange={(event) => setPasswordForm((prev) => ({ ...prev, currentPassword: event.target.value }))}
                 placeholder="请输入当前密码"
+                name="current-password"
+                autoComplete="current-password"
               />
             </div>
             <div className="space-y-2">
@@ -604,6 +611,8 @@ export function AdminLayout() {
                 value={passwordForm.newPassword}
                 onChange={(event) => setPasswordForm((prev) => ({ ...prev, newPassword: event.target.value }))}
                 placeholder="请输入新密码"
+                name="new-password"
+                autoComplete="new-password"
               />
             </div>
             <div className="space-y-2">
@@ -613,6 +622,8 @@ export function AdminLayout() {
                 value={passwordForm.confirmPassword}
                 onChange={(event) => setPasswordForm((prev) => ({ ...prev, confirmPassword: event.target.value }))}
                 placeholder="再次输入新密码"
+                name="confirm-new-password"
+                autoComplete="new-password"
               />
             </div>
           </div>

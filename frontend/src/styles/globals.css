@@ -360,6 +360,10 @@ body {
     @apply bg-indigo-500/20 text-white;
   }
 
+  .admin-layout .admin-sidebar__item--group-active {
+    @apply bg-white/5 text-white;
+  }
+
   .admin-layout .admin-sidebar__item-indicator {
     @apply absolute left-0 top-2 bottom-2 w-[3px] rounded-full bg-transparent;
   }
@@ -368,12 +372,20 @@ body {
     @apply bg-indigo-400;
   }
 
+  .admin-layout .admin-sidebar__item-indicator.is-group-active {
+    @apply bg-white/20;
+  }
+
   .admin-layout .admin-sidebar__item-icon {
     @apply h-4 w-4 text-white/50;
   }
 
   .admin-layout .admin-sidebar__item--active .admin-sidebar__item-icon {
     @apply text-indigo-300;
+  }
+
+  .admin-layout .admin-sidebar__item--group-active .admin-sidebar__item-icon {
+    @apply text-white/70;
   }
 
   .admin-layout .admin-sidebar__footer {

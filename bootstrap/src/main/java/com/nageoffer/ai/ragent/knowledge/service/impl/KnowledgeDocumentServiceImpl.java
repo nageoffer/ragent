@@ -567,51 +567,6 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
     }
 
     @Override
-    public IPage<KnowledgeDocumentVO> pageAll(Page<KnowledgeDocumentVO> page, String status, String keyword) {
-        Page<KnowledgeDocumentDO> mpPage = new Page<>(page.getCurrent(), page.getSize());
-        LambdaQueryWrapper<KnowledgeDocumentDO> qw = new LambdaQueryWrapper<KnowledgeDocumentDO>()
-                .eq(KnowledgeDocumentDO::getDeleted, 0)
-                .like(keyword != null && !keyword.isBlank(), KnowledgeDocumentDO::getDocName, keyword)
-                .eq(status != null && !status.isBlank(), KnowledgeDocumentDO::getStatus, status)
-                .orderByDesc(KnowledgeDocumentDO::getCreateTime);
-
-        IPage<KnowledgeDocumentDO> result = docMapper.selectPage(mpPage, qw);
-
-        Page<KnowledgeDocumentVO> voPage = new Page<>(result.getCurrent(), result.getSize(), result.getTotal());
-        List<KnowledgeDocumentVO> records = result.getRecords().stream()
-                .map(each -> BeanUtil.toBean(each, KnowledgeDocumentVO.class))
-                .toList();
-        fillKnowledgeBaseNames(records);
-        voPage.setRecords(records);
-        return voPage;
-    }
-
-    private void fillKnowledgeBaseNames(List<KnowledgeDocumentVO> records) {
-        if (records == null || records.isEmpty()) {
-            return;
-        }
-        Set<Long> kbIds = new HashSet<>();
-        for (KnowledgeDocumentVO record : records) {
-            if (record.getKbId() != null) {
-                kbIds.add(record.getKbId());
-            }
-        }
-        if (kbIds.isEmpty()) {
-            return;
-        }
-        List<KnowledgeBaseDO> bases = kbMapper.selectBatchIds(kbIds);
-        Map<Long, String> nameMap = new HashMap<>();
-        if (bases != null) {
-            for (KnowledgeBaseDO base : bases) {
-                nameMap.put(base.getId(), base.getName());
-            }
-        }
-        for (KnowledgeDocumentVO record : records) {
-            record.setKbName(nameMap.get(record.getKbId()));
-        }
-    }
-
-    @Override
     @Transactional(rollbackFor = Exception.class)
     public void enable(String docId, boolean enabled) {
         KnowledgeDocumentDO documentDO = docMapper.selectById(docId);
