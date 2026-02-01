@@ -38,6 +38,11 @@ public class KnowledgeDocumentVO {
     private Long kbId;
 
     /**
+     * 知识库名称
+     */
+    private String kbName;
+
+    /**
      * 文档名称
      */
     private String docName;

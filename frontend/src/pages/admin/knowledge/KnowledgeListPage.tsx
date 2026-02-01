@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Database, FileBarChart, FolderOpen, Layers, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -37,12 +37,14 @@ const PAGE_SIZE = 10;
 
 export function KnowledgeListPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const nameFromQuery = searchParams.get("name") || "";
   const [pageData, setPageData] = useState<PageResult<KnowledgeBase> | null>(null);
   const [loading, setLoading] = useState(true);
   const [deleteTarget, setDeleteTarget] = useState<KnowledgeBase | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [searchName, setSearchName] = useState("");
-  const [keyword, setKeyword] = useState("");
+  const [searchName, setSearchName] = useState(nameFromQuery);
+  const [keyword, setKeyword] = useState(nameFromQuery);
   const [pageNo, setPageNo] = useState(1);
   const [renameDialog, setRenameDialog] = useState<{ open: boolean; kb: KnowledgeBase | null }>({
     open: false,
@@ -76,6 +78,15 @@ export function KnowledgeListPage() {
   useEffect(() => {
     loadKnowledgeBases();
   }, [pageNo, keyword]);
+
+  useEffect(() => {
+    const trimmed = nameFromQuery.trim();
+    if (trimmed !== keyword) {
+      setSearchName(trimmed);
+      setKeyword(trimmed);
+      setPageNo(1);
+    }
+  }, [nameFromQuery, keyword]);
 
   useEffect(() => {
     if (renameDialog.open) {

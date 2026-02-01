@@ -14,6 +14,7 @@ export interface KnowledgeBase {
 export interface KnowledgeDocument {
   id: string;
   kbId: string;
+  kbName?: string | null;
   docName: string;
   sourceType?: string | null;
   sourceLocation?: string | null;
@@ -162,6 +163,19 @@ export const getDocumentsPage = async (
   params: KnowledgeDocumentPageParams = {}
 ): Promise<PageResult<KnowledgeDocument>> => {
   return api.get<PageResult<KnowledgeDocument>, PageResult<KnowledgeDocument>>(`/knowledge-base/${kbId}/docs`, {
+    params: {
+      pageNo: params.pageNo ?? 1,
+      pageSize: params.pageSize ?? 10,
+      status: params.status || undefined,
+      keyword: params.keyword || undefined
+    }
+  });
+};
+
+export const getAllDocumentsPage = async (
+  params: KnowledgeDocumentPageParams = {}
+): Promise<PageResult<KnowledgeDocument>> => {
+  return api.get<PageResult<KnowledgeDocument>, PageResult<KnowledgeDocument>>("/knowledge-documents", {
     params: {
       pageNo: params.pageNo ?? 1,
       pageSize: params.pageSize ?? 10,

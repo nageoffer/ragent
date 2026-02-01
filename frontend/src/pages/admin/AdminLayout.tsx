@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   ChevronDown,
+  ChevronRight,
   ChevronsLeft,
   ChevronsRight,
   ClipboardList,
@@ -33,6 +34,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { changePassword } from "@/services/userService";
+import { getKnowledgeBases, type KnowledgeBase } from "@/services/knowledgeService";
 
 const menuGroups = [
   {
@@ -49,6 +51,7 @@ const menuGroups = [
         icon: GitBranch
       },
       {
+        id: "ingestion",
         path: "/admin/ingestion",
         label: "数据通道",
         icon: Upload,
@@ -113,6 +116,11 @@ export function AdminLayout() {
     confirmPassword: ""
   });
   const [starCount, setStarCount] = useState<number | null>(null);
+  const [openGroups, setOpenGroups] = useState({ ingestion: true });
+  const [kbQuery, setKbQuery] = useState("");
+  const [kbOptions, setKbOptions] = useState<KnowledgeBase[]>([]);
+  const [kbLoading, setKbLoading] = useState(false);
+  const [kbOpen, setKbOpen] = useState(false);
 
   const handleLogout = async () => {
     await logout();
@@ -137,6 +145,34 @@ export function AdminLayout() {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!kbOpen) return;
+    const keyword = kbQuery.trim();
+    let active = true;
+    const handle = window.setTimeout(() => {
+      setKbLoading(true);
+      getKnowledgeBases(1, 8, keyword || undefined)
+        .then((data) => {
+          if (!active) return;
+          setKbOptions(data || []);
+        })
+        .catch(() => {
+          if (active) {
+            setKbOptions([]);
+          }
+        })
+        .finally(() => {
+          if (active) {
+            setKbLoading(false);
+          }
+        });
+    }, 200);
+    return () => {
+      active = false;
+      window.clearTimeout(handle);
+    };
+  }, [kbQuery, kbOpen]);
 
   const breadcrumbs = useMemo(() => {
     const segments = location.pathname.split("/").filter(Boolean);
@@ -172,7 +208,7 @@ export function AdminLayout() {
     }
 
     return items;
-  }, [location.pathname]);
+  }, [location.pathname, location.search]);
 
   const userInitial = (user?.username || "管理").slice(0, 1).toUpperCase();
   const roleLabel = user?.role === "admin" ? "管理员" : "成员";
@@ -183,6 +219,13 @@ export function AdminLayout() {
     const text = String(rounded).replace(/\.0$/, "");
     return `${text}k`;
   }, [starCount]);
+  const isIngestionActive = location.pathname.startsWith("/admin/ingestion");
+
+  useEffect(() => {
+    setOpenGroups((prev) => ({
+      ingestion: prev.ingestion || isIngestionActive
+    }));
+  }, [isIngestionActive]);
 
   const handlePasswordSubmit = async () => {
     if (!passwordForm.currentPassword || !passwordForm.newPassword) {
@@ -209,8 +252,34 @@ export function AdminLayout() {
     }
   };
 
+  const handleSearchSelect = (kb: KnowledgeBase) => {
+    navigate(`/admin/knowledge/${kb.id}`);
+    setKbOpen(false);
+    setKbQuery("");
+  };
+
+  const handleSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter") {
+      const keyword = kbQuery.trim();
+      if (kbOptions.length > 0) {
+        handleSearchSelect(kbOptions[0]);
+        return;
+      }
+      if (keyword) {
+        navigate(`/admin/knowledge?name=${encodeURIComponent(keyword)}`);
+        setKbOpen(false);
+        return;
+      }
+    }
+    if (event.key === "Escape") {
+      setKbOpen(false);
+    }
+  };
+
   const isLeafActive = (path: string, search?: string) => {
-    if (!location.pathname.startsWith(path)) return false;
+    if (location.pathname !== path && !location.pathname.startsWith(`${path}/`)) {
+      return false;
+    }
     if (search) {
       return location.search === search;
     }
@@ -266,6 +335,10 @@ export function AdminLayout() {
                     );
                   }
 
+                  const isGroupActive = item.children.some((child) => isLeafActive(child.path, child.search));
+                  const groupId = item.id as "ingestion";
+                  const isOpen = openGroups[groupId];
+
                   if (collapsed) {
                     return item.children.map((child) => {
                       const ChildIcon = child.icon;
@@ -296,36 +369,55 @@ export function AdminLayout() {
 
                   return (
                     <div key={item.label} className="space-y-1">
-                      <div className="admin-sidebar__item text-white/60">
-                        <span className="admin-sidebar__item-indicator" />
+                      <button
+                        type="button"
+                        onClick={() => setOpenGroups((prev) => ({ ...prev, [groupId]: !prev[groupId] }))}
+                        className={cn(
+                          "admin-sidebar__item w-full text-white/60",
+                          isGroupActive && "admin-sidebar__item--active text-white"
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            "admin-sidebar__item-indicator",
+                            isGroupActive && "is-active"
+                          )}
+                        />
                         <item.icon className="admin-sidebar__item-icon" />
-                        <span>{item.label}</span>
-                      </div>
-                      <div className="ml-6 space-y-1">
-                        {item.children.map((child) => {
-                          const ChildIcon = child.icon;
-                          const isActive = isLeafActive(child.path, child.search);
-                          return (
-                            <Link
-                              key={child.label}
-                              to={`${child.path}${child.search || ""}`}
-                              className={cn(
-                                "admin-sidebar__item text-[13px]",
-                                isActive && "admin-sidebar__item--active"
-                              )}
-                            >
-                              <span
+                        <span className="flex-1 text-left">{item.label}</span>
+                        {isOpen ? (
+                          <ChevronDown className="h-4 w-4 text-white/60" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4 text-white/60" />
+                        )}
+                      </button>
+                      {isOpen ? (
+                        <div className="ml-6 space-y-1">
+                          {item.children.map((child) => {
+                            const ChildIcon = child.icon;
+                            const isActive = isLeafActive(child.path, child.search);
+                            return (
+                              <Link
+                                key={child.label}
+                                to={`${child.path}${child.search || ""}`}
                                 className={cn(
-                                  "admin-sidebar__item-indicator",
-                                  isActive && "is-active"
+                                  "admin-sidebar__item text-[13px]",
+                                  isActive && "admin-sidebar__item--active"
                                 )}
-                              />
-                              <ChildIcon className="admin-sidebar__item-icon" />
-                              <span>{child.label}</span>
-                            </Link>
-                          );
-                        })}
-                      </div>
+                              >
+                                <span
+                                  className={cn(
+                                    "admin-sidebar__item-indicator",
+                                    isActive && "is-active"
+                                  )}
+                                />
+                                <ChildIcon className="admin-sidebar__item-icon" />
+                                <span>{child.label}</span>
+                              </Link>
+                            );
+                          })}
+                        </div>
+                      ) : null}
                     </div>
                   );
                 })}
@@ -361,8 +453,49 @@ export function AdminLayout() {
               </Button>
               <div className="admin-topbar-search">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <Input placeholder="搜索知识库、文档..." className="pl-10 pr-16" />
+                <Input
+                  value={kbQuery}
+                  onChange={(event) => {
+                    setKbQuery(event.target.value);
+                    setKbOpen(true);
+                  }}
+                  onFocus={() => setKbOpen(true)}
+                  onBlur={() => {
+                    window.setTimeout(() => setKbOpen(false), 150);
+                  }}
+                  onKeyDown={handleSearchKeyDown}
+                  placeholder="筛选知识库..."
+                  className="pl-10 pr-16"
+                />
                 <span className="admin-topbar-kbd">Ctrl K</span>
+                {kbOpen ? (
+                  <div className="admin-topbar-suggest">
+                    {kbLoading ? (
+                      <div className="admin-topbar-suggest-item text-slate-400">加载中...</div>
+                    ) : kbOptions.length === 0 ? (
+                      <div className="admin-topbar-suggest-item text-slate-400">
+                        暂无匹配知识库
+                      </div>
+                    ) : (
+                      kbOptions.map((kb) => (
+                        <button
+                          key={kb.id}
+                          type="button"
+                          onMouseDown={(event) => {
+                            event.preventDefault();
+                            handleSearchSelect(kb);
+                          }}
+                          className="admin-topbar-suggest-item"
+                        >
+                          <span className="font-medium text-slate-900">{kb.name}</span>
+                          <span className="text-xs text-slate-400">
+                            {kb.collectionName || "未设置 Collection"}
+                          </span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                ) : null}
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -406,10 +539,6 @@ export function AdminLayout() {
                     {user?.username || "管理员"} · {roleLabel}
                   </div>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => navigate("/chat")}>
-                    <MessageSquare className="mr-2 h-4 w-4" />
-                    返回聊天
-                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setPasswordOpen(true)}>
                     <KeyRound className="mr-2 h-4 w-4" />
                     修改密码

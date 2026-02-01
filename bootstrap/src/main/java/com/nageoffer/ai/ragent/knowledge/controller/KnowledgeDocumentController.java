@@ -112,6 +112,17 @@ public class KnowledgeDocumentController {
     }
 
     /**
+     * 分页查询全部文档列表
+     */
+    @GetMapping("/knowledge-documents")
+    public Result<IPage<KnowledgeDocumentVO>> pageAll(@RequestParam(value = "pageNo", defaultValue = "1") int pageNo,
+                                                      @RequestParam(value = "pageSize", defaultValue = "10") int pageSize,
+                                                      @RequestParam(value = "status", required = false) String status,
+                                                      @RequestParam(value = "keyword", required = false) String keyword) {
+        return Results.success(documentService.pageAll(new Page<>(pageNo, pageSize), status, keyword));
+    }
+
+    /**
      * 启用/禁用文档
      */
     @PatchMapping("/knowledge-base/docs/{docId}/enable")

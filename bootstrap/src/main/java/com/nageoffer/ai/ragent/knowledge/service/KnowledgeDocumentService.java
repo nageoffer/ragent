@@ -82,6 +82,16 @@ public interface KnowledgeDocumentService {
     IPage<KnowledgeDocumentVO> page(String kbId, Page<KnowledgeDocumentVO> page, String status, String keyword);
 
     /**
+     * 分页查询全部文档
+     *
+     * @param page    分页参数
+     * @param status  状态筛选
+     * @param keyword 关键词搜索
+     * @return 文档分页结果
+     */
+    IPage<KnowledgeDocumentVO> pageAll(Page<KnowledgeDocumentVO> page, String status, String keyword);
+
+    /**
      * 启用或禁用文档
      *
      * @param docId   文档 ID

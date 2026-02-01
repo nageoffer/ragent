@@ -232,6 +232,14 @@ body {
     @apply absolute right-3 top-1/2 -translate-y-1/2 rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10px] text-slate-400;
   }
 
+  .admin-layout .admin-topbar-suggest {
+    @apply absolute left-0 right-0 top-full z-30 mt-2 rounded-xl border border-slate-200 bg-white p-1 shadow-lg;
+  }
+
+  .admin-layout .admin-topbar-suggest-item {
+    @apply flex w-full flex-col items-start gap-1 rounded-lg px-3 py-2 text-left text-sm transition hover:bg-slate-100;
+  }
+
   .admin-layout .admin-breadcrumbs {
     @apply mb-4 flex items-center gap-2 text-xs text-slate-500;
   }
