@@ -258,7 +258,7 @@ export function IntentTreePage() {
           <div
               className={cn(
                   "group flex cursor-pointer items-center justify-between rounded-xl px-3 py-2 transition-colors",
-                  isSelected ? "bg-primary/10 text-primary" : "hover:bg-muted"
+                  isSelected ? "bg-slate-100 text-slate-900" : "hover:bg-slate-50"
               )}
               style={{ paddingLeft: `${depth * 16 + 12}px` }}
               onClick={() => setSelectedCode(node.intentCode)}
@@ -298,13 +298,13 @@ export function IntentTreePage() {
   };
 
   return (
-      <div className="p-8">
-        <div className="mb-6 flex items-center justify-between">
+      <div className="admin-page">
+        <div className="admin-page-header">
           <div>
-            <h1 className="text-2xl font-semibold">意图树配置</h1>
-            <p className="text-sm text-muted-foreground">配置意图层级、类型和节点关系</p>
+            <h1 className="admin-page-title">意图树配置</h1>
+            <p className="admin-page-subtitle">配置意图层级、类型和节点关系</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="admin-page-actions">
             <Button variant="outline" onClick={handleRefresh}>
               <RefreshCw className="mr-2 h-4 w-4" />
               刷新

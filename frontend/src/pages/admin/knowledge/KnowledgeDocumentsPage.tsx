@@ -337,15 +337,15 @@ export function KnowledgeDocumentsPage() {
   const detailChunkSizeDisplay = detailChunkSize === INT_MAX ? "不分块" : detailChunkSize;
 
   return (
-    <div className="p-8">
-      <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+    <div className="admin-page">
+      <div className="admin-page-header">
         <div>
-          <h1 className="text-2xl font-semibold">文档管理</h1>
-          <p className="text-sm text-muted-foreground">
+          <h1 className="admin-page-title">文档管理</h1>
+          <p className="admin-page-subtitle">
             {kb ? `${kb.name}（${kb.collectionName}）` : kbId}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="admin-page-actions">
           <Button variant="outline" onClick={() => navigate("/admin/knowledge")}>
             返回知识库
           </Button>
@@ -405,19 +405,19 @@ export function KnowledgeDocumentsPage() {
           ) : documents.length === 0 ? (
             <div className="py-8 text-center text-muted-foreground">暂无文档</div>
           ) : (
-            <Table>
+            <Table className="min-w-[1120px]">
               <TableHeader>
                 <TableRow>
-                  <TableHead>文档</TableHead>
-                  <TableHead>来源</TableHead>
-                  <TableHead>处理模式</TableHead>
-                  <TableHead>状态</TableHead>
-                  <TableHead>启用</TableHead>
-                  <TableHead>分块数</TableHead>
-                  <TableHead>类型</TableHead>
-                  <TableHead>大小</TableHead>
-                  <TableHead>更新时间</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
+                  <TableHead className="w-[240px]">文档</TableHead>
+                  <TableHead className="w-[120px]">来源</TableHead>
+                  <TableHead className="w-[120px]">处理模式</TableHead>
+                  <TableHead className="w-[120px]">状态</TableHead>
+                  <TableHead className="w-[80px]">启用</TableHead>
+                  <TableHead className="w-[90px]">分块数</TableHead>
+                  <TableHead className="w-[90px]">类型</TableHead>
+                  <TableHead className="w-[90px]">大小</TableHead>
+                  <TableHead className="w-[170px]">更新时间</TableHead>
+                  <TableHead className="w-[160px] text-right">操作</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -428,7 +428,7 @@ export function KnowledgeDocumentsPage() {
                         <FolderOpen className="h-4 w-4 text-muted-foreground" />
                         <button
                           type="button"
-                          className="flex-1 truncate text-left text-primary underline-offset-4 hover:underline"
+                          className="flex-1 truncate text-left text-slate-900 underline-offset-4 hover:text-slate-700 hover:underline"
                           title={doc.docName || ""}
                           onClick={() => navigate(`/admin/knowledge/${kbId}/docs/${doc.id}`)}
                         >
@@ -464,7 +464,7 @@ export function KnowledgeDocumentsPage() {
                             onClick={() => handleToggleEnabled(doc)}
                             className={cn(
                               "relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background",
-                              enabled ? "bg-primary/80" : "bg-muted"
+                              enabled ? "bg-blue-600" : "bg-slate-200"
                             )}
                           >
                             <span
@@ -532,7 +532,7 @@ export function KnowledgeDocumentsPage() {
           )}
 
           {pageData ? (
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm text-slate-500">
               <span>共 {pageData.total} 条</span>
               <div className="flex items-center gap-2">
                 <Button variant="outline" size="sm" onClick={() => setPageNo((prev) => Math.max(1, prev - 1))} disabled={pageData.current <= 1}>
@@ -813,7 +813,7 @@ export function KnowledgeDocumentsPage() {
                     </div>
                     <div>
                       <span className="text-muted-foreground">总耗时: </span>
-                      <span className="font-medium text-primary">{formatDuration(log.totalDuration)}</span>
+                      <span className="font-medium text-slate-900">{formatDuration(log.totalDuration)}</span>
                     </div>
                   </div>
 

@@ -43,43 +43,59 @@ export function AdminLayout() {
   ];
 
   return (
-    <div className="flex h-screen bg-background">
+    <div className="admin-layout flex h-screen bg-slate-50 text-slate-900">
       {/* 侧边栏 */}
-      <aside className="w-64 border-r bg-card flex flex-col">
-        {/* Logo */}
-        <div className="p-6">
-          <h1 className="text-2xl font-bold">Ragent 管理后台</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            {user?.username} (管理员)
-          </p>
+      <aside className="flex w-[260px] flex-col border-r border-slate-200/70 bg-white">
+        <div className="px-6 pb-4 pt-6">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-sm font-semibold text-white">
+              R
+            </div>
+            <div>
+              <p className="text-xs font-medium text-slate-500">Ragent</p>
+              <h1 className="text-lg font-semibold text-slate-900">管理后台</h1>
+            </div>
+          </div>
+          <div className="mt-4 rounded-xl border border-slate-200/70 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+            {user?.username || "管理员"} · 管理员
+          </div>
         </div>
 
-        <Separator />
+        <div className="px-4">
+          <Separator className="bg-slate-100" />
+        </div>
 
         {/* 导航菜单 */}
-        <nav className="flex-1 p-4 space-y-2">
-          {menuItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = location.pathname.startsWith(item.path);
+        <nav className="flex-1 px-3 py-4">
+          <p className="px-3 pb-2 text-[11px] font-medium uppercase tracking-[0.2em] text-slate-400">
+            导航
+          </p>
+          <div className="space-y-1">
+            {menuItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = location.pathname.startsWith(item.path);
 
-            return (
-              <Link
-                key={item.path}
-                to={item.path}
-                className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-                  isActive
-                    ? "bg-primary text-primary-foreground"
-                    : "hover:bg-accent hover:text-accent-foreground"
-                }`}
-              >
-                <Icon className="w-5 h-5" />
-                <span>{item.label}</span>
-              </Link>
-            );
-          })}
+              return (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  className={`group flex items-center gap-3 rounded-lg border border-transparent px-3 py-2 text-sm font-medium transition ${
+                    isActive
+                      ? "border-blue-100 bg-blue-50 text-blue-700"
+                      : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                  }`}
+                >
+                  <Icon className={`h-4 w-4 ${isActive ? "text-blue-600" : "text-slate-400 group-hover:text-slate-700"}`} />
+                  <span>{item.label}</span>
+                </Link>
+              );
+            })}
+          </div>
         </nav>
 
-        <Separator />
+        <div className="px-4">
+          <Separator className="bg-slate-100" />
+        </div>
 
         {/* 底部操作 */}
         <div className="p-4 space-y-2">
@@ -93,7 +109,7 @@ export function AdminLayout() {
           </Button>
           <Button
             variant="ghost"
-            className="w-full justify-start text-destructive hover:text-destructive"
+            className="w-full justify-start"
             onClick={handleLogout}
           >
             <LogOut className="w-4 h-4 mr-2" />
@@ -104,7 +120,9 @@ export function AdminLayout() {
 
       {/* 主内容区 */}
       <main className="flex-1 overflow-auto">
-        <Outlet />
+        <div className="mx-auto w-full max-w-[1440px] px-8 py-10 animate-in fade-in-0 slide-in-from-bottom-2 duration-300 lg:px-10 2xl:max-w-[1520px]">
+          <Outlet />
+        </div>
       </main>
     </div>
   );

@@ -15,9 +15,9 @@ const BoolBadge = ({ value }: { value: boolean }) => (
 
 function InfoItem({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div className="flex flex-col gap-1 rounded-lg border p-3">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <div className="text-sm font-medium">{value}</div>
+    <div className="flex flex-col gap-1 rounded-lg border border-slate-200/70 bg-white px-4 py-3">
+      <span className="text-xs text-slate-500">{label}</span>
+      <div className="text-sm font-medium text-slate-800">{value}</div>
     </div>
   );
 }
@@ -45,7 +45,7 @@ export function SystemSettingsPage() {
 
   if (loading) {
     return (
-      <div className="p-8">
+      <div className="admin-page">
         <div className="text-sm text-muted-foreground">加载中...</div>
       </div>
     );
@@ -53,7 +53,7 @@ export function SystemSettingsPage() {
 
   if (!settings) {
     return (
-      <div className="p-8">
+      <div className="admin-page">
         <div className="text-sm text-muted-foreground">暂无可展示的配置</div>
       </div>
     );
@@ -63,10 +63,12 @@ export function SystemSettingsPage() {
   const providers = Object.entries(ai.providers || {});
 
   return (
-    <div className="p-8 space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">系统配置</h1>
-        <p className="text-sm text-muted-foreground">只读展示当前 application 配置</p>
+    <div className="admin-page">
+      <div className="admin-page-header">
+        <div>
+          <h1 className="admin-page-title">系统配置</h1>
+          <p className="admin-page-subtitle">只读展示当前 application 配置</p>
+        </div>
       </div>
 
       <Card>
@@ -128,12 +130,12 @@ export function SystemSettingsPage() {
           <CardDescription>接入地址与端点配置</CardDescription>
         </CardHeader>
         <CardContent>
-          <Table>
+          <Table className="min-w-[760px]">
             <TableHeader>
               <TableRow>
-                <TableHead>Provider</TableHead>
-                <TableHead>URL</TableHead>
-                <TableHead>API Key</TableHead>
+                <TableHead className="w-[140px]">Provider</TableHead>
+                <TableHead className="w-[240px]">URL</TableHead>
+                <TableHead className="w-[200px]">API Key</TableHead>
                 <TableHead>Endpoints</TableHead>
               </TableRow>
             </TableHeader>
@@ -190,14 +192,14 @@ export function SystemSettingsPage() {
             <InfoItem label="Default Model" value={ai.chat.defaultModel} />
             <InfoItem label="Deep Thinking Model" value={ai.chat.deepThinkingModel} />
           </div>
-          <Table>
+          <Table className="min-w-[720px]">
             <TableHeader>
               <TableRow>
-                <TableHead>ID</TableHead>
-                <TableHead>Provider</TableHead>
-                <TableHead>Model</TableHead>
-                <TableHead>Thinking</TableHead>
-                <TableHead>Priority</TableHead>
+                <TableHead className="w-[220px]">ID</TableHead>
+                <TableHead className="w-[120px]">Provider</TableHead>
+                <TableHead className="w-[200px]">Model</TableHead>
+                <TableHead className="w-[100px]">Thinking</TableHead>
+                <TableHead className="w-[90px]">Priority</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -224,14 +226,14 @@ export function SystemSettingsPage() {
           <div className="grid gap-4 md:grid-cols-2">
             <InfoItem label="Default Model" value={ai.embedding.defaultModel} />
           </div>
-          <Table>
+          <Table className="min-w-[720px]">
             <TableHeader>
               <TableRow>
-                <TableHead>ID</TableHead>
-                <TableHead>Provider</TableHead>
-                <TableHead>Model</TableHead>
-                <TableHead>Dimension</TableHead>
-                <TableHead>Priority</TableHead>
+                <TableHead className="w-[220px]">ID</TableHead>
+                <TableHead className="w-[120px]">Provider</TableHead>
+                <TableHead className="w-[200px]">Model</TableHead>
+                <TableHead className="w-[110px]">Dimension</TableHead>
+                <TableHead className="w-[90px]">Priority</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -258,13 +260,13 @@ export function SystemSettingsPage() {
           <div className="grid gap-4 md:grid-cols-2">
             <InfoItem label="Default Model" value={ai.rerank.defaultModel} />
           </div>
-          <Table>
+          <Table className="min-w-[640px]">
             <TableHeader>
               <TableRow>
-                <TableHead>ID</TableHead>
-                <TableHead>Provider</TableHead>
-                <TableHead>Model</TableHead>
-                <TableHead>Priority</TableHead>
+                <TableHead className="w-[220px]">ID</TableHead>
+                <TableHead className="w-[120px]">Provider</TableHead>
+                <TableHead className="w-[200px]">Model</TableHead>
+                <TableHead className="w-[90px]">Priority</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

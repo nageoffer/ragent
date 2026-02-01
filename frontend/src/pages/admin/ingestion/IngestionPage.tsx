@@ -331,13 +331,13 @@ export function IngestionPage() {
     status ? status.toLowerCase() : "unknown";
 
   return (
-    <div className="p-8">
-      <div className="mb-6 flex items-center justify-between">
+    <div className="admin-page">
+      <div className="admin-page-header">
         <div>
-          <h1 className="text-2xl font-semibold">数据通道</h1>
-          <p className="text-sm text-muted-foreground">管理通道流水线与任务执行情况</p>
+          <h1 className="admin-page-title">数据通道</h1>
+          <p className="admin-page-subtitle">管理通道流水线与任务执行情况</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="admin-page-actions">
           <Button
             variant={activeTab === "pipelines" ? "default" : "outline"}
             size="sm"
@@ -392,15 +392,15 @@ export function IngestionPage() {
             ) : pipelines.length === 0 ? (
               <div className="py-10 text-center text-muted-foreground">暂无流水线</div>
             ) : (
-              <Table>
+              <Table className="min-w-[920px]">
                 <TableHeader>
                   <TableRow>
-                    <TableHead>名称</TableHead>
+                    <TableHead className="w-[180px]">名称</TableHead>
                     <TableHead>描述</TableHead>
-                    <TableHead>节点数</TableHead>
-                    <TableHead>负责人</TableHead>
-                    <TableHead>更新时间</TableHead>
-                    <TableHead className="text-right">操作</TableHead>
+                    <TableHead className="w-[90px]">节点数</TableHead>
+                    <TableHead className="w-[120px]">负责人</TableHead>
+                    <TableHead className="w-[170px]">更新时间</TableHead>
+                    <TableHead className="w-[180px] text-right">操作</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -503,16 +503,16 @@ export function IngestionPage() {
             ) : tasks.length === 0 ? (
               <div className="py-10 text-center text-muted-foreground">暂无任务</div>
             ) : (
-              <Table>
+              <Table className="min-w-[980px]">
                 <TableHeader>
                   <TableRow>
-                    <TableHead>任务ID</TableHead>
+                    <TableHead className="w-[220px]">任务ID</TableHead>
                     <TableHead>来源</TableHead>
-                    <TableHead>状态</TableHead>
-                    <TableHead>负责人</TableHead>
-                    <TableHead>分片数</TableHead>
-                    <TableHead>创建时间</TableHead>
-                    <TableHead className="text-right">操作</TableHead>
+                    <TableHead className="w-[120px]">状态</TableHead>
+                    <TableHead className="w-[120px]">负责人</TableHead>
+                    <TableHead className="w-[90px]">分片数</TableHead>
+                    <TableHead className="w-[170px]">创建时间</TableHead>
+                    <TableHead className="w-[140px] text-right">操作</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -650,7 +650,7 @@ interface PaginationProps {
 function Pagination({ current, pages, total, onPrev, onNext }: PaginationProps) {
   if (total === 0) return null;
   return (
-    <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
+    <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm text-slate-500">
       <span>共 {total} 条</span>
       <div className="flex items-center gap-2">
         <Button variant="outline" size="sm" onClick={onPrev} disabled={current <= 1}>
@@ -1770,13 +1770,13 @@ function PipelineNodesDialog({ open, pipeline, onOpenChange }: PipelineNodesDial
         {nodes.length === 0 ? (
           <div className="py-6 text-center text-muted-foreground">暂无节点</div>
         ) : (
-          <Table>
+          <Table className="min-w-[640px]">
             <TableHeader>
               <TableRow>
-                <TableHead>#</TableHead>
-                <TableHead>节点ID</TableHead>
-                <TableHead>类型</TableHead>
-                <TableHead>下一节点</TableHead>
+                <TableHead className="w-[60px]">#</TableHead>
+                <TableHead className="w-[160px]">节点ID</TableHead>
+                <TableHead className="w-[120px]">类型</TableHead>
+                <TableHead className="w-[140px]">下一节点</TableHead>
                 <TableHead>配置</TableHead>
               </TableRow>
             </TableHeader>
@@ -2270,13 +2270,13 @@ function TaskDetailDialog({ open, taskId, onOpenChange }: TaskDetailDialogProps)
               {nodes.length === 0 ? (
                 <div className="mt-2 text-sm text-muted-foreground">暂无节点日志</div>
               ) : (
-                <Table>
+                <Table className="min-w-[720px]">
                   <TableHeader>
                     <TableRow>
-                      <TableHead>节点</TableHead>
-                      <TableHead>类型</TableHead>
-                      <TableHead>状态</TableHead>
-                      <TableHead>耗时</TableHead>
+                      <TableHead className="w-[180px]">节点</TableHead>
+                      <TableHead className="w-[120px]">类型</TableHead>
+                      <TableHead className="w-[100px]">状态</TableHead>
+                      <TableHead className="w-[110px]">耗时</TableHead>
                       <TableHead>消息</TableHead>
                     </TableRow>
                   </TableHeader>

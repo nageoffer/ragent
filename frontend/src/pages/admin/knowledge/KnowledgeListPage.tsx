@@ -23,7 +23,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 
@@ -129,36 +129,35 @@ export function KnowledgeListPage() {
   };
 
   return (
-    <div className="p-8">
+    <div className="admin-page">
+      <div className="admin-page-header">
+        <div>
+          <h1 className="admin-page-title">知识库管理</h1>
+          <p className="admin-page-subtitle">管理所有知识库及其文档</p>
+        </div>
+        <div className="admin-page-actions">
+          <Input
+            value={searchName}
+            onChange={(event) => setSearchName(event.target.value)}
+            placeholder="搜索知识库名称"
+            className="w-[220px]"
+          />
+          <Button variant="outline" onClick={handleSearch}>
+            搜索
+          </Button>
+          <Button variant="outline" onClick={handleRefresh}>
+            <RefreshCw className="w-4 h-4 mr-2" />
+            刷新
+          </Button>
+          <Button onClick={() => setCreateDialogOpen(true)}>
+            <Plus className="w-4 h-4 mr-2" />
+            新建知识库
+          </Button>
+        </div>
+      </div>
+
       <Card>
-        <CardHeader>
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <CardTitle>知识库管理</CardTitle>
-              <CardDescription>管理所有知识库及其文档</CardDescription>
-            </div>
-            <div className="flex flex-1 items-center justify-end gap-2">
-              <Input
-                value={searchName}
-                onChange={(event) => setSearchName(event.target.value)}
-                placeholder="搜索知识库名称"
-                className="max-w-xs"
-              />
-              <Button variant="outline" onClick={handleSearch}>
-                搜索
-              </Button>
-              <Button variant="outline" onClick={handleRefresh}>
-                <RefreshCw className="w-4 h-4 mr-2" />
-                刷新
-              </Button>
-              <Button onClick={() => setCreateDialogOpen(true)}>
-                <Plus className="w-4 h-4 mr-2" />
-                新建知识库
-              </Button>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
+        <CardContent className="pt-6">
           {loading ? (
             <div className="text-center py-8 text-muted-foreground">加载中...</div>
           ) : knowledgeBases.length === 0 ? (
@@ -166,17 +165,17 @@ export function KnowledgeListPage() {
               暂无知识库，点击上方按钮创建
             </div>
           ) : (
-            <Table>
+            <Table className="min-w-[980px]">
               <TableHeader>
                 <TableRow>
-                  <TableHead>名称</TableHead>
-                  <TableHead>Embedding模型</TableHead>
-                  <TableHead>Collection</TableHead>
-                  <TableHead>文档数</TableHead>
-                  <TableHead>负责人</TableHead>
-                  <TableHead>创建时间</TableHead>
-                  <TableHead>修改时间</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
+                  <TableHead className="w-[220px]">名称</TableHead>
+                  <TableHead className="w-[160px]">Embedding模型</TableHead>
+                  <TableHead className="w-[220px]">Collection</TableHead>
+                  <TableHead className="w-[90px]">文档数</TableHead>
+                  <TableHead className="w-[120px]">负责人</TableHead>
+                  <TableHead className="w-[160px]">创建时间</TableHead>
+                  <TableHead className="w-[160px]">修改时间</TableHead>
+                  <TableHead className="w-[150px] text-right">操作</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -185,7 +184,7 @@ export function KnowledgeListPage() {
                     <TableCell className="font-medium">
                       <button
                         type="button"
-                        className="text-primary underline-offset-4 hover:underline"
+                        className="block max-w-[200px] truncate text-slate-900 underline-offset-4 hover:text-slate-700 hover:underline"
                         onClick={() => navigate(`/admin/knowledge/${kb.id}`)}
                       >
                         {kb.name}
@@ -195,7 +194,7 @@ export function KnowledgeListPage() {
                       <Badge variant="secondary">{kb.embeddingModel}</Badge>
                     </TableCell>
                     <TableCell>
-                      <code className="text-sm bg-muted px-2 py-1 rounded">
+                      <code className="admin-code">
                         {kb.collectionName}
                       </code>
                     </TableCell>
@@ -276,7 +275,7 @@ export function KnowledgeListPage() {
       </Dialog>
 
       {pageData ? (
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm text-slate-500">
           <span>共 {pageData.total} 条</span>
           <div className="flex items-center gap-2">
             <Button

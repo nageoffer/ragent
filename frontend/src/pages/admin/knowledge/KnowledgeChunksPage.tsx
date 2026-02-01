@@ -227,15 +227,15 @@ export function KnowledgeChunksPage() {
   };
 
   return (
-    <div className="p-8">
-      <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+    <div className="admin-page">
+      <div className="admin-page-header">
         <div>
-          <h1 className="text-2xl font-semibold">分块管理</h1>
-          <p className="text-sm text-muted-foreground">
+          <h1 className="admin-page-title">分块管理</h1>
+          <p className="admin-page-subtitle">
             {doc?.docName || docId} {kbId ? `（知识库: ${kbId}）` : ""}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="admin-page-actions">
           <Button variant="outline" onClick={() => navigate(`/admin/knowledge/${kbId}`)}>
             返回文档
           </Button>
@@ -302,19 +302,19 @@ export function KnowledgeChunksPage() {
           ) : chunks.length === 0 ? (
             <div className="py-8 text-center text-muted-foreground">暂无分块</div>
           ) : (
-            <Table>
+            <Table className="min-w-[960px]">
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[48px]">
                     <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} />
                   </TableHead>
-                  <TableHead>序号</TableHead>
+                  <TableHead className="w-[70px]">序号</TableHead>
                   <TableHead>内容</TableHead>
-                  <TableHead>状态</TableHead>
-                  <TableHead>字符数</TableHead>
-                  <TableHead>Token数</TableHead>
-                  <TableHead>更新时间</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
+                  <TableHead className="w-[90px]">状态</TableHead>
+                  <TableHead className="w-[90px]">字符数</TableHead>
+                  <TableHead className="w-[90px]">Token数</TableHead>
+                  <TableHead className="w-[170px]">更新时间</TableHead>
+                  <TableHead className="w-[140px] text-right">操作</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -366,7 +366,7 @@ export function KnowledgeChunksPage() {
           )}
 
           {pageData ? (
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm text-slate-500">
               <span>共 {pageData.total} 条</span>
               <div className="flex items-center gap-2">
                 <Button variant="outline" size="sm" onClick={() => setPageNo((prev) => Math.max(1, prev - 1))} disabled={pageData.current <= 1}>

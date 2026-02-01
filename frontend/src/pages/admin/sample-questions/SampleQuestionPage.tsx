@@ -13,7 +13,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle
 } from "@/components/ui/alert-dialog";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
@@ -162,36 +162,35 @@ export function SampleQuestionPage() {
   const records = pageData?.records || [];
 
   return (
-    <div className="p-8">
+    <div className="admin-page">
+      <div className="admin-page-header">
+        <div>
+          <h1 className="admin-page-title">示例问题管理</h1>
+          <p className="admin-page-subtitle">配置欢迎页的示例问题与推荐问法</p>
+        </div>
+        <div className="admin-page-actions">
+          <Input
+            value={searchKeyword}
+            onChange={(event) => setSearchKeyword(event.target.value)}
+            placeholder="搜索标题/描述/问题"
+            className="w-[240px]"
+          />
+          <Button variant="outline" onClick={handleSearch}>
+            搜索
+          </Button>
+          <Button variant="outline" onClick={handleRefresh}>
+            <RefreshCw className="w-4 h-4 mr-2" />
+            刷新
+          </Button>
+          <Button onClick={openCreateDialog}>
+            <Plus className="w-4 h-4 mr-2" />
+            新增示例
+          </Button>
+        </div>
+      </div>
+
       <Card>
-        <CardHeader>
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <CardTitle>示例问题管理</CardTitle>
-              <CardDescription>配置欢迎页的示例问题与推荐问法</CardDescription>
-            </div>
-            <div className="flex flex-1 items-center justify-end gap-2">
-              <Input
-                value={searchKeyword}
-                onChange={(event) => setSearchKeyword(event.target.value)}
-                placeholder="搜索标题/描述/问题"
-                className="max-w-xs"
-              />
-              <Button variant="outline" onClick={handleSearch}>
-                搜索
-              </Button>
-              <Button variant="outline" onClick={handleRefresh}>
-                <RefreshCw className="w-4 h-4 mr-2" />
-                刷新
-              </Button>
-              <Button onClick={openCreateDialog}>
-                <Plus className="w-4 h-4 mr-2" />
-                新增示例
-              </Button>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
+        <CardContent className="pt-6">
           {loading ? (
             <div className="text-center py-8 text-muted-foreground">加载中...</div>
           ) : records.length === 0 ? (
@@ -199,14 +198,14 @@ export function SampleQuestionPage() {
               暂无示例问题，点击上方按钮新增
             </div>
           ) : (
-            <Table>
+            <Table className="min-w-[860px]">
               <TableHeader>
                 <TableRow>
-                  <TableHead>标题</TableHead>
-                  <TableHead>描述</TableHead>
+                  <TableHead className="w-[180px]">标题</TableHead>
+                  <TableHead className="w-[220px]">描述</TableHead>
                   <TableHead>示例问题</TableHead>
-                  <TableHead>更新时间</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
+                  <TableHead className="w-[170px]">更新时间</TableHead>
+                  <TableHead className="w-[140px] text-right">操作</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -250,7 +249,7 @@ export function SampleQuestionPage() {
       </Card>
 
       {pageData ? (
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm text-slate-500">
           <span>共 {pageData.total} 条</span>
           <div className="flex items-center gap-2">
             <Button
