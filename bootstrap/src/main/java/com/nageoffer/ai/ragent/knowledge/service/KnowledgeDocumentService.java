@@ -23,7 +23,10 @@ import com.nageoffer.ai.ragent.knowledge.controller.request.KnowledgeDocumentUpl
 import com.nageoffer.ai.ragent.knowledge.controller.request.KnowledgeDocumentUpdateRequest;
 import com.nageoffer.ai.ragent.knowledge.controller.vo.KnowledgeDocumentVO;
 import com.nageoffer.ai.ragent.knowledge.controller.vo.KnowledgeDocumentChunkLogVO;
+import com.nageoffer.ai.ragent.knowledge.controller.vo.KnowledgeDocumentSearchVO;
 import org.springframework.web.multipart.MultipartFile;
+
+import java.util.List;
 
 /**
  * 知识库文档服务接口
@@ -88,6 +91,15 @@ public interface KnowledgeDocumentService {
      * @param enabled 是否启用
      */
     void enable(String docId, boolean enabled);
+
+    /**
+     * 搜索文档（用于全局检索建议）
+     *
+     * @param keyword 关键词
+     * @param limit   最大返回数量
+     * @return 文档列表
+     */
+    List<KnowledgeDocumentSearchVO> search(String keyword, int limit);
 
     /**
      * 查询文档分块日志

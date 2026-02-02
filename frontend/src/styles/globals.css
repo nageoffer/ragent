@@ -236,6 +236,14 @@ body {
     @apply absolute left-0 right-0 top-full z-30 mt-2 rounded-xl border border-slate-200 bg-white p-1 shadow-lg;
   }
 
+  .admin-layout .admin-topbar-suggest-section + .admin-topbar-suggest-section {
+    @apply mt-1 border-t border-slate-100 pt-1;
+  }
+
+  .admin-layout .admin-topbar-suggest-group {
+    @apply px-3 pt-2 pb-1 text-[11px] font-semibold text-slate-400;
+  }
+
   .admin-layout .admin-topbar-suggest-item {
     @apply flex w-full flex-col items-start gap-1 rounded-lg px-3 py-2 text-left text-sm transition hover:bg-slate-100;
   }
@@ -284,9 +292,18 @@ body {
     @apply grid gap-4 md:grid-cols-2 xl:grid-cols-4;
   }
 
-  .admin-layout .admin-stat-card {
-    @apply flex items-center justify-between rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-transform duration-200 hover:-translate-y-0.5;
+  .admin-layout .admin-stat-scope {
+    @apply text-[10px] font-medium text-slate-400;
   }
+
+  .admin-layout .admin-stat-scope--stamp {
+    @apply rounded-full border border-slate-200/70 bg-white/70 px-2 py-0.5 text-slate-400 backdrop-blur;
+  }
+
+  .admin-layout .admin-stat-card {
+    @apply relative flex items-center justify-between rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-transform duration-200 hover:-translate-y-0.5;
+  }
+
 
   .admin-layout .admin-stat-icon {
     @apply flex h-10 w-10 items-center justify-center rounded-full bg-indigo-50 text-indigo-600;

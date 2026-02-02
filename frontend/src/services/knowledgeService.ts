@@ -55,6 +55,13 @@ export interface KnowledgeChunk {
   updateTime?: string | null;
 }
 
+export interface KnowledgeDocumentSearchItem {
+  id: string;
+  kbId: string | number;
+  docName: string;
+  kbName?: string | null;
+}
+
 export interface KnowledgeDocumentChunkLog {
   id: string;
   docId: string;
@@ -167,6 +174,18 @@ export const getDocumentsPage = async (
       pageSize: params.pageSize ?? 10,
       status: params.status || undefined,
       keyword: params.keyword || undefined
+    }
+  });
+};
+
+export const searchKnowledgeDocuments = async (
+  keyword: string,
+  limit = 8
+): Promise<KnowledgeDocumentSearchItem[]> => {
+  return api.get<KnowledgeDocumentSearchItem[], KnowledgeDocumentSearchItem[]>("/knowledge-base/docs/search", {
+    params: {
+      keyword,
+      limit
     }
   });
 };

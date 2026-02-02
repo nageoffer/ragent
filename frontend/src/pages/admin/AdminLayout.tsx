@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   ChevronDown,
@@ -34,7 +34,12 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { changePassword } from "@/services/userService";
-import { getKnowledgeBases, type KnowledgeBase } from "@/services/knowledgeService";
+import {
+  getKnowledgeBases,
+  searchKnowledgeDocuments,
+  type KnowledgeBase,
+  type KnowledgeDocumentSearchItem
+} from "@/services/knowledgeService";
 
 const menuGroups = [
   {
@@ -70,26 +75,26 @@ const menuGroups = [
           }
         ]
       },
-      {
-        path: "/admin/sample-questions",
-        label: "示例问题",
-        icon: Lightbulb
-      },
-      {
-        path: "/admin/users",
-        label: "用户管理",
-        icon: Users
-      }
     ]
   },
   {
     title: "设置",
     items: [
       {
+        path: "/admin/users",
+        label: "用户管理",
+        icon: Users
+      },
+      {
+        path: "/admin/sample-questions",
+        label: "示例问题",
+        icon: Lightbulb
+      },
+      {
         path: "/admin/settings",
         label: "系统设置",
         icon: Settings
-      }
+      },
     ]
   }
 ];
@@ -119,8 +124,11 @@ export function AdminLayout() {
   const [openGroups, setOpenGroups] = useState({ ingestion: true });
   const [kbQuery, setKbQuery] = useState("");
   const [kbOptions, setKbOptions] = useState<KnowledgeBase[]>([]);
-  const [kbLoading, setKbLoading] = useState(false);
-  const [kbOpen, setKbOpen] = useState(false);
+  const [docOptions, setDocOptions] = useState<KnowledgeDocumentSearchItem[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchFocused, setSearchFocused] = useState(false);
+  const blurTimeoutRef = useRef<number | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   const handleLogout = async () => {
     await logout();
@@ -147,32 +155,45 @@ export function AdminLayout() {
   }, []);
 
   useEffect(() => {
-    if (!kbOpen) return;
+    if (!searchFocused) return;
     const keyword = kbQuery.trim();
+    if (!keyword) {
+      setKbOptions([]);
+      setDocOptions([]);
+      setSearchLoading(false);
+      return;
+    }
+
     let active = true;
     const handle = window.setTimeout(() => {
-      setKbLoading(true);
-      getKnowledgeBases(1, 8, keyword || undefined)
-        .then((data) => {
+      setSearchLoading(true);
+      Promise.all([
+        getKnowledgeBases(1, 6, keyword),
+        searchKnowledgeDocuments(keyword, 6)
+      ])
+        .then(([kbData, docData]) => {
           if (!active) return;
-          setKbOptions(data || []);
+          setKbOptions(kbData || []);
+          setDocOptions(docData || []);
         })
         .catch(() => {
           if (active) {
             setKbOptions([]);
+            setDocOptions([]);
           }
         })
         .finally(() => {
           if (active) {
-            setKbLoading(false);
+            setSearchLoading(false);
           }
         });
     }, 200);
+
     return () => {
       active = false;
       window.clearTimeout(handle);
     };
-  }, [kbQuery, kbOpen]);
+  }, [kbQuery, searchFocused]);
 
   const breadcrumbs = useMemo(() => {
     const segments = location.pathname.split("/").filter(Boolean);
@@ -253,9 +274,38 @@ export function AdminLayout() {
   };
 
   const handleSearchSelect = (kb: KnowledgeBase) => {
+    searchInputRef.current?.blur();
     navigate(`/admin/knowledge/${kb.id}`);
-    setKbOpen(false);
+    setSearchFocused(false);
     setKbQuery("");
+    setKbOptions([]);
+    setDocOptions([]);
+  };
+
+  const handleDocumentSelect = (doc: KnowledgeDocumentSearchItem) => {
+    searchInputRef.current?.blur();
+    navigate(`/admin/knowledge/${doc.kbId}/docs/${doc.id}`);
+    setSearchFocused(false);
+    setKbQuery("");
+    setKbOptions([]);
+    setDocOptions([]);
+  };
+
+  const handleSearchFocus = () => {
+    if (blurTimeoutRef.current) {
+      window.clearTimeout(blurTimeoutRef.current);
+      blurTimeoutRef.current = null;
+    }
+    setSearchFocused(true);
+  };
+
+  const handleSearchBlur = () => {
+    if (blurTimeoutRef.current) {
+      window.clearTimeout(blurTimeoutRef.current);
+    }
+    blurTimeoutRef.current = window.setTimeout(() => {
+      setSearchFocused(false);
+    }, 150);
   };
 
   const handleSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
@@ -265,14 +315,20 @@ export function AdminLayout() {
         handleSearchSelect(kbOptions[0]);
         return;
       }
+      if (docOptions.length > 0) {
+        handleDocumentSelect(docOptions[0]);
+        return;
+      }
       if (keyword) {
+        searchInputRef.current?.blur();
         navigate(`/admin/knowledge?name=${encodeURIComponent(keyword)}`);
-        setKbOpen(false);
+        setSearchFocused(false);
         return;
       }
     }
     if (event.key === "Escape") {
-      setKbOpen(false);
+      searchInputRef.current?.blur();
+      setSearchFocused(false);
     }
   };
 
@@ -285,6 +341,9 @@ export function AdminLayout() {
     }
     return true;
   };
+
+  const hasQuery = kbQuery.trim().length > 0;
+  const showSuggest = searchFocused && hasQuery;
 
   return (
     <div className="admin-layout flex h-screen">
@@ -454,15 +513,13 @@ export function AdminLayout() {
               <div className="admin-topbar-search">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <Input
+                  ref={searchInputRef}
                   value={kbQuery}
                   onChange={(event) => {
                     setKbQuery(event.target.value);
-                    setKbOpen(true);
                   }}
-                  onFocus={() => setKbOpen(true)}
-                  onBlur={() => {
-                    window.setTimeout(() => setKbOpen(false), 150);
-                  }}
+                  onFocus={handleSearchFocus}
+                  onBlur={handleSearchBlur}
                   onKeyDown={handleSearchKeyDown}
                   name="kb-search"
                   autoComplete="off"
@@ -473,32 +530,59 @@ export function AdminLayout() {
                   className="pl-10 pr-16"
                 />
                 <span className="admin-topbar-kbd">Ctrl K</span>
-                {kbOpen ? (
-                  <div className="admin-topbar-suggest">
-                    {kbLoading ? (
-                      <div className="admin-topbar-suggest-item text-slate-400">加载中...</div>
-                    ) : kbOptions.length === 0 ? (
-                      <div className="admin-topbar-suggest-item text-slate-400">
-                        暂无匹配知识库
+                {showSuggest ? (
+                  <div
+                    className="admin-topbar-suggest"
+                    onMouseDown={(event) => event.preventDefault()}
+                  >
+                    {searchLoading && kbOptions.length === 0 && docOptions.length === 0 ? (
+                      <div className="admin-topbar-suggest-item text-slate-400">搜索中...</div>
+                    ) : null}
+                    {kbOptions.length > 0 ? (
+                      <div className="admin-topbar-suggest-section">
+                        <div className="admin-topbar-suggest-group">知识库</div>
+                        {kbOptions.map((kb) => (
+                          <button
+                            key={kb.id}
+                            type="button"
+                            onMouseDown={(event) => {
+                              event.preventDefault();
+                              handleSearchSelect(kb);
+                            }}
+                            className="admin-topbar-suggest-item"
+                          >
+                            <span className="font-medium text-slate-900">{kb.name}</span>
+                            <span className="text-xs text-slate-400">
+                              {kb.collectionName || "未设置 Collection"}
+                            </span>
+                          </button>
+                        ))}
                       </div>
-                    ) : (
-                      kbOptions.map((kb) => (
-                        <button
-                          key={kb.id}
-                          type="button"
-                          onMouseDown={(event) => {
-                            event.preventDefault();
-                            handleSearchSelect(kb);
-                          }}
-                          className="admin-topbar-suggest-item"
-                        >
-                          <span className="font-medium text-slate-900">{kb.name}</span>
-                          <span className="text-xs text-slate-400">
-                            {kb.collectionName || "未设置 Collection"}
-                          </span>
-                        </button>
-                      ))
-                    )}
+                    ) : null}
+                    {docOptions.length > 0 ? (
+                      <div className="admin-topbar-suggest-section">
+                        <div className="admin-topbar-suggest-group">文档</div>
+                        {docOptions.map((doc) => (
+                          <button
+                            key={doc.id}
+                            type="button"
+                            onMouseDown={(event) => {
+                              event.preventDefault();
+                              handleDocumentSelect(doc);
+                            }}
+                            className="admin-topbar-suggest-item"
+                          >
+                            <span className="font-medium text-slate-900">{doc.docName}</span>
+                            <span className="text-xs text-slate-400">
+                              {doc.kbName || `知识库 ${doc.kbId}`}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                    {!searchLoading && kbOptions.length === 0 && docOptions.length === 0 ? (
+                      <div className="admin-topbar-suggest-item text-slate-400">暂无匹配结果</div>
+                    ) : null}
                   </div>
                 ) : null}
               </div>

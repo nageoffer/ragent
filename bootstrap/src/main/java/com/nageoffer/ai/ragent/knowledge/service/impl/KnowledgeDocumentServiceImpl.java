@@ -31,6 +31,7 @@ import com.nageoffer.ai.ragent.knowledge.controller.request.KnowledgeDocumentUpl
 import com.nageoffer.ai.ragent.knowledge.controller.vo.KnowledgeChunkVO;
 import com.nageoffer.ai.ragent.knowledge.controller.vo.KnowledgeDocumentVO;
 import com.nageoffer.ai.ragent.knowledge.controller.vo.KnowledgeDocumentChunkLogVO;
+import com.nageoffer.ai.ragent.knowledge.controller.vo.KnowledgeDocumentSearchVO;
 import com.nageoffer.ai.ragent.core.chunk.ChunkingMode;
 import com.nageoffer.ai.ragent.core.chunk.ChunkingOptions;
 import com.nageoffer.ai.ragent.core.chunk.ChunkingStrategyFactory;
@@ -79,6 +80,7 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.util.StringUtils;
 
 import java.io.InputStream;
+import java.util.Collections;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.HashMap;
@@ -564,6 +566,50 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
         Page<KnowledgeDocumentVO> voPage = new Page<>(result.getCurrent(), result.getSize(), result.getTotal());
         voPage.setRecords(result.getRecords().stream().map(each -> BeanUtil.toBean(each, KnowledgeDocumentVO.class)).toList());
         return voPage;
+    }
+
+    @Override
+    public List<KnowledgeDocumentSearchVO> search(String keyword, int limit) {
+        if (!StringUtils.hasText(keyword)) {
+            return Collections.emptyList();
+        }
+
+        int size = Math.min(Math.max(limit, 1), 20);
+        Page<KnowledgeDocumentDO> mpPage = new Page<>(1, size);
+        LambdaQueryWrapper<KnowledgeDocumentDO> qw = new LambdaQueryWrapper<KnowledgeDocumentDO>()
+                .eq(KnowledgeDocumentDO::getDeleted, 0)
+                .like(KnowledgeDocumentDO::getDocName, keyword)
+                .orderByDesc(KnowledgeDocumentDO::getUpdateTime);
+
+        IPage<KnowledgeDocumentDO> result = docMapper.selectPage(mpPage, qw);
+        List<KnowledgeDocumentSearchVO> records = result.getRecords().stream()
+                .map(each -> BeanUtil.toBean(each, KnowledgeDocumentSearchVO.class))
+                .toList();
+        if (records.isEmpty()) {
+            return records;
+        }
+
+        Set<Long> kbIds = new HashSet<>();
+        for (KnowledgeDocumentSearchVO record : records) {
+            if (record.getKbId() != null) {
+                kbIds.add(record.getKbId());
+            }
+        }
+        if (kbIds.isEmpty()) {
+            return records;
+        }
+
+        List<KnowledgeBaseDO> bases = kbMapper.selectByIds(kbIds);
+        Map<Long, String> nameMap = new HashMap<>();
+        if (bases != null) {
+            for (KnowledgeBaseDO base : bases) {
+                nameMap.put(base.getId(), base.getName());
+            }
+        }
+        for (KnowledgeDocumentSearchVO record : records) {
+            record.setKbName(nameMap.get(record.getKbId()));
+        }
+        return records;
     }
 
     @Override

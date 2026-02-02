@@ -23,6 +23,7 @@ import com.nageoffer.ai.ragent.knowledge.controller.request.KnowledgeDocumentUpl
 import com.nageoffer.ai.ragent.knowledge.controller.request.KnowledgeDocumentUpdateRequest;
 import com.nageoffer.ai.ragent.knowledge.controller.vo.KnowledgeDocumentVO;
 import com.nageoffer.ai.ragent.knowledge.controller.vo.KnowledgeDocumentChunkLogVO;
+import com.nageoffer.ai.ragent.knowledge.controller.vo.KnowledgeDocumentSearchVO;
 import com.nageoffer.ai.ragent.framework.convention.Result;
 import com.nageoffer.ai.ragent.framework.web.Results;
 import com.nageoffer.ai.ragent.knowledge.service.KnowledgeDocumentService;
@@ -41,6 +42,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+
+import java.util.List;
 
 /**
  * 知识库文档管理控制器
@@ -109,6 +112,15 @@ public class KnowledgeDocumentController {
                                                    @RequestParam(value = "status", required = false) String status,
                                                    @RequestParam(value = "keyword", required = false) String keyword) {
         return Results.success(documentService.page(kbId, new Page<>(pageNo, pageSize), status, keyword));
+    }
+
+    /**
+     * 搜索文档（全局检索建议）
+     */
+    @GetMapping("/knowledge-base/docs/search")
+    public Result<List<KnowledgeDocumentSearchVO>> search(@RequestParam(value = "keyword", required = false) String keyword,
+                                                          @RequestParam(value = "limit", defaultValue = "8") int limit) {
+        return Results.success(documentService.search(keyword, limit));
     }
 
     /**

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Database, FileBarChart, FolderOpen, Layers, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -34,6 +34,7 @@ import { getErrorMessage } from "@/utils/error";
 import { cn } from "@/lib/utils";
 
 const PAGE_SIZE = 10;
+const STATS_PAGE_SIZE = 200;
 
 export function KnowledgeListPage() {
   const navigate = useNavigate();
@@ -51,16 +52,16 @@ export function KnowledgeListPage() {
     kb: null
   });
   const [renameValue, setRenameValue] = useState("");
+  const [stats, setStats] = useState({
+    totalCount: 0,
+    documentCount: 0,
+    activeCount: 0,
+    creatorCount: 0
+  });
+  const [statsLoading, setStatsLoading] = useState(true);
+  const statsRequestId = useRef(0);
 
   const knowledgeBases = pageData?.records || [];
-  const totalCount = pageData?.total ?? knowledgeBases.length;
-  const documentCount = knowledgeBases.reduce((sum, kb) => sum + (kb.documentCount ?? 0), 0);
-  const activeCount = knowledgeBases.filter((kb) => (kb.documentCount ?? 0) > 0).length;
-  const collectionCount = new Set(
-    knowledgeBases
-      .map((kb) => kb.collectionName)
-      .filter((name): name is string => Boolean(name))
-  ).size;
 
   const loadKnowledgeBases = async (current = pageNo, name = keyword) => {
     try {
@@ -75,9 +76,72 @@ export function KnowledgeListPage() {
     }
   };
 
+  const loadStats = useCallback(async (name = keyword) => {
+    const requestId = ++statsRequestId.current;
+    const normalized = name.trim();
+    setStatsLoading(true);
+    try {
+      const firstPage = await getKnowledgeBasesPage(1, STATS_PAGE_SIZE, normalized || undefined);
+      if (statsRequestId.current !== requestId) return;
+
+      let documentTotal = 0;
+      let activeTotal = 0;
+      const creatorNames = new Set<string>();
+      const addRecords = (records: KnowledgeBase[] = []) => {
+        records.forEach((kb) => {
+          const docCount = kb.documentCount ?? 0;
+          documentTotal += docCount;
+          if (docCount > 0) {
+            activeTotal += 1;
+          }
+          if (kb.createdBy) {
+            creatorNames.add(kb.createdBy);
+          }
+        });
+      };
+
+      addRecords(firstPage.records || []);
+
+      const totalCount = firstPage.total ?? (firstPage.records?.length || 0);
+      const totalPages =
+        firstPage.pages || Math.max(1, Math.ceil(totalCount / STATS_PAGE_SIZE));
+
+      for (let page = 2; page <= totalPages; page += 1) {
+        const nextPage = await getKnowledgeBasesPage(page, STATS_PAGE_SIZE, normalized || undefined);
+        if (statsRequestId.current !== requestId) return;
+        addRecords(nextPage.records || []);
+      }
+
+      if (statsRequestId.current !== requestId) return;
+      setStats({
+        totalCount,
+        documentCount: documentTotal,
+        activeCount: activeTotal,
+        creatorCount: creatorNames.size
+      });
+    } catch (error) {
+      if (statsRequestId.current !== requestId) return;
+      console.error(error);
+      setStats({
+        totalCount: 0,
+        documentCount: 0,
+        activeCount: 0,
+        creatorCount: 0
+      });
+    } finally {
+      if (statsRequestId.current === requestId) {
+        setStatsLoading(false);
+      }
+    }
+  }, [keyword]);
+
   useEffect(() => {
     loadKnowledgeBases();
   }, [pageNo, keyword]);
+
+  useEffect(() => {
+    loadStats(keyword);
+  }, [keyword, loadStats]);
 
   useEffect(() => {
     const trimmed = nameFromQuery.trim();
@@ -102,6 +166,7 @@ export function KnowledgeListPage() {
   const handleRefresh = () => {
     setPageNo(1);
     loadKnowledgeBases(1, keyword);
+    loadStats(keyword);
   };
 
   const handleDelete = async () => {
@@ -113,6 +178,7 @@ export function KnowledgeListPage() {
       setDeleteTarget(null);
       setPageNo(1);
       await loadKnowledgeBases(1, keyword);
+      await loadStats(keyword);
     } catch (error) {
       toast.error(getErrorMessage(error, "删除失败"));
       console.error(error);
@@ -127,7 +193,7 @@ export function KnowledgeListPage() {
   };
 
   const formatStatValue = (value: number) => {
-    if (loading) return "--";
+    if (statsLoading) return "--";
     return value.toLocaleString("zh-CN");
   };
 
@@ -210,10 +276,10 @@ export function KnowledgeListPage() {
 
       <div className="admin-stat-grid">
         {[
-          { label: "知识库总数", value: totalCount, icon: Database, hint: "总计" },
-          { label: "当前页文档", value: documentCount, icon: FileBarChart, hint: "当前页" },
-          { label: "含文档知识库", value: activeCount, icon: FolderOpen, hint: "当前页" },
-          { label: "Collection 数", value: collectionCount, icon: Layers, hint: "当前页" }
+          { label: "知识库", value: stats.totalCount, icon: Database, scope: "全部" },
+          { label: "文档数", value: stats.documentCount, icon: FileBarChart, scope: "全部" },
+          { label: "含文档知识库", value: stats.activeCount, icon: FolderOpen, scope: "全部" },
+          { label: "创建用户数", value: stats.creatorCount, icon: Layers, scope: "全部" }
         ].map((item) => {
           const Icon = item.icon;
           return (
@@ -227,7 +293,7 @@ export function KnowledgeListPage() {
                   <div className="admin-stat-value">{formatStatValue(item.value)}</div>
                 </div>
               </div>
-              <span className="admin-stat-trend text-slate-400">{item.hint}</span>
+              <span className="admin-stat-scope admin-stat-scope--stamp">{item.scope}</span>
             </div>
           );
         })}
@@ -245,8 +311,8 @@ export function KnowledgeListPage() {
             <Table className="min-w-[980px]">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[220px]">名称</TableHead>
-                  <TableHead className="w-[160px]">Embedding模型</TableHead>
+                  <TableHead className="w-[200px]">名称</TableHead>
+                  <TableHead className="w-[180px]">Embedding模型</TableHead>
                   <TableHead className="w-[220px]">Collection</TableHead>
                   <TableHead className="w-[90px]">文档数</TableHead>
                   <TableHead className="w-[120px]">负责人</TableHead>
@@ -392,6 +458,7 @@ export function KnowledgeListPage() {
         onSuccess={() => {
           setPageNo(1);
           loadKnowledgeBases(1, keyword);
+          loadStats(keyword);
         }}
       />
     </div>
