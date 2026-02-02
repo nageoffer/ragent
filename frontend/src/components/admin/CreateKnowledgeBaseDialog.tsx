@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -32,6 +32,7 @@ import {
 import { Button } from "@/components/ui/button";
 
 import { createKnowledgeBase } from "@/services/knowledgeService";
+import { getSystemSettings, type ModelCandidate } from "@/services/settingsService";
 import { getErrorMessage } from "@/utils/error";
 
 const formSchema = z.object({
@@ -58,6 +59,8 @@ export function CreateKnowledgeBaseDialog({
   onSuccess,
 }: CreateKnowledgeBaseDialogProps) {
   const [loading, setLoading] = useState(false);
+  const [modelLoading, setModelLoading] = useState(false);
+  const [embeddingModels, setEmbeddingModels] = useState<ModelCandidate[]>([]);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -67,6 +70,43 @@ export function CreateKnowledgeBaseDialog({
       collectionName: "",
     },
   });
+
+  useEffect(() => {
+    if (!open) return;
+    let active = true;
+    setModelLoading(true);
+    getSystemSettings()
+      .then((settings) => {
+        if (!active) return;
+        const candidates = settings.ai?.embedding?.candidates || [];
+        const enabledModels = candidates.filter((item) => item.enabled !== false);
+        setEmbeddingModels(enabledModels);
+      })
+      .catch(() => {
+        if (active) {
+          setEmbeddingModels([]);
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setModelLoading(false);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [open, form]);
+
+  const selectOptions = useMemo(() => {
+    if (embeddingModels.length === 0) return [];
+    const uniqueMap = new Map<string, ModelCandidate>();
+    embeddingModels.forEach((item) => {
+      if (item.id) {
+        uniqueMap.set(item.id, item);
+      }
+    });
+    return Array.from(uniqueMap.values());
+  }, [embeddingModels]);
 
   const onSubmit = async (values: FormValues) => {
     try {
@@ -84,8 +124,19 @@ export function CreateKnowledgeBaseDialog({
     }
   };
 
+  const handleDialogOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) {
+      form.reset({
+        name: "",
+        embeddingModel: "",
+        collectionName: "",
+      });
+    }
+    onOpenChange(nextOpen);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleDialogOpenChange}>
       <DialogContent
         className="sm:max-w-[500px]"
         onOpenAutoFocus={(e) => e.preventDefault()}
@@ -122,16 +173,33 @@ export function CreateKnowledgeBaseDialog({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Embedding模型</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <Select value={field.value} onValueChange={field.onChange}>
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue placeholder="选择Embedding模型" />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="text-embedding-v3">text-embedding-v3</SelectItem>
-                      <SelectItem value="text-embedding-v2">text-embedding-v2</SelectItem>
-                      <SelectItem value="bge-large-zh-v1.5">bge-large-zh-v1.5</SelectItem>
+                      {modelLoading ? (
+                        <SelectItem value="loading" disabled>
+                          加载中...
+                        </SelectItem>
+                      ) : selectOptions.length === 0 ? (
+                        <SelectItem value="empty" disabled>
+                          暂无可用模型
+                        </SelectItem>
+                      ) : (
+                        selectOptions.map((item) => {
+                          const label = item.provider && item.model
+                            ? `${item.provider} · ${item.model}`
+                            : item.model || item.id;
+                          return (
+                            <SelectItem key={item.id} value={item.id}>
+                              {label}
+                            </SelectItem>
+                          );
+                        })
+                      )}
                     </SelectContent>
                   </Select>
                   <FormDescription>
@@ -163,7 +231,7 @@ export function CreateKnowledgeBaseDialog({
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => onOpenChange(false)}
+                onClick={() => handleDialogOpenChange(false)}
                 disabled={loading}
               >
                 取消
