@@ -48,6 +48,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -145,9 +146,85 @@ public class KnowledgeChunkServiceImpl implements KnowledgeChunkService {
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void batchCreate(String docId, List<KnowledgeChunkCreateRequest> requestParams) {
-        // TODO：后续优化批量性能
-        requestParams.forEach(request -> create(docId, request));
+        batchCreate(docId, requestParams, false);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void batchCreate(String docId, List<KnowledgeChunkCreateRequest> requestParams, boolean writeVector) {
+        if (CollUtil.isEmpty(requestParams)) {
+            return;
+        }
+
+        KnowledgeDocumentDO documentDO = documentMapper.selectById(docId);
+        Assert.notNull(documentDO, () -> new ClientException("文档不存在"));
+
+        boolean needAutoIndex = requestParams.stream().anyMatch(request -> request.getIndex() == null);
+        int nextIndex = 0;
+        if (needAutoIndex) {
+            KnowledgeChunkDO latest = chunkMapper.selectOne(
+                    new LambdaQueryWrapper<KnowledgeChunkDO>()
+                            .eq(KnowledgeChunkDO::getDocId, docId)
+                            .orderByDesc(KnowledgeChunkDO::getChunkIndex)
+                            .last("LIMIT 1")
+            );
+            nextIndex = latest != null && latest.getChunkIndex() != null ? latest.getChunkIndex() + 1 : 0;
+        }
+
+        Long docIdLong = Long.parseLong(docId);
+        Long kbId = documentDO.getKbId();
+        String username = UserContext.getUsername();
+        List<KnowledgeChunkDO> chunkDOList = new ArrayList<>(requestParams.size());
+
+        for (KnowledgeChunkCreateRequest request : requestParams) {
+            String content = request.getContent();
+            Assert.notBlank(content, () -> new ClientException("Chunk 内容不能为空"));
+
+            Integer chunkIndex = request.getIndex();
+            if (chunkIndex == null) {
+                chunkIndex = nextIndex++;
+            }
+
+            String chunkId = request.getChunkId();
+            if (!StringUtils.hasText(chunkId)) {
+                chunkId = IdUtil.getSnowflakeNextIdStr();
+            }
+
+            KnowledgeChunkDO chunkDO = KnowledgeChunkDO.builder()
+                    .id(Long.parseLong(chunkId))
+                    .kbId(kbId)
+                    .docId(docIdLong)
+                    .chunkIndex(chunkIndex)
+                    .content(content)
+                    .contentHash(calculateHash(content))
+                    .charCount(content.length())
+                    .tokenCount(null)
+                    .enabled(1)
+                    .createdBy(username)
+                    .build();
+            chunkDOList.add(chunkDO);
+        }
+
+        // 批量写入数据库，向量索引由上层统一处理以避免重复计算
+        chunkMapper.insert(chunkDOList);
+
+        if (writeVector) {
+            String kbIdStr = String.valueOf(documentDO.getKbId());
+            String embeddingModel = resolveEmbeddingModel(documentDO.getKbId());
+            List<VectorChunk> vectorChunks = chunkDOList.stream()
+                    .map(each -> VectorChunk.builder()
+                            .chunkId(String.valueOf(each.getId()))
+                            .content(each.getContent())
+                            .index(each.getChunkIndex())
+                            .build())
+                    .toList();
+            if (CollUtil.isNotEmpty(vectorChunks)) {
+                attachEmbeddings(vectorChunks, embeddingModel);
+                vectorStoreService.indexDocumentChunks(kbIdStr, docId, vectorChunks);
+            }
+        }
     }
 
     @Override

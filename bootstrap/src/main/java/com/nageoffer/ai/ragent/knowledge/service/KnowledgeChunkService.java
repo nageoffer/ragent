@@ -58,12 +58,21 @@ public interface KnowledgeChunkService {
     KnowledgeChunkVO create(String docId, KnowledgeChunkCreateRequest requestParam);
 
     /**
-     * 批量新增文档分片
+     * 批量新增文档分片（默认不写入向量库）
      *
      * @param docId         文档 ID
      * @param requestParams 批量新增分片请求参数列表
      */
     void batchCreate(String docId, List<KnowledgeChunkCreateRequest> requestParams);
+
+    /**
+     * 批量新增文档分片（可选同步写入向量库）
+     *
+     * @param docId         文档 ID
+     * @param requestParams 批量新增分片请求参数列表
+     * @param writeVector   是否同步写入向量库
+     */
+    void batchCreate(String docId, List<KnowledgeChunkCreateRequest> requestParams, boolean writeVector);
 
     /**
      * 更新指定文档的特定分片内容
