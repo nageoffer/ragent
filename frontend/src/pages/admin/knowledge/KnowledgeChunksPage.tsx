@@ -526,14 +526,17 @@ function ChunkDialog({ mode, open, chunk, onOpenChange, onSubmit }: ChunkDialogP
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[720px] overflow-hidden flex flex-col max-h-[90vh]" onOpenAutoFocus={(e) => e.preventDefault()}>
+      <DialogContent
+        className="sm:max-w-[760px] sm:min-h-[70vh] overflow-hidden flex flex-col max-h-[92vh]"
+        onOpenAutoFocus={(e) => e.preventDefault()}
+      >
         <DialogHeader>
           <DialogTitle>{mode === "create" ? "新建分块" : "编辑分块"}</DialogTitle>
           <DialogDescription>手动维护分块内容</DialogDescription>
         </DialogHeader>
-        <div className="space-y-4 overflow-y-auto flex-1 px-1 sidebar-scroll">
+        <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-1 pb-3 sidebar-scroll">
           {mode === "create" ? (
-            <>
+            <div className="space-y-4">
               <div>
                 <label className="text-sm font-medium">Chunk ID（数字）</label>
                 <Input value={chunkId} onChange={(event) => setChunkId(event.target.value)} />
@@ -542,11 +545,15 @@ function ChunkDialog({ mode, open, chunk, onOpenChange, onSubmit }: ChunkDialogP
                 <label className="text-sm font-medium">序号（可选）</label>
                 <Input value={indexValue} onChange={(event) => setIndexValue(event.target.value)} placeholder="例如：0" />
               </div>
-            </>
+            </div>
           ) : null}
-          <div>
+          <div className="flex min-h-0 flex-1 flex-col">
             <label className="text-sm font-medium">内容</label>
-            <Textarea className="resize-none" rows={8} value={content} onChange={(event) => setContent(event.target.value)} />
+            <Textarea
+              className="mt-2 flex-1 min-h-[280px] resize-none chunk-editor-textarea"
+              value={content}
+              onChange={(event) => setContent(event.target.value)}
+            />
           </div>
         </div>
         <DialogFooter>

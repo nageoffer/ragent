@@ -560,6 +560,38 @@ textarea {
   field-sizing: content;
 }
 
+.chunk-editor-textarea {
+  field-sizing: fixed;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.chunk-editor-textarea::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.chunk-editor-textarea:hover,
+.chunk-editor-textarea:focus {
+  scrollbar-width: thin;
+}
+
+.chunk-editor-textarea:hover::-webkit-scrollbar,
+.chunk-editor-textarea:focus::-webkit-scrollbar {
+  width: 6px;
+}
+
+.chunk-editor-textarea:hover::-webkit-scrollbar-thumb,
+.chunk-editor-textarea:focus::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.35);
+  border-radius: 999px;
+}
+
+.chunk-editor-textarea:hover::-webkit-scrollbar-track,
+.chunk-editor-textarea:focus::-webkit-scrollbar-track {
+  background: transparent;
+}
+
 .dot-flash::after {
   content: "";
   @apply inline-block w-1.5 h-1.5 rounded-full bg-muted-foreground align-middle ml-1 animate-blink;
