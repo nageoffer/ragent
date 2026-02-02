@@ -51,6 +51,15 @@ public interface EmbeddingService {
     List<Float> embed(String text);
 
     /**
+     * 指定模型对单个文本进行向量化（不进行重试或降级）
+     *
+     * @param text    待向量化文本
+     * @param modelId 指定的模型ID
+     * @return 文本对应的向量
+     */
+    List<Float> embed(String text, String modelId);
+
+    /**
      * 对多个文本进行批量向量化
      * <p>
      * 说明：
@@ -62,6 +71,15 @@ public interface EmbeddingService {
      * @return 向量列表，每项对应输入文本的向量
      */
     List<List<Float>> embedBatch(List<String> texts);
+
+    /**
+     * 指定模型对多个文本进行批量向量化（不进行重试或降级）
+     *
+     * @param texts   文本列表
+     * @param modelId 指定的模型ID
+     * @return 向量列表
+     */
+    List<List<Float>> embedBatch(List<String> texts, String modelId);
 
     /**
      * 返回向量维度（Embedding Dimension）

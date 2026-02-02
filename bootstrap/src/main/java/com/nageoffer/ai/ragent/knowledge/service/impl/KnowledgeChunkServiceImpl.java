@@ -18,8 +18,10 @@
 package com.nageoffer.ai.ragent.knowledge.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.lang.Assert;
 import cn.hutool.core.util.IdUtil;
+import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
@@ -31,7 +33,9 @@ import com.nageoffer.ai.ragent.knowledge.controller.request.KnowledgeChunkUpdate
 import com.nageoffer.ai.ragent.knowledge.controller.vo.KnowledgeChunkVO;
 import com.nageoffer.ai.ragent.core.chunk.VectorChunk;
 import com.nageoffer.ai.ragent.knowledge.dao.entity.KnowledgeChunkDO;
+import com.nageoffer.ai.ragent.knowledge.dao.entity.KnowledgeBaseDO;
 import com.nageoffer.ai.ragent.knowledge.dao.entity.KnowledgeDocumentDO;
+import com.nageoffer.ai.ragent.knowledge.dao.mapper.KnowledgeBaseMapper;
 import com.nageoffer.ai.ragent.knowledge.dao.mapper.KnowledgeChunkMapper;
 import com.nageoffer.ai.ragent.knowledge.dao.mapper.KnowledgeDocumentMapper;
 import com.nageoffer.ai.ragent.framework.context.UserContext;
@@ -62,6 +66,7 @@ public class KnowledgeChunkServiceImpl implements KnowledgeChunkService {
 
     private final KnowledgeChunkMapper chunkMapper;
     private final KnowledgeDocumentMapper documentMapper;
+    private final KnowledgeBaseMapper knowledgeBaseMapper;
     private final EmbeddingService embeddingService;
     private final VectorStoreService vectorStoreService;
 
@@ -134,7 +139,7 @@ public class KnowledgeChunkServiceImpl implements KnowledgeChunkService {
         log.info("新增 Chunk 成功, kbId={}, docId={}, chunkId={}, chunkIndex={}", documentDO.getKbId(), docId, chunkDO.getId(), chunkIndex);
 
         // 同步写入 Milvus
-        syncChunkToMilvus(String.valueOf(documentDO.getKbId()), docId, chunkDO);
+        syncChunkToMilvus(String.valueOf(documentDO.getKbId()), docId, chunkDO, resolveEmbeddingModel(documentDO.getKbId()));
 
         return BeanUtil.toBean(chunkDO, KnowledgeChunkVO.class);
     }
@@ -173,6 +178,7 @@ public class KnowledgeChunkServiceImpl implements KnowledgeChunkService {
         log.info("更新 Chunk 成功, kbId={}, docId={}, chunkId={}", kbId, docId, chunkId);
 
         // 同步向量数据库
+        String embeddingModel = resolveEmbeddingModel(documentDO.getKbId());
         vectorStoreService.updateChunk(
                 String.valueOf(chunkDO.getKbId()),
                 docId,
@@ -180,7 +186,7 @@ public class KnowledgeChunkServiceImpl implements KnowledgeChunkService {
                         .chunkId(chunkId)
                         .content(newContent)
                         .index(chunkDO.getChunkIndex())
-                        .embedding(toArray(embeddingService.embed(newContent)))
+                        .embedding(toArray(embedContent(newContent, embeddingModel)))
                         .build()
         );
     }
@@ -227,7 +233,7 @@ public class KnowledgeChunkServiceImpl implements KnowledgeChunkService {
         log.info("{}Chunk 成功, kbId={}, docId={}, chunkId={}", enabled ? "启用" : "禁用", kbId, docId, chunkId);
 
         if (enabled) {
-            syncChunkToMilvus(kbId, docId, chunkDO);
+            syncChunkToMilvus(kbId, docId, chunkDO, resolveEmbeddingModel(documentDO.getKbId()));
         } else {
             deleteChunkFromMilvus(kbId, chunkId);
         }
@@ -328,7 +334,7 @@ public class KnowledgeChunkServiceImpl implements KnowledgeChunkService {
                 )
                 .collect(Collectors.toList());
 
-        attachEmbeddings(chunks);
+        attachEmbeddings(chunks, resolveEmbeddingModel(documentDO.getKbId()));
 
         vectorStoreService.indexDocumentChunks(kbId, docId, chunks);
 
@@ -389,8 +395,8 @@ public class KnowledgeChunkServiceImpl implements KnowledgeChunkService {
     /**
      * 将单个 chunk 同步到 Milvus
      */
-    private void syncChunkToMilvus(String kbId, String docId, KnowledgeChunkDO chunkDO) {
-        List<Float> embedding = embeddingService.embed(chunkDO.getContent());
+    private void syncChunkToMilvus(String kbId, String docId, KnowledgeChunkDO chunkDO, String embeddingModel) {
+        List<Float> embedding = embedContent(chunkDO.getContent(), embeddingModel);
         float[] vector = toArray(embedding);
 
         VectorChunk chunk = VectorChunk.builder()
@@ -442,17 +448,37 @@ public class KnowledgeChunkServiceImpl implements KnowledgeChunkService {
         return arr;
     }
 
-    private void attachEmbeddings(List<VectorChunk> chunks) {
-        if (chunks == null || chunks.isEmpty()) {
+    private void attachEmbeddings(List<VectorChunk> chunks, String embeddingModel) {
+        if (CollUtil.isEmpty(chunks)) {
             return;
         }
         List<String> texts = chunks.stream().map(VectorChunk::getContent).toList();
-        List<List<Float>> vectors = embeddingService.embedBatch(texts);
+        List<List<Float>> vectors = embedBatch(texts, embeddingModel);
         if (vectors == null || vectors.size() != chunks.size()) {
             throw new ServiceException("向量结果数量不匹配");
         }
         for (int i = 0; i < chunks.size(); i++) {
             chunks.get(i).setEmbedding(toArray(vectors.get(i)));
         }
+    }
+
+    private List<Float> embedContent(String content, String embeddingModel) {
+        return StrUtil.isBlank(embeddingModel)
+                ? embeddingService.embed(content)
+                : embeddingService.embed(content, embeddingModel);
+    }
+
+    private List<List<Float>> embedBatch(List<String> texts, String embeddingModel) {
+        return StrUtil.isBlank(embeddingModel)
+                ? embeddingService.embedBatch(texts)
+                : embeddingService.embedBatch(texts, embeddingModel);
+    }
+
+    private String resolveEmbeddingModel(Long kbId) {
+        if (kbId == null) {
+            return null;
+        }
+        KnowledgeBaseDO kbDO = knowledgeBaseMapper.selectById(kbId);
+        return kbDO != null ? kbDO.getEmbeddingModel() : null;
     }
 }

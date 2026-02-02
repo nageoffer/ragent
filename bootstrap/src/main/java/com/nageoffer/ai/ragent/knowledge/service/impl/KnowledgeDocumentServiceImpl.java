@@ -376,7 +376,8 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
     private ChunkProcessResult runChunkProcess(KnowledgeDocumentDO documentDO) {
         String docId = String.valueOf(documentDO.getId());
         ChunkingMode chunkingMode = resolveChunkingMode(documentDO.getChunkStrategy());
-        ChunkingOptions config = buildChunkingOptions(chunkingMode, documentDO);
+        String embeddingModel = resolveEmbeddingModel(documentDO.getKbId());
+        ChunkingOptions config = buildChunkingOptions(chunkingMode, documentDO, embeddingModel);
         long extractStart = System.currentTimeMillis();
         long chunkStart = 0;
         long extractDuration = 0;
@@ -630,9 +631,10 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
             vectorStoreService.deleteDocumentVectors(String.valueOf(documentDO.getKbId()), docId);
         } else {
             // 启用文档时，根据文档分块记录重建向量索引
+            String embeddingModel = resolveEmbeddingModel(documentDO.getKbId());
             List<KnowledgeChunkVO> chunks = knowledgeChunkService.listByDocId(docId);
             List<VectorChunk> vectorChunks = chunks.parallelStream().map(each -> {
-                        List<Float> embed = embeddingService.embed(each.getContent());
+                        List<Float> embed = embedContent(each.getContent(), embeddingModel);
                         return VectorChunk.builder()
                                 .chunkId(each.getId())
                                 .content(each.getContent())
@@ -701,6 +703,21 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
                 : totalDuration - extract - chunk - embedding;
     }
 
+    private String resolveEmbeddingModel(Long kbId) {
+        if (kbId == null) {
+            return null;
+        }
+        KnowledgeBaseDO kbDO = kbMapper.selectById(kbId);
+        return kbDO != null ? kbDO.getEmbeddingModel() : null;
+    }
+
+    private List<Float> embedContent(String content, String embeddingModel) {
+        if (!StringUtils.hasText(embeddingModel)) {
+            return embeddingService.embed(content);
+        }
+        return embeddingService.embed(content, embeddingModel);
+    }
+
     private void patchStatus(KnowledgeDocumentDO doc) {
         doc.setStatus(DocumentStatus.RUNNING.getCode());
         doc.setUpdatedBy(UserContext.getUsername());
@@ -747,7 +764,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
         return ChunkingMode.fromValue(mode);
     }
 
-    private ChunkingOptions buildChunkingOptions(ChunkingMode mode, KnowledgeDocumentDO documentDO) {
+    private ChunkingOptions buildChunkingOptions(ChunkingMode mode, KnowledgeDocumentDO documentDO, String embeddingModel) {
         if (mode == null) {
             mode = ChunkingMode.STRUCTURE_AWARE;
         }
@@ -755,9 +772,14 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
         if (mode == ChunkingMode.FIXED_SIZE) {
             Integer chunkSize = getConfigInt(config, "chunkSize", 512);
             Integer overlapSize = getConfigInt(config, "overlapSize", 128);
+            Map<String, Object> metadata = new HashMap<>();
+            if (StringUtils.hasText(embeddingModel)) {
+                metadata.put("embeddingModel", embeddingModel);
+            }
             return ChunkingOptions.builder()
                     .chunkSize(chunkSize)
                     .overlapSize(overlapSize)
+                    .metadata(metadata)
                     .build();
         }
         Integer target = getConfigInt(config, "targetChars", targetChars);
@@ -770,6 +792,9 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
         metadata.put("maxChars", max);
         metadata.put("minChars", min);
         metadata.put("overlapChars", overlap);
+        if (StringUtils.hasText(embeddingModel)) {
+            metadata.put("embeddingModel", embeddingModel);
+        }
 
         return ChunkingOptions.builder()
                 .chunkSize(target)
