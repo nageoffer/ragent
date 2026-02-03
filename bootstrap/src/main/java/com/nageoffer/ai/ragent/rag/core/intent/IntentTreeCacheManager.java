@@ -62,13 +62,11 @@ public class IntentTreeCacheManager {
                 return null;
             }
 
-            List<IntentNode> roots = objectMapper.readValue(
+            return objectMapper.readValue(
                     cacheJson,
                     new TypeReference<>() {
                     }
             );
-            log.info("从Redis缓存加载意图树成功，根节点数: {}", roots.size());
-            return roots;
         } catch (Exception e) {
             log.error("从Redis读取意图树缓存失败", e);
             return null;
