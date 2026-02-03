@@ -72,8 +72,14 @@ public class IntentDirectedSearchChannel implements SearchChannel {
             return false;
         }
 
-        // 只要有意图识别结果，就启用
-        return CollUtil.isNotEmpty(context.getIntents());
+        // 检查是否有 KB 意图（而不仅仅是有意图）
+        if (CollUtil.isEmpty(context.getIntents())) {
+            return false;
+        }
+
+        // 提取 KB 意图，只有存在 KB 意图时才启用
+        List<NodeScore> kbIntents = extractKbIntents(context);
+        return CollUtil.isNotEmpty(kbIntents);
     }
 
     @Override
@@ -85,7 +91,7 @@ public class IntentDirectedSearchChannel implements SearchChannel {
             List<NodeScore> kbIntents = extractKbIntents(context);
 
             if (CollUtil.isEmpty(kbIntents)) {
-                log.info("未识别出 KB 意图，跳过意图定向检索");
+                log.warn("意图定向检索通道被启用，但未找到 KB 意图（不应该发生）");
                 return SearchChannelResult.builder()
                         .channelType(SearchChannelType.INTENT_DIRECTED)
                         .channelName(getName())

@@ -59,7 +59,7 @@ public class RAGConstant {
     /**
      * 默认返回的 TopK
      */
-    public static final int DEFAULT_TOP_K = 5;
+    public static final int DEFAULT_TOP_K = 10;
 
     /**
      * 检索时的 TopK 扩展倍数
