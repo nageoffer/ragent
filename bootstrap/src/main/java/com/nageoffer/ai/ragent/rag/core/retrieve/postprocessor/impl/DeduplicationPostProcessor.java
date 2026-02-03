@@ -59,8 +59,6 @@ public class DeduplicationPostProcessor implements SearchResultPostProcessor {
     public List<RetrievedChunk> process(List<RetrievedChunk> chunks,
                                         List<SearchChannelResult> results,
                                         SearchContext context) {
-        log.info("执行去重处理，输入 Chunk 数：{}", chunks.size());
-
         // 使用 LinkedHashMap 保持顺序并去重
         Map<String, RetrievedChunk> chunkMap = new LinkedHashMap<>();
 
@@ -87,10 +85,7 @@ public class DeduplicationPostProcessor implements SearchResultPostProcessor {
                     }
                 });
 
-        List<RetrievedChunk> deduplicated = new ArrayList<>(chunkMap.values());
-        log.info("去重完成，输出 Chunk 数：{}", deduplicated.size());
-
-        return deduplicated;
+        return new ArrayList<>(chunkMap.values());
     }
 
     /**

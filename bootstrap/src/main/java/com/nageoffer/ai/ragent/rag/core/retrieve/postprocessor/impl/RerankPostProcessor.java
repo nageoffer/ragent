@@ -65,16 +65,10 @@ public class RerankPostProcessor implements SearchResultPostProcessor {
             return chunks;
         }
 
-        log.info("执行 Rerank 处理，输入 Chunk 数：{}", chunks.size());
-
-        List<RetrievedChunk> reranked = rerankService.rerank(
+        return rerankService.rerank(
                 context.getMainQuestion(),
                 chunks,
                 context.getTopK()
         );
-
-        log.info("Rerank 完成，输出 Chunk 数：{}", reranked.size());
-
-        return reranked;
     }
 }

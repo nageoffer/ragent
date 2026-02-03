@@ -175,9 +175,6 @@ public class MultiChannelRetrievalEngine {
                     .collect(Collectors.toList());
         }
 
-        log.info("启用的后置处理器：{}",
-                enabledProcessors.stream().map(SearchResultPostProcessor::getName).toList());
-
         // 初始 Chunk 列表（所有通道的结果合并）
         List<RetrievedChunk> chunks = results.stream()
                 .flatMap(r -> r.getChunks().stream())
@@ -189,7 +186,6 @@ public class MultiChannelRetrievalEngine {
         for (SearchResultPostProcessor processor : enabledProcessors) {
             try {
                 int beforeSize = chunks.size();
-                log.info("执行后置处理器：{}", processor.getName());
                 chunks = processor.process(chunks, results, context);
                 int afterSize = chunks.size();
 

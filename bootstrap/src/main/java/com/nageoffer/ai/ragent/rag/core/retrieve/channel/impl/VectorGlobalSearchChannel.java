@@ -119,8 +119,6 @@ public class VectorGlobalSearchChannel implements SearchChannel {
                         .build();
             }
 
-            log.info("全局检索将在 {} 个 collection 中进行：{}", collections.size(), collections);
-
             // 并行在所有 collection 中检索
             int topKMultiplier = properties.getChannels().getVectorGlobal().getTopKMultiplier();
             List<RetrievedChunk> allChunks = retrieveFromAllCollections(
