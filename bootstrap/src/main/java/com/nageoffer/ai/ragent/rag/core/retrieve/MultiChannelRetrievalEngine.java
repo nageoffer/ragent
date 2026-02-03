@@ -31,6 +31,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.stream.Collectors;
@@ -110,20 +111,48 @@ public class MultiChannelRetrievalEngine {
                 ))
                 .toList();
 
-        // 等待所有通道完成
+        // 等待所有通道完成并统计
+        int successCount = 0;
+        int failureCount = 0;
+        int totalChunks = 0;
+
         List<SearchChannelResult> results = futures.stream()
-                .map(CompletableFuture::join)
+                .map(future -> {
+                    try {
+                        return future.join();
+                    } catch (Exception e) {
+                        log.error("获取通道检索结果失败", e);
+                        return null;
+                    }
+                })
+                .filter(Objects::nonNull)
                 .toList();
 
-        // 打印统计信息
-        results.forEach(result -> {
-            log.info("通道 {} 完成，检索到 {} 个 Chunk，置信度：{}，耗时：{}ms",
-                    result.getChannelName(),
-                    result.getChunks().size(),
-                    result.getConfidence(),
-                    result.getLatencyMs()
-            );
-        });
+        // 打印详细统计信息
+        for (SearchChannelResult result : results) {
+            int chunkCount = result.getChunks().size();
+            totalChunks += chunkCount;
+
+            if (chunkCount > 0) {
+                successCount++;
+                log.info("通道 {} 完成 ✓ - 检索到 {} 个 Chunk，置信度：{}，耗时：{}ms",
+                        result.getChannelName(),
+                        chunkCount,
+                        result.getConfidence(),
+                        result.getLatencyMs()
+                );
+            } else {
+                failureCount++;
+                log.warn("通道 {} 完成但无结果 - 置信度：{}，耗时：{}ms",
+                        result.getChannelName(),
+                        result.getConfidence(),
+                        result.getLatencyMs()
+                );
+            }
+        }
+
+        log.info("多通道检索统计 - 总通道数: {}, 有结果: {}, 无结果: {}, Chunk 总数: {}",
+                enabledChannels.size(), successCount, failureCount, totalChunks);
 
         return results;
     }
@@ -154,15 +183,30 @@ public class MultiChannelRetrievalEngine {
                 .flatMap(r -> r.getChunks().stream())
                 .collect(Collectors.toList());
 
+        int initialSize = chunks.size();
+
         // 依次执行处理器
         for (SearchResultPostProcessor processor : enabledProcessors) {
             try {
+                int beforeSize = chunks.size();
                 log.info("执行后置处理器：{}", processor.getName());
                 chunks = processor.process(chunks, results, context);
+                int afterSize = chunks.size();
+
+                log.info("后置处理器 {} 完成 - 输入: {} 个 Chunk, 输出: {} 个 Chunk, 变化: {}",
+                        processor.getName(),
+                        beforeSize,
+                        afterSize,
+                        (afterSize - beforeSize > 0 ? "+" : "") + (afterSize - beforeSize)
+                );
             } catch (Exception e) {
-                log.error("后置处理器 {} 执行失败", processor.getName(), e);
+                log.error("后置处理器 {} 执行失败，跳过该处理器", processor.getName(), e);
+                // 继续执行下一个处理器，不中断整个链
             }
         }
+
+        log.info("后置处理器链执行完成 - 初始: {} 个 Chunk, 最终: {} 个 Chunk",
+                initialSize, chunks.size());
 
         return chunks;
     }

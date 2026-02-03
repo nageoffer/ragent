@@ -158,30 +158,58 @@ public class IntentDirectedSearchChannel implements SearchChannel {
      * 根据意图列表并行检索
      */
     private List<RetrievedChunk> retrieveByIntents(String question,
-                                                     List<NodeScore> kbIntents,
-                                                     int topK) {
-        List<CompletableFuture<List<RetrievedChunk>>> futures = kbIntents.stream()
-                .map(ns -> CompletableFuture.supplyAsync(() -> {
-                    IntentNode node = ns.getNode();
-                    return retrieverService.retrieve(
-                            RetrieveRequest.builder()
-                                    .collectionName(node.getCollectionName())
-                                    .query(question)
-                                    .topK(topK)
-                                    .build()
-                    );
-                }, ragInnerRetrievalExecutor))
+                                                   List<NodeScore> kbIntents,
+                                                   int topK) {
+        // 创建带意图信息的 Future 列表
+        record IntentFuture(NodeScore nodeScore, CompletableFuture<List<RetrievedChunk>> future) {
+        }
+
+        List<IntentFuture> intentFutures = kbIntents.stream()
+                .map(ns -> {
+                    CompletableFuture<List<RetrievedChunk>> future = CompletableFuture.supplyAsync(() -> {
+                        IntentNode node = ns.getNode();
+                        try {
+                            return retrieverService.retrieve(
+                                    RetrieveRequest.builder()
+                                            .collectionName(node.getCollectionName())
+                                            .query(question)
+                                            .topK(topK)
+                                            .build()
+                            );
+                        } catch (Exception e) {
+                            log.error("意图检索失败 - 意图ID: {}, 意图名称: {}, Collection: {}, 错误: {}",
+                                    node.getId(), node.getName(), node.getCollectionName(), e.getMessage(), e);
+                            return List.of();
+                        }
+                    }, ragInnerRetrievalExecutor);
+                    return new IntentFuture(ns, future);
+                })
                 .toList();
 
-        // 等待所有检索完成并合并结果
+        // 等待所有检索完成并合并结果，统计成功/失败数
         List<RetrievedChunk> allChunks = new ArrayList<>();
-        futures.forEach(future -> {
+        int successCount = 0;
+        int failureCount = 0;
+
+        for (IntentFuture intentFuture : intentFutures) {
             try {
-                allChunks.addAll(future.join());
+                List<RetrievedChunk> chunks = intentFuture.future.join();
+                allChunks.addAll(chunks);
+                successCount++;
+                log.debug("意图检索成功 - 意图ID: {}, 意图名称: {}, 检索到 {} 个 Chunk",
+                        intentFuture.nodeScore.getNode().getId(),
+                        intentFuture.nodeScore.getNode().getName(),
+                        chunks.size());
             } catch (Exception e) {
-                log.error("意图检索失败", e);
+                failureCount++;
+                log.error("获取意图检索结果失败 - 意图ID: {}, 意图名称: {}",
+                        intentFuture.nodeScore.getNode().getId(),
+                        intentFuture.nodeScore.getNode().getName(), e);
             }
-        });
+        }
+
+        log.info("意图检索统计 - 总意图数: {}, 成功: {}, 失败: {}, 检索到 Chunk 总数: {}",
+                kbIntents.size(), successCount, failureCount, allChunks.size());
 
         return allChunks;
     }

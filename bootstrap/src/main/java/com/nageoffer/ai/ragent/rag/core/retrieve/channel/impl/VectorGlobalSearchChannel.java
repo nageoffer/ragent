@@ -179,34 +179,51 @@ public class VectorGlobalSearchChannel implements SearchChannel {
      * 并行在所有 collection 中检索
      */
     private List<RetrievedChunk> retrieveFromAllCollections(String question,
-                                                             List<String> collections,
-                                                             int topK) {
-        List<CompletableFuture<List<RetrievedChunk>>> futures = collections.stream()
-                .map(collection -> CompletableFuture.supplyAsync(() -> {
-                    try {
-                        return retrieverService.retrieve(
-                                RetrieveRequest.builder()
-                                        .collectionName(collection)
-                                        .query(question)
-                                        .topK(topK)
-                                        .build()
-                        );
-                    } catch (Exception e) {
-                        log.error("在 collection {} 中检索失败", collection, e);
-                        return List.<RetrievedChunk>of();
-                    }
-                }, ragInnerRetrievalExecutor))
+                                                            List<String> collections,
+                                                            int topK) {
+        // 创建带 collection 信息的 Future 列表
+        record CollectionFuture(String collectionName, CompletableFuture<List<RetrievedChunk>> future) {
+        }
+
+        List<CollectionFuture> collectionFutures = collections.stream()
+                .map(collection -> {
+                    CompletableFuture<List<RetrievedChunk>> future = CompletableFuture.supplyAsync(() -> {
+                        try {
+                            return retrieverService.retrieve(
+                                    RetrieveRequest.builder()
+                                            .collectionName(collection)
+                                            .query(question)
+                                            .topK(topK)
+                                            .build()
+                            );
+                        } catch (Exception e) {
+                            log.error("在 collection {} 中检索失败，错误: {}", collection, e.getMessage(), e);
+                            return List.of();
+                        }
+                    }, ragInnerRetrievalExecutor);
+                    return new CollectionFuture(collection, future);
+                })
                 .toList();
 
-        // 等待所有检索完成并合并结果
+        // 等待所有检索完成并合并结果，统计成功/失败数
         List<RetrievedChunk> allChunks = new ArrayList<>();
-        futures.forEach(future -> {
+        int successCount = 0;
+        int failureCount = 0;
+
+        for (CollectionFuture cf : collectionFutures) {
             try {
-                allChunks.addAll(future.join());
+                List<RetrievedChunk> chunks = cf.future.join();
+                allChunks.addAll(chunks);
+                successCount++;
+                log.debug("Collection {} 检索成功，检索到 {} 个 Chunk", cf.collectionName, chunks.size());
             } catch (Exception e) {
-                log.error("获取检索结果失败", e);
+                failureCount++;
+                log.error("获取 collection {} 检索结果失败", cf.collectionName, e);
             }
-        });
+        }
+
+        log.info("全局检索统计 - 总 Collection 数: {}, 成功: {}, 失败: {}, 检索到 Chunk 总数: {}",
+                collections.size(), successCount, failureCount, allChunks.size());
 
         return allChunks;
     }
