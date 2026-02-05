@@ -106,7 +106,7 @@ ai:
 
   chat:
     default-model: qwen3-max
-    deep-thinking-model: glm-4.7
+    deep-thinking-model: qwen3-max
     candidates:
       - id: qwen-plus
         provider: bailian
@@ -115,6 +115,7 @@ ai:
       - id: qwen3-max
         provider: bailian
         model: qwen3-max
+        supports-thinking: true
         priority: 3
       - id: glm-4.7
         provider: siliconflow
