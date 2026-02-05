@@ -1,0 +1,3 @@
+<component name="DependencyValidationManager">
+  <scope name="Backend Only" pattern="!file:frontend//*" />
+</component>

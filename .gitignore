@@ -16,6 +16,7 @@ target/
 .idea
 !.idea/dictionaries/
 !.idea/inspectionProfiles/
+!.idea/scopes/
 !.idea/icon.png
 *.iws
 *.iml
