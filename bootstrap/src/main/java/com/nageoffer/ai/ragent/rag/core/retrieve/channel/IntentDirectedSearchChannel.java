@@ -15,28 +15,20 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.rag.core.retrieve.channel.impl;
+package com.nageoffer.ai.ragent.rag.core.retrieve.channel;
 
 import cn.hutool.core.collection.CollUtil;
 import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
 import com.nageoffer.ai.ragent.rag.config.SearchChannelProperties;
-import com.nageoffer.ai.ragent.rag.core.intent.IntentNode;
 import com.nageoffer.ai.ragent.rag.core.intent.NodeScore;
-import com.nageoffer.ai.ragent.rag.core.retrieve.RetrieveRequest;
 import com.nageoffer.ai.ragent.rag.core.retrieve.RetrieverService;
-import com.nageoffer.ai.ragent.rag.core.retrieve.channel.SearchChannel;
-import com.nageoffer.ai.ragent.rag.core.retrieve.channel.SearchChannelResult;
-import com.nageoffer.ai.ragent.rag.core.retrieve.channel.SearchChannelType;
-import com.nageoffer.ai.ragent.rag.core.retrieve.channel.SearchContext;
-import lombok.RequiredArgsConstructor;
+import com.nageoffer.ai.ragent.rag.core.retrieve.channel.strategy.IntentParallelRetriever;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 
 /**
@@ -47,13 +39,17 @@ import java.util.concurrent.Executor;
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class IntentDirectedSearchChannel implements SearchChannel {
 
-    private final RetrieverService retrieverService;
     private final SearchChannelProperties properties;
-    @Qualifier("ragInnerRetrievalThreadPoolExecutor")
-    private final Executor ragInnerRetrievalExecutor;
+    private final IntentParallelRetriever parallelRetriever;
+
+    public IntentDirectedSearchChannel(RetrieverService retrieverService,
+                                       SearchChannelProperties properties,
+                                       @Qualifier("ragInnerRetrievalThreadPoolExecutor") Executor ragInnerRetrievalExecutor) {
+        this.properties = properties;
+        this.parallelRetriever = new IntentParallelRetriever(retrieverService, ragInnerRetrievalExecutor);
+    }
 
     @Override
     public String getName() {
@@ -168,85 +164,7 @@ public class IntentDirectedSearchChannel implements SearchChannel {
                                                    List<NodeScore> kbIntents,
                                                    int fallbackTopK,
                                                    int topKMultiplier) {
-        // 创建带意图信息的 Future 列表
-        record IntentFuture(NodeScore nodeScore, CompletableFuture<List<RetrievedChunk>> future) {
-        }
-
-        List<IntentFuture> intentFutures = kbIntents.stream()
-                .map(ns -> {
-                    int intentTopK = resolveIntentTopK(ns, fallbackTopK, topKMultiplier);
-                    CompletableFuture<List<RetrievedChunk>> future = CompletableFuture.supplyAsync(() -> {
-                        IntentNode node = ns.getNode();
-                        try {
-                            return retrieverService.retrieve(
-                                    RetrieveRequest.builder()
-                                            .collectionName(node.getCollectionName())
-                                            .query(question)
-                                            .topK(intentTopK)
-                                            .build()
-                            );
-                        } catch (Exception e) {
-                            log.error("意图检索失败 - 意图ID: {}, 意图名称: {}, Collection: {}, 错误: {}",
-                                    node.getId(), node.getName(), node.getCollectionName(), e.getMessage(), e);
-                            return List.of();
-                        }
-                    }, ragInnerRetrievalExecutor);
-                    return new IntentFuture(ns, future);
-                })
-                .toList();
-
-        // 等待所有检索完成并合并结果，统计成功/失败数
-        List<RetrievedChunk> allChunks = new ArrayList<>();
-        int successCount = 0;
-        int failureCount = 0;
-
-        for (IntentFuture intentFuture : intentFutures) {
-            try {
-                List<RetrievedChunk> chunks = intentFuture.future.join();
-                allChunks.addAll(chunks);
-                successCount++;
-                log.debug("意图检索成功 - 意图ID: {}, 意图名称: {}, 检索到 {} 个 Chunk",
-                        intentFuture.nodeScore.getNode().getId(),
-                        intentFuture.nodeScore.getNode().getName(),
-                        chunks.size());
-            } catch (Exception e) {
-                failureCount++;
-                log.error("获取意图检索结果失败 - 意图ID: {}, 意图名称: {}",
-                        intentFuture.nodeScore.getNode().getId(),
-                        intentFuture.nodeScore.getNode().getName(), e);
-            }
-        }
-
-        log.info("意图检索统计 - 总意图数: {}, 成功: {}, 失败: {}, 检索到 Chunk 总数: {}",
-                kbIntents.size(), successCount, failureCount, allChunks.size());
-
-        return allChunks;
-    }
-
-    /**
-     * 计算单个意图节点检索 TopK：
-     * - 优先节点级 topK（>0）
-     * - 否则回退全局 topK
-     * - 最后叠加通道倍率
-     * <p>
-     * 边界保护：确保最终结果至少为 1（防止配置异常导致检索失败）
-     */
-    private int resolveIntentTopK(NodeScore nodeScore, int fallbackTopK, int topKMultiplier) {
-        // 1. 确定基础 TopK
-        int baseTopK = fallbackTopK;
-        if (nodeScore != null && nodeScore.getNode() != null) {
-            Integer nodeTopK = nodeScore.getNode().getTopK();
-            if (nodeTopK != null && nodeTopK > 0) {
-                baseTopK = nodeTopK;
-            }
-        }
-
-        // 2. 应用通道倍率（防御性编程：倍率异常时保底为 1）
-        if (topKMultiplier <= 0) {
-            log.warn("意图定向通道倍率配置异常: {}, 使用基础 TopK: {}", topKMultiplier, baseTopK);
-            return baseTopK;
-        }
-
-        return baseTopK * topKMultiplier;
+        // 使用模板方法执行并行检索
+        return parallelRetriever.executeParallelRetrieval(question, kbIntents, fallbackTopK, topKMultiplier);
     }
 }

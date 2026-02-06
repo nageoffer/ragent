@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.rag.core.retrieve.channel.impl;
+package com.nageoffer.ai.ragent.rag.core.retrieve.channel;
 
 import cn.hutool.core.collection.CollUtil;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
@@ -24,13 +24,8 @@ import com.nageoffer.ai.ragent.knowledge.dao.entity.KnowledgeBaseDO;
 import com.nageoffer.ai.ragent.knowledge.dao.mapper.KnowledgeBaseMapper;
 import com.nageoffer.ai.ragent.rag.config.SearchChannelProperties;
 import com.nageoffer.ai.ragent.rag.core.intent.NodeScore;
-import com.nageoffer.ai.ragent.rag.core.retrieve.RetrieveRequest;
 import com.nageoffer.ai.ragent.rag.core.retrieve.RetrieverService;
-import com.nageoffer.ai.ragent.rag.core.retrieve.channel.SearchChannel;
-import com.nageoffer.ai.ragent.rag.core.retrieve.channel.SearchChannelResult;
-import com.nageoffer.ai.ragent.rag.core.retrieve.channel.SearchChannelType;
-import com.nageoffer.ai.ragent.rag.core.retrieve.channel.SearchContext;
-import lombok.RequiredArgsConstructor;
+import com.nageoffer.ai.ragent.rag.core.retrieve.channel.strategy.CollectionParallelRetriever;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
@@ -39,7 +34,6 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 
 /**
@@ -50,14 +44,20 @@ import java.util.concurrent.Executor;
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class VectorGlobalSearchChannel implements SearchChannel {
 
-    private final RetrieverService retrieverService;
     private final SearchChannelProperties properties;
     private final KnowledgeBaseMapper knowledgeBaseMapper;
-    @Qualifier("ragInnerRetrievalThreadPoolExecutor")
-    private final Executor ragInnerRetrievalExecutor;
+    private final CollectionParallelRetriever parallelRetriever;
+
+    public VectorGlobalSearchChannel(RetrieverService retrieverService,
+                                     SearchChannelProperties properties,
+                                     KnowledgeBaseMapper knowledgeBaseMapper,
+                                     @Qualifier("ragInnerRetrievalThreadPoolExecutor") Executor innerRetrievalExecutor) {
+        this.properties = properties;
+        this.knowledgeBaseMapper = knowledgeBaseMapper;
+        this.parallelRetriever = new CollectionParallelRetriever(retrieverService, innerRetrievalExecutor);
+    }
 
     @Override
     public String getName() {
@@ -181,51 +181,8 @@ public class VectorGlobalSearchChannel implements SearchChannel {
     private List<RetrievedChunk> retrieveFromAllCollections(String question,
                                                             List<String> collections,
                                                             int topK) {
-        // 创建带 collection 信息的 Future 列表
-        record CollectionFuture(String collectionName, CompletableFuture<List<RetrievedChunk>> future) {
-        }
-
-        List<CollectionFuture> collectionFutures = collections.stream()
-                .map(collection -> {
-                    CompletableFuture<List<RetrievedChunk>> future = CompletableFuture.supplyAsync(() -> {
-                        try {
-                            return retrieverService.retrieve(
-                                    RetrieveRequest.builder()
-                                            .collectionName(collection)
-                                            .query(question)
-                                            .topK(topK)
-                                            .build()
-                            );
-                        } catch (Exception e) {
-                            log.error("在 collection {} 中检索失败，错误: {}", collection, e.getMessage(), e);
-                            return List.of();
-                        }
-                    }, ragInnerRetrievalExecutor);
-                    return new CollectionFuture(collection, future);
-                })
-                .toList();
-
-        // 等待所有检索完成并合并结果，统计成功/失败数
-        List<RetrievedChunk> allChunks = new ArrayList<>();
-        int successCount = 0;
-        int failureCount = 0;
-
-        for (CollectionFuture cf : collectionFutures) {
-            try {
-                List<RetrievedChunk> chunks = cf.future.join();
-                allChunks.addAll(chunks);
-                successCount++;
-                log.debug("Collection {} 检索成功，检索到 {} 个 Chunk", cf.collectionName, chunks.size());
-            } catch (Exception e) {
-                failureCount++;
-                log.error("获取 collection {} 检索结果失败", cf.collectionName, e);
-            }
-        }
-
-        log.info("全局检索统计 - 总 Collection 数: {}, 成功: {}, 失败: {}, 检索到 Chunk 总数: {}",
-                collections.size(), successCount, failureCount, allChunks.size());
-
-        return allChunks;
+        // 使用模板方法执行并行检索
+        return parallelRetriever.executeParallelRetrieval(question, collections, topK);
     }
 
     @Override

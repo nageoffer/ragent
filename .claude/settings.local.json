@@ -14,7 +14,9 @@
       "Bash(java:*)",
       "Bash(grep:*)",
       "Bash(ls:*)",
-      "Bash(git restore:*)"
+      "Bash(git restore:*)",
+      "Bash(mvn compile:*)",
+      "Bash(git mv:*)"
     ]
   }
 }
