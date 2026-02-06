@@ -135,12 +135,8 @@ public class ModelSelector {
         }
 
         AIModelProperties.ModelCandidate firstChoice = findCandidate(candidates, firstChoiceModelId);
-        if (firstChoice != null) {
-            candidates.remove(firstChoice);
-            candidates.add(0, firstChoice);
-        } else {
-            log.warn("首选模型在候选列表中不存在: modelId={}", firstChoiceModelId);
-        }
+        candidates.remove(firstChoice);
+        candidates.add(0, firstChoice);
     }
 
     private List<ModelTarget> buildAvailableTargets(

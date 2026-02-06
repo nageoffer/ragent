@@ -41,16 +41,13 @@ import okhttp3.RequestBody;
 import okhttp3.Response;
 import okhttp3.ResponseBody;
 import okio.BufferedSource;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
-import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @Slf4j
@@ -123,20 +120,13 @@ public class OllamaChatClient implements ChatClient {
 
     @Override
     public StreamCancellationHandle streamChat(ChatRequest request, StreamCallback callback, ModelTarget target) {
-        AtomicBoolean cancelled = new AtomicBoolean(false);
         Call call = httpClient.newCall(buildStreamRequest(request, target));
-        try {
-            CompletableFuture.runAsync(() -> doStream(call, callback, cancelled), modelStreamExecutor);
-        } catch (RejectedExecutionException ex) {
-            call.cancel();
-            callback.onError(new ModelClientException("流式线程池繁忙", ModelClientErrorType.SERVER_ERROR, null, ex));
-            return () -> {
-            };
-        }
-        return () -> {
-            cancelled.set(true);
-            call.cancel();
-        };
+        return StreamAsyncExecutor.submit(
+                modelStreamExecutor,
+                call,
+                callback,
+                cancelled -> doStream(call, callback, cancelled)
+        );
     }
 
     private void doStream(Call call, StreamCallback callback, AtomicBoolean cancelled) {
@@ -154,6 +144,7 @@ public class OllamaChatClient implements ChatClient {
                 throw new ModelClientException("Ollama 流式响应为空", ModelClientErrorType.INVALID_RESPONSE, null);
             }
             BufferedSource source = body.source();
+            boolean completed = false;
             while (!cancelled.get()) {
                 String line = source.readUtf8Line();
                 if (line == null) {
@@ -167,6 +158,7 @@ public class OllamaChatClient implements ChatClient {
 
                 if (obj.has("done") && obj.get("done").getAsBoolean()) {
                     callback.onComplete();
+                    completed = true;
                     break;
                 }
 
@@ -179,6 +171,9 @@ public class OllamaChatClient implements ChatClient {
                         }
                     }
                 }
+            }
+            if (!cancelled.get() && !completed) {
+                throw new ModelClientException("Ollama 流式响应异常结束", ModelClientErrorType.INVALID_RESPONSE, null);
             }
         } catch (Exception e) {
             callback.onError(e);

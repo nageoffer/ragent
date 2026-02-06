@@ -20,7 +20,6 @@ package com.nageoffer.ai.ragent.infra.chat;
 import cn.hutool.core.collection.CollUtil;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.nageoffer.ai.ragent.framework.convention.ChatRequest;
 import com.nageoffer.ai.ragent.infra.config.AIModelProperties;
@@ -40,16 +39,13 @@ import okhttp3.RequestBody;
 import okhttp3.Response;
 import okhttp3.ResponseBody;
 import okio.BufferedSource;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
-import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @Slf4j
@@ -101,23 +97,20 @@ public class BaiLianChatClient implements ChatClient {
 
     @Override
     public StreamCancellationHandle streamChat(ChatRequest request, StreamCallback callback, ModelTarget target) {
-        AtomicBoolean cancelled = new AtomicBoolean(false);
         Call call = httpClient.newCall(buildStreamRequest(request, target));
-        try {
-            CompletableFuture.runAsync(() -> doStream(call, callback, cancelled), modelStreamExecutor);
-        } catch (RejectedExecutionException ex) {
-            call.cancel();
-            callback.onError(new ModelClientException("流式线程池繁忙", ModelClientErrorType.SERVER_ERROR, null, ex));
-            return () -> {
-            };
-        }
-        return () -> {
-            cancelled.set(true);
-            call.cancel();
-        };
+        boolean reasoningEnabled = Boolean.TRUE.equals(request.getThinking());
+        return StreamAsyncExecutor.submit(
+                modelStreamExecutor,
+                call,
+                callback,
+                cancelled -> doStream(call, callback, cancelled, reasoningEnabled)
+        );
     }
 
-    private void doStream(Call call, StreamCallback callback, AtomicBoolean cancelled) {
+    private void doStream(Call call,
+                          StreamCallback callback,
+                          AtomicBoolean cancelled,
+                          boolean reasoningEnabled) {
         try (Response response = call.execute()) {
             if (!response.isSuccessful()) {
                 String body = readBody(response.body());
@@ -132,6 +125,7 @@ public class BaiLianChatClient implements ChatClient {
                 throw new ModelClientException("百炼流式响应为空", ModelClientErrorType.INVALID_RESPONSE, null);
             }
             BufferedSource source = body.source();
+            boolean completed = false;
             while (!cancelled.get()) {
                 String line = source.readUtf8Line();
                 if (line == null) {
@@ -141,61 +135,25 @@ public class BaiLianChatClient implements ChatClient {
                     continue;
                 }
 
-                String payload = line.trim();
-                if (payload.startsWith("data:")) {
-                    payload = payload.substring("data:".length()).trim();
-                }
-
-                if ("[DONE]".equalsIgnoreCase(payload)) {
-                    callback.onComplete();
-                    break;
-                }
-
                 try {
-                    JsonObject obj = gson.fromJson(payload, JsonObject.class);
-                    JsonArray choices = obj.getAsJsonArray("choices");
-                    if (choices == null || choices.isEmpty()) {
-                        continue;
+                    OpenAIStyleSseParser.ParsedEvent event = OpenAIStyleSseParser.parseLine(line, gson, reasoningEnabled);
+                    if (event.hasReasoning()) {
+                        callback.onThinking(event.reasoning());
                     }
-
-                    JsonObject choice0 = choices.get(0).getAsJsonObject();
-                    String chunk = null;
-
-                    if (choice0.has("delta") && choice0.get("delta").isJsonObject()) {
-                        JsonObject delta = choice0.getAsJsonObject("delta");
-                        if (delta.has("content")) {
-                            JsonElement ce = delta.get("content");
-                            if (ce != null && !ce.isJsonNull()) {
-                                chunk = ce.getAsString();
-                            }
-                        }
+                    if (event.hasContent()) {
+                        callback.onContent(event.content());
                     }
-
-                    if (chunk == null && choice0.has("message") && choice0.get("message").isJsonObject()) {
-                        JsonObject msg = choice0.getAsJsonObject("message");
-                        if (msg.has("content")) {
-                            JsonElement ce = msg.get("content");
-                            if (ce != null && !ce.isJsonNull()) {
-                                chunk = ce.getAsString();
-                            }
-                        }
+                    if (event.completed()) {
+                        callback.onComplete();
+                        completed = true;
+                        break;
                     }
-
-                    if (chunk != null && !chunk.isEmpty()) {
-                        callback.onContent(chunk);
-                    }
-
-                    if (choice0.has("finish_reason")) {
-                        JsonElement fr = choice0.get("finish_reason");
-                        if (fr != null && !fr.isJsonNull()) {
-                            callback.onComplete();
-                            break;
-                        }
-                    }
-
                 } catch (Exception parseEx) {
-                    log.warn("百炼流式响应解析失败: payload={}", payload, parseEx);
+                    log.warn("百炼流式响应解析失败: line={}", line, parseEx);
                 }
+            }
+            if (!cancelled.get() && !completed) {
+                throw new ModelClientException("百炼流式响应异常结束", ModelClientErrorType.INVALID_RESPONSE, null);
             }
         } catch (Exception e) {
             callback.onError(e);

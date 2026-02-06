@@ -30,6 +30,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -53,6 +54,7 @@ public class RoutingLLMService implements LLMService {
     private static final int FIRST_PACKET_TIMEOUT_SECONDS = 60;
     private static final String STREAM_INTERRUPTED_MESSAGE = "流式请求被中断";
     private static final String STREAM_NO_PROVIDER_MESSAGE = "无可用大模型提供者";
+    private static final String STREAM_START_FAILED_MESSAGE = "流式请求启动失败";
     private static final String STREAM_TIMEOUT_MESSAGE = "流式首包超时";
     private static final String STREAM_NO_CONTENT_MESSAGE = "流式请求未返回内容";
     private static final String STREAM_ALL_FAILED_MESSAGE = "大模型调用失败，请稍后再试...";
@@ -101,13 +103,31 @@ public class RoutingLLMService implements LLMService {
             }
 
             FirstPacketAwaiter awaiter = new FirstPacketAwaiter();
-            StreamCallback wrapper = wrapCallback(callback, awaiter);
+            ProbeBufferingCallback wrapper = new ProbeBufferingCallback(callback, awaiter);
 
-            StreamCancellationHandle handle = client.streamChat(request, wrapper, target);
+            StreamCancellationHandle handle;
+            try {
+                handle = client.streamChat(request, wrapper, target);
+            } catch (Exception e) {
+                healthStore.markFailure(target.id());
+                lastError = e;
+                log.warn("{} 流式请求启动失败，切换下一个模型。modelId：{}，provider：{}",
+                        label, target.id(), target.candidate().getProvider(), e);
+                continue;
+            }
+            if (handle == null) {
+                healthStore.markFailure(target.id());
+                lastError = new RemoteException(STREAM_START_FAILED_MESSAGE, BaseErrorCode.REMOTE_ERROR);
+                log.warn("{} 流式请求未返回取消句柄，切换下一个模型。modelId：{}，provider：{}",
+                        label, target.id(), target.candidate().getProvider());
+                continue;
+            }
+
             FirstPacketAwaiter.Result result = awaitFirstPacket(awaiter, handle, callback);
 
             // 判断结果
             if (result.isSuccess()) {
+                wrapper.commit();
                 healthStore.markSuccess(target.id());
                 return handle;
             }
@@ -132,35 +152,6 @@ public class RoutingLLMService implements LLMService {
         return client;
     }
 
-    private StreamCallback wrapCallback(StreamCallback callback, FirstPacketAwaiter awaiter) {
-        return new StreamCallback() {
-            @Override
-            public void onContent(String content) {
-                awaiter.markContent();
-                callback.onContent(content);
-            }
-
-            @Override
-            public void onThinking(String content) {
-                awaiter.markContent();
-                callback.onThinking(content);
-            }
-
-            @Override
-            public void onComplete() {
-                awaiter.markComplete();
-                callback.onComplete();
-            }
-
-            @Override
-            public void onError(Throwable t) {
-                awaiter.markError(t);
-                // 不立即调用 callback.onError(t)，避免关闭 SSE 连接
-                // 只有在所有模型都失败后才会调用 callback.onError()
-            }
-        };
-    }
-
     private FirstPacketAwaiter.Result awaitFirstPacket(FirstPacketAwaiter awaiter,
                                                        StreamCancellationHandle handle,
                                                        StreamCallback callback) {
@@ -181,23 +172,26 @@ public class RoutingLLMService implements LLMService {
                 Throwable error = result.getError() != null
                         ? result.getError()
                         : new RemoteException("流式请求失败", BaseErrorCode.REMOTE_ERROR);
-                log.warn("{} 流式请求失败，切换下一个模型。modelId：{}，provider：{}",
+                log.warn("{} 失败模型: modelId={}, provider={}，原因: 流式请求失败，切换下一个模型",
                         label, target.id(), target.candidate().getProvider(), error);
                 return error;
             }
             case TIMEOUT -> {
                 RemoteException timeout = new RemoteException(STREAM_TIMEOUT_MESSAGE, BaseErrorCode.REMOTE_ERROR);
-                log.warn("{} 流式请求超时，切换下一个模型。modelId：{}", label, target.id());
+                log.warn("{} 失败模型: modelId={}, provider={}，原因: 流式请求超时，切换下一个模型",
+                        label, target.id(), target.candidate().getProvider());
                 return timeout;
             }
             case NO_CONTENT -> {
                 RemoteException noContent = new RemoteException(STREAM_NO_CONTENT_MESSAGE, BaseErrorCode.REMOTE_ERROR);
-                log.warn("{} 流式请求无内容完成，切换下一个模型。modelId：{}", label, target.id());
+                log.warn("{} 失败模型: modelId={}, provider={}，原因: 流式请求无内容完成，切换下一个模型",
+                        label, target.id(), target.candidate().getProvider());
                 return noContent;
             }
             default -> {
                 RemoteException unknown = new RemoteException("流式请求失败", BaseErrorCode.REMOTE_ERROR);
-                log.warn("{} 流式请求失败（未知类型），切换下一个模型。modelId：{}", label, target.id());
+                log.warn("{} 失败模型: modelId={}, provider={}，原因: 流式请求失败（未知类型），切换下一个模型",
+                        label, target.id(), target.candidate().getProvider());
                 return unknown;
             }
         }
@@ -211,5 +205,122 @@ public class RoutingLLMService implements LLMService {
         );
         callback.onError(finalException);
         return finalException;
+    }
+
+    /**
+     * 流式首包探测回调：
+     * - 探测阶段先缓存事件，避免失败模型的内容污染下游输出
+     * - 首包成功后 commit，按原始顺序回放缓存并转实时转发
+     */
+    private static final class ProbeBufferingCallback implements StreamCallback {
+
+        private final StreamCallback downstream;
+        private final FirstPacketAwaiter awaiter;
+        private final Object lock = new Object();
+        private final List<BufferedEvent> bufferedEvents = new ArrayList<>();
+        private volatile boolean committed;
+
+        private ProbeBufferingCallback(StreamCallback downstream, FirstPacketAwaiter awaiter) {
+            this.downstream = downstream;
+            this.awaiter = awaiter;
+            this.committed = false;
+        }
+
+        @Override
+        public void onContent(String content) {
+            awaiter.markContent();
+            bufferOrDispatch(BufferedEvent.content(content));
+        }
+
+        @Override
+        public void onThinking(String content) {
+            awaiter.markContent();
+            bufferOrDispatch(BufferedEvent.thinking(content));
+        }
+
+        @Override
+        public void onComplete() {
+            awaiter.markComplete();
+            bufferOrDispatch(BufferedEvent.complete());
+        }
+
+        @Override
+        public void onError(Throwable t) {
+            awaiter.markError(t);
+            bufferOrDispatch(BufferedEvent.error(t));
+        }
+
+        /**
+         * 首包探测成功后提交：
+         * 1. 原子切换为 committed
+         * 2. 按事件顺序回放缓存，保证时序一致
+         */
+        private void commit() {
+            List<BufferedEvent> snapshot;
+            synchronized (lock) {
+                if (committed) {
+                    return;
+                }
+                committed = true;
+                if (bufferedEvents.isEmpty()) {
+                    return;
+                }
+                snapshot = new ArrayList<>(bufferedEvents);
+                bufferedEvents.clear();
+            }
+            for (BufferedEvent event : snapshot) {
+                dispatch(event);
+            }
+        }
+
+        private void bufferOrDispatch(BufferedEvent event) {
+            boolean dispatchNow;
+            synchronized (lock) {
+                dispatchNow = committed;
+                if (!dispatchNow) {
+                    bufferedEvents.add(event);
+                }
+            }
+            if (dispatchNow) {
+                dispatch(event);
+            }
+        }
+
+        private void dispatch(BufferedEvent event) {
+            switch (event.type()) {
+                case CONTENT -> downstream.onContent(event.content());
+                case THINKING -> downstream.onThinking(event.content());
+                case COMPLETE -> downstream.onComplete();
+                case ERROR -> downstream.onError(event.error() != null
+                        ? event.error()
+                        : new RemoteException("流式请求失败", BaseErrorCode.REMOTE_ERROR));
+            }
+        }
+
+        private record BufferedEvent(EventType type, String content, Throwable error) {
+
+            private static BufferedEvent content(String content) {
+                return new BufferedEvent(EventType.CONTENT, content, null);
+            }
+
+            private static BufferedEvent thinking(String content) {
+                return new BufferedEvent(EventType.THINKING, content, null);
+            }
+
+            private static BufferedEvent complete() {
+                return new BufferedEvent(EventType.COMPLETE, null, null);
+            }
+
+            private static BufferedEvent error(Throwable error) {
+                return new BufferedEvent(EventType.ERROR, null, error);
+            }
+        }
+
+        private enum EventType {
+            CONTENT,
+            THINKING,
+            COMPLETE,
+            ERROR
+        }
     }
 }
