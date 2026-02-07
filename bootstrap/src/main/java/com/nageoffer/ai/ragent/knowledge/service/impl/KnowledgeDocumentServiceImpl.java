@@ -50,7 +50,8 @@ import com.nageoffer.ai.ragent.knowledge.enums.SourceType;
 import com.nageoffer.ai.ragent.framework.context.UserContext;
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.framework.exception.ServiceException;
-import com.nageoffer.ai.ragent.rag.core.extractor.DocumentTextExtractor;
+import com.nageoffer.ai.ragent.core.parser.DocumentParserSelector;
+import com.nageoffer.ai.ragent.core.parser.ParserType;
 import com.nageoffer.ai.ragent.rag.core.vector.VectorStoreService;
 import com.nageoffer.ai.ragent.rag.core.vector.VectorSpaceId;
 import com.nageoffer.ai.ragent.rag.service.FileStorageService;
@@ -98,7 +99,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
 
     private final KnowledgeBaseMapper kbMapper;
     private final KnowledgeDocumentMapper docMapper;
-    private final DocumentTextExtractor textExtractor;
+    private final DocumentParserSelector parserSelector;
     private final ChunkingStrategyFactory chunkingStrategyFactory;
     private final FileStorageService fileStorageService;
     private final VectorStoreService vectorStoreService;
@@ -384,7 +385,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
         long chunkDuration = 0;
 
         try (InputStream is = fileStorageService.openStream(documentDO.getFileUrl())) {
-            String text = textExtractor.extract(is, documentDO.getDocName());
+            String text = parserSelector.select(ParserType.TIKA.getType()).extractText(is, documentDO.getDocName());
             extractDuration = System.currentTimeMillis() - extractStart;
             ChunkingStrategy chunkingStrategy = chunkingStrategyFactory.requireStrategy(chunkingMode);
             chunkStart = System.currentTimeMillis();

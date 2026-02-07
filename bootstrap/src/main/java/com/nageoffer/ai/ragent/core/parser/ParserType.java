@@ -15,15 +15,30 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.ingestion.strategy.parser;
+package com.nageoffer.ai.ragent.core.parser;
 
-import com.nageoffer.ai.ragent.ingestion.domain.context.StructuredDocument;
+import lombok.Getter;
+import lombok.RequiredArgsConstructor;
 
 /**
- * 文档解析结果
- *
- * @param text     解析后的文本内容
- * @param document 结构化文档对象，包含文档的元数据和结构信息
+ * 文档解析器类型枚举
  */
-public record ParseResult(String text, StructuredDocument document) {
+@Getter
+@RequiredArgsConstructor
+public enum ParserType {
+
+    /**
+     * Tika 解析器（支持 PDF、Word、Excel、PPT 等多种格式）
+     */
+    TIKA("Tika"),
+
+    /**
+     * Markdown 解析器
+     */
+    MARKDOWN("Markdown");
+
+    /**
+     * 解析器类型名称
+     */
+    private final String type;
 }

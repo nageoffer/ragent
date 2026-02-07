@@ -21,21 +21,22 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.ingestion.domain.context.IngestionContext;
+import com.nageoffer.ai.ragent.ingestion.domain.context.StructuredDocument;
 import com.nageoffer.ai.ragent.ingestion.domain.enums.IngestionNodeType;
 import com.nageoffer.ai.ragent.ingestion.domain.pipeline.NodeConfig;
 import com.nageoffer.ai.ragent.ingestion.domain.result.NodeResult;
 import com.nageoffer.ai.ragent.ingestion.domain.settings.ParserSettings;
-import com.nageoffer.ai.ragent.ingestion.strategy.parser.DocumentParser;
-import com.nageoffer.ai.ragent.ingestion.strategy.parser.ParseResult;
 import com.nageoffer.ai.ragent.ingestion.util.MimeTypeDetector;
+import com.nageoffer.ai.ragent.core.parser.DocumentParser;
+import com.nageoffer.ai.ragent.core.parser.DocumentParserSelector;
+import com.nageoffer.ai.ragent.core.parser.ParseResult;
+import com.nageoffer.ai.ragent.core.parser.ParserType;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 /**
  * 文档解析节点
@@ -45,12 +46,11 @@ import java.util.stream.Collectors;
 public class ParserNode implements IngestionNode {
 
     private final ObjectMapper objectMapper;
-    private final Map<String, DocumentParser> parserMap;
+    private final DocumentParserSelector parserSelector;
 
-    public ParserNode(ObjectMapper objectMapper, List<DocumentParser> parsers) {
+    public ParserNode(ObjectMapper objectMapper, DocumentParserSelector parserSelector) {
         this.objectMapper = objectMapper;
-        this.parserMap = parsers.stream()
-                .collect(Collectors.toMap(DocumentParser::getParserType, Function.identity()));
+        this.parserSelector = parserSelector;
     }
 
     @Override
@@ -78,7 +78,7 @@ public class ParserNode implements IngestionNode {
         validateMimeType(settings, mimeType, fileName);
 
         ParserSettings.ParserRule rule = matchRule(settings, mimeType, fileName);
-        DocumentParser parser = parserMap.get("TIKA");
+        DocumentParser parser = parserSelector.select(ParserType.TIKA.getType());
         if (parser == null) {
             return NodeResult.fail(new ClientException("未配置 Tika 解析器"));
         }
@@ -86,7 +86,14 @@ public class ParserNode implements IngestionNode {
         Map<String, Object> options = rule == null ? Collections.emptyMap() : rule.getOptions();
         ParseResult result = parser.parse(context.getRawBytes(), mimeType, options);
         context.setRawText(result.text());
-        context.setDocument(result.document());
+
+        // 将 ParseResult 转换为 StructuredDocument
+        StructuredDocument document = StructuredDocument.builder()
+                .text(result.text())
+                .metadata(result.metadata())
+                .build();
+        context.setDocument(document);
+
         return NodeResult.ok("解析文本长度=" + (result.text() == null ? 0 : result.text().length()));
     }
 
