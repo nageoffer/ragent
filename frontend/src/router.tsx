@@ -9,6 +9,7 @@ import { KnowledgeDocumentsPage } from "@/pages/admin/knowledge/KnowledgeDocumen
 import { KnowledgeChunksPage } from "@/pages/admin/knowledge/KnowledgeChunksPage";
 import { IntentTreePage } from "@/pages/admin/intent-tree/IntentTreePage";
 import { IntentListPage } from "@/pages/admin/intent-tree/IntentListPage";
+import { IntentEditPage } from "@/pages/admin/intent-tree/IntentEditPage";
 import { IngestionPage } from "@/pages/admin/ingestion/IngestionPage";
 import { SystemSettingsPage } from "@/pages/admin/settings/SystemSettingsPage";
 import { SampleQuestionPage } from "@/pages/admin/sample-questions/SampleQuestionPage";
@@ -111,6 +112,10 @@ export const router = createBrowserRouter([
       {
         path: "intent-list",
         element: <IntentListPage />
+      },
+      {
+        path: "intent-list/:id/edit",
+        element: <IntentEditPage />
       },
       {
         path: "ingestion",

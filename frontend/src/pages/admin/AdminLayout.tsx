@@ -245,9 +245,19 @@ export function AdminLayout() {
           label: "意图管理",
           to: "/admin/intent-tree"
         });
-        items.push({
-          label: breadcrumbMap[section] || section
-        });
+        if (section === "intent-list" && segments.includes("edit")) {
+          items.push({
+            label: breadcrumbMap[section] || section,
+            to: "/admin/intent-list"
+          });
+          items.push({
+            label: "编辑节点"
+          });
+        } else {
+          items.push({
+            label: breadcrumbMap[section] || section
+          });
+        }
       } else {
         items.push({
           label: breadcrumbMap[section] || section,

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -156,6 +156,7 @@ const resolveLevelBadgeClass = (value: number) => {
 };
 
 export function IntentListPage() {
+  const location = useLocation();
   const navigate = useNavigate();
   const [tree, setTree] = useState<IntentNodeTree[]>([]);
   const [loading, setLoading] = useState(true);
@@ -258,18 +259,6 @@ export function IntentListPage() {
     setStatusFilter(ALL_VALUE);
     setParentFilter(ALL_VALUE);
     setPageNo(1);
-  };
-
-  const handleCopyIntentCode = async (intentCode: string) => {
-    try {
-      if (!navigator?.clipboard) {
-        throw new Error("clipboard unavailable");
-      }
-      await navigator.clipboard.writeText(intentCode);
-      toast.success("已复制意图标识");
-    } catch {
-      toast.error("复制失败，请手动复制");
-    }
   };
 
   const toggleRowSelect = (id: number, checked: boolean) => {
@@ -635,19 +624,25 @@ export function IntentListPage() {
                           className="h-7 px-2.5 text-xs"
                           onClick={() =>
                             navigate(
-                              `/admin/intent-tree?intentCode=${encodeURIComponent(row.intentCode)}`
+                              `/admin/intent-list/${row.id}/edit?from=${encodeURIComponent(
+                                `${location.pathname}${location.search}`
+                              )}`
                             )
                           }
                         >
-                          定位到树
+                          编辑
                         </Button>
                         <Button
                           size="sm"
                           variant="ghost"
                           className="h-7 px-2.5 text-xs"
-                          onClick={() => handleCopyIntentCode(row.intentCode)}
+                          onClick={() =>
+                            navigate(
+                              `/admin/intent-tree?intentCode=${encodeURIComponent(row.intentCode)}`
+                            )
+                          }
                         >
-                          复制标识
+                          定位到树
                         </Button>
                       </div>
                     </TableCell>
