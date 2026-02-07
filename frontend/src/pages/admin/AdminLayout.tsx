@@ -10,6 +10,7 @@ import {
   GitBranch,
   Github,
   Layers,
+  LayoutDashboard,
   Lightbulb,
   LogOut,
   Menu,
@@ -69,6 +70,11 @@ const menuGroups: MenuGroup[] = [
   {
     title: "导航",
     items: [
+      {
+        path: "/admin/dashboard",
+        label: "Dashboard",
+        icon: LayoutDashboard
+      },
       {
         path: "/admin/knowledge",
         label: "知识库管理",
@@ -142,6 +148,7 @@ const menuGroups: MenuGroup[] = [
 ];
 
 const breadcrumbMap: Record<string, string> = {
+  dashboard: "Dashboard",
   knowledge: "知识库管理",
   "intent-tree": "意图树配置",
   "intent-list": "意图列表",
@@ -242,7 +249,7 @@ export function AdminLayout() {
   const breadcrumbs = useMemo(() => {
     const segments = location.pathname.split("/").filter(Boolean);
     const items: { label: string; to?: string }[] = [
-      { label: "首页", to: "/admin/knowledge" }
+      { label: "首页", to: "/admin/dashboard" }
     ];
 
     if (segments[0] !== "admin") return items;
