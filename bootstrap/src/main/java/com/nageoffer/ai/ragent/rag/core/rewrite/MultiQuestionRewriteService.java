@@ -27,6 +27,7 @@ import com.nageoffer.ai.ragent.infra.util.LLMResponseCleaner;
 import com.nageoffer.ai.ragent.rag.config.RAGConfigProperties;
 import com.nageoffer.ai.ragent.framework.convention.ChatMessage;
 import com.nageoffer.ai.ragent.framework.convention.ChatRequest;
+import com.nageoffer.ai.ragent.framework.trace.RagTraceNode;
 import com.nageoffer.ai.ragent.infra.chat.LLMService;
 import com.nageoffer.ai.ragent.rag.core.prompt.PromptTemplateLoader;
 import lombok.RequiredArgsConstructor;
@@ -54,6 +55,7 @@ public class MultiQuestionRewriteService implements QueryRewriteService {
     private final PromptTemplateLoader promptTemplateLoader;
 
     @Override
+    @RagTraceNode(name = "query-rewrite", type = "REWRITE")
     public String rewrite(String userQuestion) {
         return rewriteAndSplit(userQuestion).rewrittenQuestion();
     }
@@ -64,6 +66,7 @@ public class MultiQuestionRewriteService implements QueryRewriteService {
     }
 
     @Override
+    @RagTraceNode(name = "query-rewrite-and-split", type = "REWRITE")
     public RewriteResult rewriteWithSplit(String userQuestion, List<ChatMessage> history) {
         if (!ragConfigProperties.getQueryRewriteEnabled()) {
             String normalized = queryTermMappingService.normalize(userQuestion);

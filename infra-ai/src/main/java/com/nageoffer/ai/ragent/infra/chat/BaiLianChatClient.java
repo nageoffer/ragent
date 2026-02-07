@@ -22,6 +22,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.nageoffer.ai.ragent.framework.convention.ChatRequest;
+import com.nageoffer.ai.ragent.framework.trace.RagTraceNode;
 import com.nageoffer.ai.ragent.infra.config.AIModelProperties;
 import com.nageoffer.ai.ragent.infra.enums.ModelProvider;
 import com.nageoffer.ai.ragent.infra.enums.ModelCapability;
@@ -65,6 +66,7 @@ public class BaiLianChatClient implements ChatClient {
     }
 
     @Override
+    @RagTraceNode(name = "bailian-chat", type = "LLM_PROVIDER")
     public String chat(ChatRequest request, ModelTarget target) {
         AIModelProperties.ProviderConfig provider = requireProvider(target);
 
@@ -96,6 +98,7 @@ public class BaiLianChatClient implements ChatClient {
     }
 
     @Override
+    @RagTraceNode(name = "bailian-stream-chat", type = "LLM_PROVIDER")
     public StreamCancellationHandle streamChat(ChatRequest request, StreamCallback callback, ModelTarget target) {
         Call call = httpClient.newCall(buildStreamRequest(request, target));
         boolean reasoningEnabled = Boolean.TRUE.equals(request.getThinking());

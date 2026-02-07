@@ -19,7 +19,8 @@ import {
   Settings,
   Upload,
   Users,
-  FolderKanban
+  FolderKanban,
+  Workflow
 } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
 import { Button } from "@/components/ui/button";
@@ -111,6 +112,11 @@ const menuGroups: MenuGroup[] = [
           }
         ]
       },
+      {
+        path: "/admin/traces",
+        label: "链路追踪",
+        icon: Workflow
+      },
     ]
   },
   {
@@ -140,6 +146,7 @@ const breadcrumbMap: Record<string, string> = {
   "intent-tree": "意图树配置",
   "intent-list": "意图列表",
   ingestion: "数据通道",
+  traces: "链路追踪",
   "sample-questions": "示例问题",
   settings: "系统设置",
   users: "用户管理"
@@ -283,6 +290,10 @@ export function AdminLayout() {
 
     if (section === "knowledge" && segments.includes("docs")) {
       items.push({ label: "切片管理" });
+    }
+
+    if (section === "traces" && segments.length > 2) {
+      items.push({ label: "链路详情" });
     }
 
     return items;

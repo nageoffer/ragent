@@ -77,6 +77,10 @@ rag:
         min-intent-score: 0.4
         top-k-multiplier: 2
 
+  trace:
+    enabled: true
+    max-error-length: 1000
+
 ai:
   providers:
     ollama:

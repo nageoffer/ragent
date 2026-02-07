@@ -23,6 +23,7 @@ import com.nageoffer.ai.ragent.rag.dto.IntentGroup;
 import com.nageoffer.ai.ragent.rag.dto.RetrievalContext;
 import com.nageoffer.ai.ragent.rag.dto.SubQuestionIntent;
 import com.nageoffer.ai.ragent.framework.context.UserContext;
+import com.nageoffer.ai.ragent.framework.trace.RagTraceContext;
 import com.nageoffer.ai.ragent.framework.convention.ChatMessage;
 import com.nageoffer.ai.ragent.framework.convention.ChatRequest;
 import com.nageoffer.ai.ragent.infra.chat.LLMService;
@@ -81,7 +82,9 @@ public class RAGEnterpriseServiceImpl implements RAGEnterpriseService {
     @ChatRateLimit
     public void streamChat(String question, String conversationId, Boolean deepThinking, SseEmitter emitter) {
         String actualConversationId = StrUtil.isBlank(conversationId) ? IdUtil.getSnowflakeNextIdStr() : conversationId;
-        String taskId = IdUtil.getSnowflakeNextIdStr();
+        String taskId = StrUtil.isBlank(RagTraceContext.getTaskId())
+                ? IdUtil.getSnowflakeNextIdStr()
+                : RagTraceContext.getTaskId();
         log.info("打印会话消息参数，会话ID：{}，单次消息ID：{}", conversationId, taskId);
 
         // 使用工厂创建 Callback

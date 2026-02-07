@@ -24,6 +24,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.nageoffer.ai.ragent.framework.convention.ChatMessage;
 import com.nageoffer.ai.ragent.framework.convention.ChatRequest;
+import com.nageoffer.ai.ragent.framework.trace.RagTraceNode;
 import com.nageoffer.ai.ragent.infra.config.AIModelProperties;
 import com.nageoffer.ai.ragent.infra.enums.ModelProvider;
 import com.nageoffer.ai.ragent.infra.enums.ModelCapability;
@@ -69,6 +70,7 @@ public class OllamaChatClient implements ChatClient {
     }
 
     @Override
+    @RagTraceNode(name = "ollama-chat", type = "LLM_PROVIDER")
     public String chat(ChatRequest request, ModelTarget target) {
         AIModelProperties.ProviderConfig provider = requireProvider(target);
         String url = resolveUrl(provider, target);
@@ -119,6 +121,7 @@ public class OllamaChatClient implements ChatClient {
     }
 
     @Override
+    @RagTraceNode(name = "ollama-stream-chat", type = "LLM_PROVIDER")
     public StreamCancellationHandle streamChat(ChatRequest request, StreamCallback callback, ModelTarget target) {
         Call call = httpClient.newCall(buildStreamRequest(request, target));
         return StreamAsyncExecutor.submit(

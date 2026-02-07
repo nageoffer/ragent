@@ -11,6 +11,8 @@ import { IntentTreePage } from "@/pages/admin/intent-tree/IntentTreePage";
 import { IntentListPage } from "@/pages/admin/intent-tree/IntentListPage";
 import { IntentEditPage } from "@/pages/admin/intent-tree/IntentEditPage";
 import { IngestionPage } from "@/pages/admin/ingestion/IngestionPage";
+import { RagTracePage } from "@/pages/admin/traces/RagTracePage";
+import { RagTraceDetailPage } from "@/pages/admin/traces/RagTraceDetailPage";
 import { SystemSettingsPage } from "@/pages/admin/settings/SystemSettingsPage";
 import { SampleQuestionPage } from "@/pages/admin/sample-questions/SampleQuestionPage";
 import { UserListPage } from "@/pages/admin/users/UserListPage";
@@ -120,6 +122,14 @@ export const router = createBrowserRouter([
       {
         path: "ingestion",
         element: <IngestionPage />
+      },
+      {
+        path: "traces",
+        element: <RagTracePage />
+      },
+      {
+        path: "traces/:runId",
+        element: <RagTraceDetailPage />
       },
       {
         path: "settings",

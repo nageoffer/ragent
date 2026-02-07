@@ -24,6 +24,7 @@ import com.nageoffer.ai.ragent.rag.dto.RetrievalContext;
 import com.nageoffer.ai.ragent.rag.dto.SubQuestionIntent;
 import com.nageoffer.ai.ragent.rag.enums.IntentKind;
 import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
+import com.nageoffer.ai.ragent.framework.trace.RagTraceNode;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentNode;
 import com.nageoffer.ai.ragent.rag.core.intent.NodeScore;
 import com.nageoffer.ai.ragent.rag.core.mcp.MCPParameterExtractor;
@@ -75,6 +76,7 @@ public class RetrievalEngine {
      * @param topK       需要返回的最相关结果数量，若 ≤0 则使用默认值
      * @return RetrievalContext 检索上下文，包含知识库上下文、MCP上下文和分组的检索块
      */
+    @RagTraceNode(name = "retrieval-engine", type = "RETRIEVE")
     public RetrievalContext retrieve(List<SubQuestionIntent> subIntents, int topK) {
         if (CollUtil.isEmpty(subIntents)) {
             return RetrievalContext.builder()

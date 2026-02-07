@@ -17,6 +17,7 @@
 
 package com.nageoffer.ai.ragent.rag.core.mcp;
 
+import com.nageoffer.ai.ragent.framework.trace.RagTraceNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -42,6 +43,7 @@ public class MCPServiceOrchestrator implements MCPService {
     private final Executor mcpBatchThreadPoolExecutor;
 
     @Override
+    @RagTraceNode(name = "mcp-execute", type = "MCP")
     public MCPResponse execute(MCPRequest request) {
         if (request == null || request.getToolId() == null) {
             return MCPResponse.error(null, "INVALID_REQUEST", "请求参数无效");
@@ -86,6 +88,7 @@ public class MCPServiceOrchestrator implements MCPService {
     }
 
     @Override
+    @RagTraceNode(name = "mcp-execute-batch", type = "MCP")
     public List<MCPResponse> executeBatch(List<MCPRequest> requests) {
         if (requests == null || requests.isEmpty()) {
             return List.of();

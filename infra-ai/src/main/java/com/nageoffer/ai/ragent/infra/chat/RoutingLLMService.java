@@ -21,6 +21,7 @@ import cn.hutool.core.collection.CollUtil;
 import com.nageoffer.ai.ragent.framework.convention.ChatRequest;
 import com.nageoffer.ai.ragent.framework.errorcode.BaseErrorCode;
 import com.nageoffer.ai.ragent.framework.exception.RemoteException;
+import com.nageoffer.ai.ragent.framework.trace.RagTraceNode;
 import com.nageoffer.ai.ragent.infra.enums.ModelCapability;
 import com.nageoffer.ai.ragent.infra.model.ModelHealthStore;
 import com.nageoffer.ai.ragent.infra.model.ModelRoutingExecutor;
@@ -77,6 +78,7 @@ public class RoutingLLMService implements LLMService {
     }
 
     @Override
+    @RagTraceNode(name = "llm-chat-routing", type = "LLM_ROUTING")
     public String chat(ChatRequest request) {
         return executor.executeWithFallback(
                 ModelCapability.CHAT,
@@ -87,6 +89,7 @@ public class RoutingLLMService implements LLMService {
     }
 
     @Override
+    @RagTraceNode(name = "llm-stream-routing", type = "LLM_ROUTING")
     public StreamCancellationHandle streamChat(ChatRequest request, StreamCallback callback) {
         List<ModelTarget> targets = selector.selectChatCandidates(request.getThinking());
         if (CollUtil.isEmpty(targets)) {
