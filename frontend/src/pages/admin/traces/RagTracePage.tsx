@@ -1,19 +1,18 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
-import { Activity, Clock3, Layers, TrendingUp } from "lucide-react";
+import { Activity, Clock3, Layers, RefreshCw, Search, TrendingUp } from "lucide-react";
 import { toast } from "sonner";
 
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { getRagTraceRuns, type PageResult, type RagTraceRun } from "@/services/ragTraceService";
 import { getErrorMessage } from "@/utils/error";
-import { FilterBar } from "@/pages/admin/traces/components/FilterBar";
 import { RunsTable } from "@/pages/admin/traces/components/RunsTable";
 import { StatCard, type StatCardTone } from "@/pages/admin/traces/components/StatCard";
 import {
-  DEFAULT_FILTERS,
   PAGE_SIZE,
   normalizeStatus,
   percentile,
-  type TraceFilters,
 } from "@/pages/admin/traces/traceUtils";
 
 type DurationMetric = {
@@ -35,25 +34,22 @@ const formatDurationMetric = (durationMs: number): DurationMetric => {
 export function RagTracePage() {
   const navigate = useNavigate();
   const runsRequestRef = useRef(0);
-  const [filters, setFilters] = useState<TraceFilters>(DEFAULT_FILTERS);
-  const [query, setQuery] = useState<TraceFilters>(DEFAULT_FILTERS);
+  const [traceIdFilter, setTraceIdFilter] = useState("");
+  const [queryTraceId, setQueryTraceId] = useState("");
   const [pageNo, setPageNo] = useState(1);
   const [pageData, setPageData] = useState<PageResult<RagTraceRun> | null>(null);
   const [loading, setLoading] = useState(false);
 
   const runs = pageData?.records || [];
 
-  const loadRuns = async (current = pageNo, nextQuery = query) => {
+  const loadRuns = async (current = pageNo, nextTraceId = queryTraceId) => {
     const requestId = ++runsRequestRef.current;
     setLoading(true);
     try {
       const result = await getRagTraceRuns({
         current,
         size: PAGE_SIZE,
-        runId: nextQuery.runId.trim() || undefined,
-        conversationId: nextQuery.conversationId.trim() || undefined,
-        taskId: nextQuery.taskId.trim() || undefined,
-        status: nextQuery.status || undefined
+        traceId: nextTraceId.trim() || undefined
       });
       if (runsRequestRef.current !== requestId) return;
       setPageData(result);
@@ -69,26 +65,15 @@ export function RagTracePage() {
 
   useEffect(() => {
     loadRuns();
-  }, [pageNo, query]);
+  }, [pageNo, queryTraceId]);
 
   const handleSearch = () => {
     setPageNo(1);
-    setQuery({
-      runId: filters.runId.trim(),
-      conversationId: filters.conversationId.trim(),
-      taskId: filters.taskId.trim(),
-      status: filters.status
-    });
-  };
-
-  const handleReset = () => {
-    setFilters(DEFAULT_FILTERS);
-    setQuery(DEFAULT_FILTERS);
-    setPageNo(1);
+    setQueryTraceId(traceIdFilter.trim());
   };
 
   const handleRefresh = () => {
-    loadRuns(pageNo, query);
+    loadRuns(pageNo, queryTraceId);
   };
 
   const traceStats = useMemo(() => {
@@ -169,6 +154,22 @@ export function RagTracePage() {
               独立列表页聚焦运行检索，点击任意运行记录进入详情页分析慢节点与失败节点
             </p>
           </div>
+          <div className="admin-page-actions">
+            <Input
+              value={traceIdFilter}
+              onChange={(event) => setTraceIdFilter(event.target.value)}
+              placeholder="搜索 Trace Id"
+              className="w-[300px]"
+            />
+            <Button className="admin-primary-gradient" onClick={handleSearch}>
+              <Search className="h-4 w-4 mr-2" />
+              查询
+            </Button>
+            <Button variant="outline" onClick={handleRefresh}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              刷新
+            </Button>
+          </div>
         </div>
 
         <section className="trace-list-stat-grid">
@@ -184,21 +185,13 @@ export function RagTracePage() {
           ))}
         </section>
 
-        <FilterBar
-          filters={filters}
-          onFiltersChange={(next) => setFilters((prev) => ({ ...prev, ...next }))}
-          onSearch={handleSearch}
-          onReset={handleReset}
-          onRefresh={handleRefresh}
-        />
-
         <RunsTable
           runs={runs}
           loading={loading}
           current={current}
           pages={pages}
           total={total}
-          onOpenRun={(runId) => navigate(`/admin/traces/${encodeURIComponent(runId)}`)}
+          onOpenRun={(traceId) => navigate(`/admin/traces/${encodeURIComponent(traceId)}`)}
           onPrevPage={() => setPageNo((prev) => Math.max(1, prev - 1))}
           onNextPage={() => setPageNo((prev) => prev + 1)}
         />

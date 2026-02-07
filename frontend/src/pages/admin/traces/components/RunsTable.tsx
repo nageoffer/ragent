@@ -17,7 +17,7 @@ interface RunsTableProps {
   current: number;
   pages: number;
   total: number;
-  onOpenRun: (runId: string) => void;
+  onOpenRun: (traceId: string) => void;
   onPrevPage: () => void;
   onNextPage: () => void;
 }
@@ -48,46 +48,38 @@ export function RunsTable({
             <Table className="trace-list-table">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="trace-col-trace">Trace</TableHead>
-                  <TableHead className="trace-col-run-id">Trace ID</TableHead>
+                  <TableHead className="trace-col-trace">Trace Name</TableHead>
+                  <TableHead className="trace-col-run-id">Trace Id</TableHead>
                   <TableHead className="trace-col-meta">会话ID / TaskID</TableHead>
+                  <TableHead className="trace-col-user">用户名</TableHead>
                   <TableHead className="trace-col-duration">耗时</TableHead>
                   <TableHead className="trace-col-status">状态</TableHead>
-                  <TableHead className="trace-col-user">用户名</TableHead>
+                  <TableHead>执行时间</TableHead>
                   <TableHead className="trace-col-action">操作</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {runs.map((run) => (
-                  <TableRow key={run.runId} className="trace-list-table-row">
+                  <TableRow key={run.traceId} className="trace-list-table-row">
                     <TableCell className="trace-col-trace">
                       <div className="trace-list-run-trace">
                         <p className="trace-list-run-name line-clamp-1" title={run.traceName || "-"}>
                           {run.traceName || "-"}
                         </p>
-                        <p className="trace-list-run-time">{formatDateTime(run.startTime ?? undefined)}</p>
                       </div>
                     </TableCell>
                     <TableCell className="trace-col-run-id">
-                      <span className="trace-list-run-id" title={run.runId}>
-                        {run.runId}
+                      <span className="trace-list-run-id" title={run.traceId}>
+                        {run.traceId}
                       </span>
                     </TableCell>
                     <TableCell className="trace-col-meta">
-                      <p className="trace-list-run-meta-line" title={run.conversationId || "-"}>
+                      <p className="trace-list-run-meta-line" title={`会话ID: ${run.conversationId || "-"}`}>
                         {run.conversationId || "-"}
                       </p>
-                      <p className="trace-list-run-meta-line is-secondary" title={run.taskId || "-"}>
+                      <p className="trace-list-run-meta-line is-secondary" title={`TaskID: ${run.taskId || "-"}`}>
                         {run.taskId || "-"}
                       </p>
-                    </TableCell>
-                    <TableCell className="trace-col-duration trace-list-duration-cell">
-                      {formatDuration(run.durationMs ?? undefined)}
-                    </TableCell>
-                    <TableCell className="trace-col-status trace-list-status-cell">
-                      <Badge className="trace-list-status-badge" variant={statusBadgeVariant(run.status)}>
-                        {statusLabel(run.status)}
-                      </Badge>
                     </TableCell>
                     <TableCell className="trace-col-user">
                       <span
@@ -97,12 +89,21 @@ export function RunsTable({
                         {run.userName || run.username || run.userId || "-"}
                       </span>
                     </TableCell>
+                    <TableCell className="trace-col-duration trace-list-duration-cell">
+                      {formatDuration(run.durationMs ?? undefined)}
+                    </TableCell>
+                    <TableCell className="trace-col-status trace-list-status-cell">
+                      <Badge className="trace-list-status-badge" variant={statusBadgeVariant(run.status)}>
+                        {statusLabel(run.status)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>{formatDateTime(run.startTime ?? undefined)}</TableCell>
                     <TableCell className="trace-col-action trace-list-action-cell">
                       <Button
                         size="sm"
                         variant="outline"
                         className="trace-list-action-btn"
-                        onClick={() => onOpenRun(run.runId)}
+                        onClick={() => onOpenRun(run.traceId)}
                       >
                         <Eye className="h-3.5 w-3.5" />
                         查看链路

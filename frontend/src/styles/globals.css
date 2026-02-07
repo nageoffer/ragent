@@ -1289,9 +1289,9 @@ body {
   }
 
   .admin-layout .trace-list-table .trace-col-action {
-    width: 168px;
-    min-width: 168px;
-    max-width: 168px;
+    width: 188px;
+    min-width: 188px;
+    max-width: 188px;
   }
 
   .admin-layout .trace-list-table-row {

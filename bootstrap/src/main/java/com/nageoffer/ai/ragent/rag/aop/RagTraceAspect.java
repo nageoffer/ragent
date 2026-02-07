@@ -63,15 +63,15 @@ public class RagTraceAspect {
             return joinPoint.proceed();
         }
 
-        String existingRunId = RagTraceContext.getRunId();
-        if (StrUtil.isNotBlank(existingRunId)) {
+        String existingTraceId = RagTraceContext.getTraceId();
+        if (StrUtil.isNotBlank(existingTraceId)) {
             // 当前线程已在链路中，避免重复创建 root
             return joinPoint.proceed();
         }
 
         MethodSignature signature = (MethodSignature) joinPoint.getSignature();
         Method method = signature.getMethod();
-        String runId = IdUtil.getSnowflakeNextIdStr();
+        String traceId = IdUtil.getSnowflakeNextIdStr();
         String conversationId = resolveStringArg(signature, joinPoint.getArgs(), traceRoot.conversationIdArg());
         String taskId = resolveStringArg(signature, joinPoint.getArgs(), traceRoot.taskIdArg());
         String traceName = StrUtil.blankToDefault(traceRoot.name(), method.getName());
@@ -79,7 +79,7 @@ public class RagTraceAspect {
         long startMillis = System.currentTimeMillis();
 
         traceRecordService.startRun(RagTraceRunDO.builder()
-                .runId(runId)
+                .traceId(traceId)
                 .traceName(traceName)
                 .entryMethod(method.getDeclaringClass().getName() + "#" + method.getName())
                 .conversationId(conversationId)
@@ -89,11 +89,11 @@ public class RagTraceAspect {
                 .startTime(startTime)
                 .build());
 
-        RagTraceContext.setRunId(runId);
+        RagTraceContext.setTraceId(traceId);
         try {
             Object result = joinPoint.proceed();
             traceRecordService.finishRun(
-                    runId,
+                    traceId,
                     STATUS_SUCCESS,
                     null,
                     new Date(),
@@ -102,7 +102,7 @@ public class RagTraceAspect {
             return result;
         } catch (Throwable ex) {
             traceRecordService.finishRun(
-                    runId,
+                    traceId,
                     STATUS_ERROR,
                     truncateError(ex),
                     new Date(),
@@ -119,8 +119,8 @@ public class RagTraceAspect {
         if (!traceProperties.isEnabled()) {
             return joinPoint.proceed();
         }
-        String runId = RagTraceContext.getRunId();
-        if (StrUtil.isBlank(runId)) {
+        String traceId = RagTraceContext.getTraceId();
+        if (StrUtil.isBlank(traceId)) {
             return joinPoint.proceed();
         }
 
@@ -133,7 +133,7 @@ public class RagTraceAspect {
         long startMillis = System.currentTimeMillis();
 
         traceRecordService.startNode(RagTraceNodeDO.builder()
-                .runId(runId)
+                .traceId(traceId)
                 .nodeId(nodeId)
                 .parentNodeId(parentNodeId)
                 .depth(depth)
@@ -149,7 +149,7 @@ public class RagTraceAspect {
         try {
             Object result = joinPoint.proceed();
             traceRecordService.finishNode(
-                    runId,
+                    traceId,
                     nodeId,
                     STATUS_SUCCESS,
                     null,
@@ -159,7 +159,7 @@ public class RagTraceAspect {
             return result;
         } catch (Throwable ex) {
             traceRecordService.finishNode(
-                    runId,
+                    traceId,
                     nodeId,
                     STATUS_ERROR,
                     truncateError(ex),

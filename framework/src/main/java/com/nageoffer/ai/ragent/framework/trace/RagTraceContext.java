@@ -24,23 +24,23 @@ import java.util.Deque;
 
 /**
  * RAG Trace 上下文
- * 使用 TTL 在异步线程池中透传 runId 与节点栈
+ * 使用 TTL 在异步线程池中透传 traceId 与节点栈
  */
 public final class RagTraceContext {
 
-    private static final TransmittableThreadLocal<String> RUN_ID = new TransmittableThreadLocal<>();
+    private static final TransmittableThreadLocal<String> TRACE_ID = new TransmittableThreadLocal<>();
     private static final TransmittableThreadLocal<String> TASK_ID = new TransmittableThreadLocal<>();
     private static final TransmittableThreadLocal<Deque<String>> NODE_STACK = new TransmittableThreadLocal<>();
 
     private RagTraceContext() {
     }
 
-    public static String getRunId() {
-        return RUN_ID.get();
+    public static String getTraceId() {
+        return TRACE_ID.get();
     }
 
-    public static void setRunId(String runId) {
-        RUN_ID.set(runId);
+    public static void setTraceId(String traceId) {
+        TRACE_ID.set(traceId);
     }
 
     public static String getTaskId() {
@@ -82,7 +82,7 @@ public final class RagTraceContext {
     }
 
     public static void clear() {
-        RUN_ID.remove();
+        TRACE_ID.remove();
         TASK_ID.remove();
         NODE_STACK.remove();
     }

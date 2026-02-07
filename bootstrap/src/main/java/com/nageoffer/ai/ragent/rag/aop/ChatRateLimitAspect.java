@@ -86,12 +86,12 @@ public class ChatRateLimitAspect {
             return;
         }
 
-        String runId = IdUtil.getSnowflakeNextIdStr();
+        String traceId = IdUtil.getSnowflakeNextIdStr();
         String taskId = IdUtil.getSnowflakeNextIdStr();
         long startMillis = System.currentTimeMillis();
         traceRecordService.startRun(RagTraceRunDO.builder()
-                .runId(runId)
-                .traceName("rag-enterprise-stream-chat")
+                .traceId(traceId)
+                .traceName("rag-stream-chat")
                 .entryMethod(method.getDeclaringClass().getName() + "#" + method.getName())
                 .conversationId(conversationId)
                 .taskId(taskId)
@@ -101,12 +101,12 @@ public class ChatRateLimitAspect {
                 .extraData(StrUtil.format("{\"questionLength\":{}}", StrUtil.length(question)))
                 .build());
 
-        RagTraceContext.setRunId(runId);
+        RagTraceContext.setTraceId(traceId);
         RagTraceContext.setTaskId(taskId);
         try {
             method.invoke(target, args);
             traceRecordService.finishRun(
-                    runId,
+                    traceId,
                     STATUS_SUCCESS,
                     null,
                     new Date(),
@@ -115,7 +115,7 @@ public class ChatRateLimitAspect {
         } catch (Throwable ex) {
             Throwable cause = unwrap(ex);
             traceRecordService.finishRun(
-                    runId,
+                    traceId,
                     STATUS_ERROR,
                     truncateError(cause),
                     new Date(),

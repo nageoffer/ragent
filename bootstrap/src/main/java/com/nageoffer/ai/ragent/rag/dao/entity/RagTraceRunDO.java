@@ -46,7 +46,7 @@ public class RagTraceRunDO {
     /**
      * 全局链路ID
      */
-    private String runId;
+    private String traceId;
 
     /**
      * 链路名称

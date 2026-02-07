@@ -128,7 +128,7 @@ export const router = createBrowserRouter([
         element: <RagTracePage />
       },
       {
-        path: "traces/:runId",
+        path: "traces/:traceId",
         element: <RagTraceDetailPage />
       },
       {

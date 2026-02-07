@@ -1,7 +1,7 @@
 import { api } from "@/services/api";
 
 export interface RagTraceRun {
-  runId: string;
+  traceId: string;
   traceName?: string | null;
   entryMethod?: string | null;
   conversationId?: string | null;
@@ -17,7 +17,7 @@ export interface RagTraceRun {
 }
 
 export interface RagTraceNode {
-  runId: string;
+  traceId: string;
   nodeId: string;
   parentNodeId?: string | null;
   depth?: number | null;
@@ -48,7 +48,7 @@ export interface PageResult<T> {
 export interface RagTraceRunQuery {
   current?: number;
   size?: number;
-  runId?: string;
+  traceId?: string;
   conversationId?: string;
   taskId?: string;
   status?: string;
@@ -61,7 +61,7 @@ export async function getRagTraceRuns(
     params: {
       current: query.current ?? 1,
       size: query.size ?? 10,
-      runId: query.runId || undefined,
+      traceId: query.traceId || undefined,
       conversationId: query.conversationId || undefined,
       taskId: query.taskId || undefined,
       status: query.status || undefined
@@ -69,10 +69,10 @@ export async function getRagTraceRuns(
   });
 }
 
-export async function getRagTraceDetail(runId: string): Promise<RagTraceDetail> {
-  return api.get<RagTraceDetail, RagTraceDetail>(`/rag/traces/runs/${runId}`);
+export async function getRagTraceDetail(traceId: string): Promise<RagTraceDetail> {
+  return api.get<RagTraceDetail, RagTraceDetail>(`/rag/traces/runs/${traceId}`);
 }
 
-export async function getRagTraceNodes(runId: string): Promise<RagTraceNode[]> {
-  return api.get<RagTraceNode[], RagTraceNode[]>(`/rag/traces/runs/${runId}/nodes`);
+export async function getRagTraceNodes(traceId: string): Promise<RagTraceNode[]> {
+  return api.get<RagTraceNode[], RagTraceNode[]>(`/rag/traces/runs/${traceId}/nodes`);
 }

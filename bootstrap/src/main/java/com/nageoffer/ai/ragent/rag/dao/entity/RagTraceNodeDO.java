@@ -43,7 +43,7 @@ public class RagTraceNodeDO {
     @TableId(type = IdType.ASSIGN_ID)
     private Long id;
 
-    private String runId;
+    private String traceId;
 
     /**
      * 节点ID（唯一）

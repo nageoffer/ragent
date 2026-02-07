@@ -32,7 +32,7 @@ public interface RagTraceQueryService {
 
     IPage<RagTraceRunVO> pageRuns(RagTraceRunPageRequest request);
 
-    RagTraceDetailVO detail(String runId);
+    RagTraceDetailVO detail(String traceId);
 
-    List<RagTraceNodeVO> listNodes(String runId);
+    List<RagTraceNodeVO> listNodes(String traceId);
 }

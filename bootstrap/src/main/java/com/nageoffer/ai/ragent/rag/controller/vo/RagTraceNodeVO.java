@@ -29,7 +29,7 @@ import java.util.Date;
 @Builder
 public class RagTraceNodeVO {
 
-    private String runId;
+    private String traceId;
 
     private String nodeId;
 

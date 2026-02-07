@@ -7,7 +7,7 @@ export type BadgeVariant = "default" | "secondary" | "destructive" | "outline";
 export type TraceStatus = "" | "success" | "failed" | "running";
 
 export type TraceFilters = {
-  runId: string;
+  traceId: string;
   conversationId: string;
   taskId: string;
   status: TraceStatus;
@@ -22,7 +22,7 @@ export type TimelineNode = RagTraceNode & {
 };
 
 export const DEFAULT_FILTERS: TraceFilters = {
-  runId: "",
+  traceId: "",
   conversationId: "",
   taskId: "",
   status: ""

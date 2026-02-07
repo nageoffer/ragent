@@ -44,7 +44,7 @@ public class RagTraceRecordServiceImpl implements RagTraceRecordService {
     }
 
     @Override
-    public void finishRun(String runId, String status, String errorMessage, Date endTime, long durationMs) {
+    public void finishRun(String traceId, String status, String errorMessage, Date endTime, long durationMs) {
         RagTraceRunDO update = RagTraceRunDO.builder()
                 .status(status)
                 .errorMessage(errorMessage)
@@ -52,7 +52,7 @@ public class RagTraceRecordServiceImpl implements RagTraceRecordService {
                 .durationMs(durationMs)
                 .build();
         runMapper.update(update, Wrappers.lambdaUpdate(RagTraceRunDO.class)
-                .eq(RagTraceRunDO::getRunId, runId));
+                .eq(RagTraceRunDO::getTraceId, traceId));
     }
 
     @Override
@@ -61,7 +61,7 @@ public class RagTraceRecordServiceImpl implements RagTraceRecordService {
     }
 
     @Override
-    public void finishNode(String runId, String nodeId, String status, String errorMessage, Date endTime, long durationMs) {
+    public void finishNode(String traceId, String nodeId, String status, String errorMessage, Date endTime, long durationMs) {
         RagTraceNodeDO update = RagTraceNodeDO.builder()
                 .status(status)
                 .errorMessage(errorMessage)
@@ -69,7 +69,7 @@ public class RagTraceRecordServiceImpl implements RagTraceRecordService {
                 .durationMs(durationMs)
                 .build();
         nodeMapper.update(update, Wrappers.lambdaUpdate(RagTraceNodeDO.class)
-                .eq(RagTraceNodeDO::getRunId, runId)
+                .eq(RagTraceNodeDO::getTraceId, traceId)
                 .eq(RagTraceNodeDO::getNodeId, nodeId));
     }
 }

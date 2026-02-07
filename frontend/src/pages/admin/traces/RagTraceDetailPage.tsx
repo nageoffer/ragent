@@ -37,7 +37,7 @@ import {
 
 // ============ 工具函数 ============
 
-const decodeRunId = (value?: string): string => {
+const decodeTraceId = (value?: string): string => {
   if (!value) return "";
   try {
     return decodeURIComponent(value);
@@ -210,18 +210,18 @@ function WaterfallRow({
 // ============ 主组件 ============
 
 export function RagTraceDetailPage() {
-  const params = useParams<{ runId: string }>();
-  const runId = decodeRunId(params.runId);
+  const params = useParams<{ traceId: string }>();
+  const traceId = decodeTraceId(params.traceId);
   const detailRequestRef = useRef(0);
   const [detail, setDetail] = useState<RagTraceDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
-  const loadDetail = async (nextRunId: string) => {
-    if (!nextRunId) return;
+  const loadDetail = async (nextTraceId: string) => {
+    if (!nextTraceId) return;
     const requestId = ++detailRequestRef.current;
     setDetailLoading(true);
     try {
-      const result = await getRagTraceDetail(nextRunId);
+      const result = await getRagTraceDetail(nextTraceId);
       if (detailRequestRef.current !== requestId) return;
       setDetail(result);
     } catch (error) {
@@ -236,14 +236,14 @@ export function RagTraceDetailPage() {
   };
 
   useEffect(() => {
-    if (!runId) {
+    if (!traceId) {
       detailRequestRef.current += 1;
       setDetail(null);
       setDetailLoading(false);
       return;
     }
-    loadDetail(runId);
-  }, [runId]);
+    loadDetail(traceId);
+  }, [traceId]);
 
   const selectedRun = detail?.run || null;
 
@@ -314,7 +314,7 @@ export function RagTraceDetailPage() {
     );
   }
 
-  if (!runId || !selectedRun) {
+  if (!traceId || !selectedRun) {
     return (
         <div className="space-y-6">
           <div className="flex items-center justify-between">
@@ -340,7 +340,7 @@ export function RagTraceDetailPage() {
           <div className="min-h-[300px] flex items-center justify-center">
             <div className="text-center text-slate-500">
               <AlertTriangle className="h-12 w-12 mx-auto mb-4 text-slate-300" />
-              <p>{!runId ? "缺少 Run ID" : "暂无数据"}</p>
+              <p>{!traceId ? "缺少 Trace Id" : "暂无数据"}</p>
             </div>
           </div>
         </div>
@@ -388,7 +388,7 @@ export function RagTraceDetailPage() {
                 variant="outline"
                 size="sm"
                 className="text-slate-600 hover:text-slate-800"
-                onClick={() => loadDetail(runId)}
+                onClick={() => loadDetail(traceId)}
                 disabled={detailLoading}
             >
               <RefreshCw className={cn("mr-1.5 h-4 w-4", detailLoading && "animate-spin")} />
@@ -401,11 +401,11 @@ export function RagTraceDetailPage() {
         <div className="flex items-center gap-4 text-xs text-slate-500">
         <span
             className="font-mono cursor-pointer hover:text-slate-700 flex items-center gap-1 transition-colors"
-            onClick={() => copyToClipboard(runId, "Run ID")}
-            title="点击复制 Run ID"
+            onClick={() => copyToClipboard(traceId, "Trace Id")}
+            title="点击复制 Trace Id"
         >
           <Hash className="h-3 w-3" />
-          {runId.length > 28 ? `${runId.slice(0, 12)}...${runId.slice(-8)}` : runId}
+          {traceId.length > 28 ? `${traceId.slice(0, 12)}...${traceId.slice(-8)}` : traceId}
         </span>
           <span className="flex items-center gap-1">
           <Calendar className="h-3 w-3" />

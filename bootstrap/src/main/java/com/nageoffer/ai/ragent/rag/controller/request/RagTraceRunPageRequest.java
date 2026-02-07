@@ -26,7 +26,7 @@ import lombok.Data;
 @Data
 public class RagTraceRunPageRequest extends Page {
 
-    private String runId;
+    private String traceId;
 
     private String conversationId;
 

@@ -52,16 +52,16 @@ public class RagTraceController {
     /**
      * 查询链路详情（包含节点）
      */
-    @GetMapping("/rag/traces/runs/{runId}")
-    public Result<RagTraceDetailVO> detail(@PathVariable String runId) {
-        return Results.success(ragTraceQueryService.detail(runId));
+    @GetMapping("/rag/traces/runs/{traceId}")
+    public Result<RagTraceDetailVO> detail(@PathVariable String traceId) {
+        return Results.success(ragTraceQueryService.detail(traceId));
     }
 
     /**
      * 仅查询链路节点
      */
-    @GetMapping("/rag/traces/runs/{runId}/nodes")
-    public Result<List<RagTraceNodeVO>> nodes(@PathVariable String runId) {
-        return Results.success(ragTraceQueryService.listNodes(runId));
+    @GetMapping("/rag/traces/runs/{traceId}/nodes")
+    public Result<List<RagTraceNodeVO>> nodes(@PathVariable String traceId) {
+        return Results.success(ragTraceQueryService.listNodes(traceId));
     }
 }

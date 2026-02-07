@@ -20,9 +20,9 @@ export function FilterBar({ filters, onFiltersChange, onSearch, onRefresh, onRes
         <div className="trace-list-filter-grid">
           <Input
             className="trace-list-control"
-            value={filters.runId}
-            onChange={(event) => onFiltersChange({ runId: event.target.value })}
-            placeholder="按 Run ID 过滤"
+            value={filters.traceId}
+            onChange={(event) => onFiltersChange({ traceId: event.target.value })}
+            placeholder="按 Trace Id 过滤"
           />
           <Input
             className="trace-list-control"

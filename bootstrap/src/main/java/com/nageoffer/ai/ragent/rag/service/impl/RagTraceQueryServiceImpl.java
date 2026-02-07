@@ -58,8 +58,8 @@ public class RagTraceQueryServiceImpl implements RagTraceQueryService {
         LambdaQueryWrapper<RagTraceRunDO> wrapper = Wrappers.lambdaQuery(RagTraceRunDO.class)
                 .orderByDesc(RagTraceRunDO::getStartTime);
 
-        if (StrUtil.isNotBlank(request.getRunId())) {
-            wrapper.eq(RagTraceRunDO::getRunId, request.getRunId());
+        if (StrUtil.isNotBlank(request.getTraceId())) {
+            wrapper.eq(RagTraceRunDO::getTraceId, request.getTraceId());
         }
         if (StrUtil.isNotBlank(request.getConversationId())) {
             wrapper.eq(RagTraceRunDO::getConversationId, request.getConversationId());
@@ -77,9 +77,9 @@ public class RagTraceQueryServiceImpl implements RagTraceQueryService {
     }
 
     @Override
-    public RagTraceDetailVO detail(String runId) {
+    public RagTraceDetailVO detail(String traceId) {
         RagTraceRunDO run = runMapper.selectOne(Wrappers.lambdaQuery(RagTraceRunDO.class)
-                .eq(RagTraceRunDO::getRunId, runId)
+                .eq(RagTraceRunDO::getTraceId, traceId)
                 .last("limit 1"));
         if (run == null) {
             return null;
@@ -87,14 +87,14 @@ public class RagTraceQueryServiceImpl implements RagTraceQueryService {
         Map<String, String> usernameMap = loadUsernameMap(List.of(run));
         return RagTraceDetailVO.builder()
                 .run(toRunVO(run, usernameMap))
-                .nodes(listNodes(runId))
+                .nodes(listNodes(traceId))
                 .build();
     }
 
     @Override
-    public List<RagTraceNodeVO> listNodes(String runId) {
+    public List<RagTraceNodeVO> listNodes(String traceId) {
         List<RagTraceNodeDO> nodes = nodeMapper.selectList(Wrappers.lambdaQuery(RagTraceNodeDO.class)
-                .eq(RagTraceNodeDO::getRunId, runId)
+                .eq(RagTraceNodeDO::getTraceId, traceId)
                 .orderByAsc(RagTraceNodeDO::getStartTime)
                 .orderByAsc(RagTraceNodeDO::getId));
         return nodes.stream().map(this::toNodeVO).toList();
@@ -103,7 +103,7 @@ public class RagTraceQueryServiceImpl implements RagTraceQueryService {
     private RagTraceRunVO toRunVO(RagTraceRunDO run, Map<String, String> usernameMap) {
         String username = resolveUsername(run.getUserId(), usernameMap);
         return RagTraceRunVO.builder()
-                .runId(run.getRunId())
+                .traceId(run.getTraceId())
                 .traceName(run.getTraceName())
                 .entryMethod(run.getEntryMethod())
                 .conversationId(run.getConversationId())
@@ -166,7 +166,7 @@ public class RagTraceQueryServiceImpl implements RagTraceQueryService {
 
     private RagTraceNodeVO toNodeVO(RagTraceNodeDO node) {
         return RagTraceNodeVO.builder()
-                .runId(node.getRunId())
+                .traceId(node.getTraceId())
                 .nodeId(node.getNodeId())
                 .parentNodeId(node.getParentNodeId())
                 .depth(node.getDepth())
