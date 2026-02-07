@@ -9,6 +9,7 @@ import {
   Database,
   GitBranch,
   Github,
+  Layers,
   Lightbulb,
   LogOut,
   Menu,
@@ -76,7 +77,7 @@ const menuGroups: MenuGroup[] = [
         id: "intent",
         path: "/admin/intent-tree",
         label: "意图管理",
-        icon: GitBranch,
+        icon: Layers,
         children: [
           {
             path: "/admin/intent-tree",
