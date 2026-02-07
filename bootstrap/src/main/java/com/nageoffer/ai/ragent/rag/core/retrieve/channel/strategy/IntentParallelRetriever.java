@@ -33,13 +33,12 @@ import java.util.concurrent.Executor;
  * 继承模板类，实现意图特定的检索逻辑
  */
 @Slf4j
-public class IntentParallelRetriever extends AbstractParallelRetriever<NodeScore> {
+public class IntentParallelRetriever extends AbstractParallelRetriever<IntentParallelRetriever.IntentTask> {
 
     private final RetrieverService retrieverService;
 
-    // 用于传递动态 TopK 参数
-    private int fallbackTopK;
-    private int topKMultiplier;
+    public record IntentTask(NodeScore nodeScore, int intentTopK) {
+    }
 
     public IntentParallelRetriever(RetrieverService retrieverService,
                                    Executor executor) {
@@ -54,23 +53,25 @@ public class IntentParallelRetriever extends AbstractParallelRetriever<NodeScore
                                                          List<NodeScore> targets,
                                                          int fallbackTopK,
                                                          int topKMultiplier) {
-        // 保存参数供 createRetrievalTask 使用
-        this.fallbackTopK = fallbackTopK;
-        this.topKMultiplier = topKMultiplier;
-        return super.executeParallelRetrieval(question, targets, fallbackTopK);
+        List<IntentTask> intentTasks = targets.stream()
+                .map(nodeScore -> new IntentTask(
+                        nodeScore,
+                        resolveIntentTopK(nodeScore, fallbackTopK, topKMultiplier)
+                ))
+                .toList();
+        return super.executeParallelRetrieval(question, intentTasks, fallbackTopK);
     }
 
     @Override
-    protected List<RetrievedChunk> createRetrievalTask(String question, NodeScore nodeScore, int topK) {
+    protected List<RetrievedChunk> createRetrievalTask(String question, IntentTask task, int ignoredTopK) {
+        NodeScore nodeScore = task.nodeScore();
         IntentNode node = nodeScore.getNode();
         try {
-            // 计算该意图的实际 TopK
-            int intentTopK = resolveIntentTopK(nodeScore, fallbackTopK, topKMultiplier);
             return retrieverService.retrieve(
                     RetrieveRequest.builder()
                             .collectionName(node.getCollectionName())
                             .query(question)
-                            .topK(intentTopK)
+                            .topK(task.intentTopK())
                             .build()
             );
         } catch (Exception e) {
@@ -81,7 +82,8 @@ public class IntentParallelRetriever extends AbstractParallelRetriever<NodeScore
     }
 
     @Override
-    protected String getTargetIdentifier(NodeScore nodeScore) {
+    protected String getTargetIdentifier(IntentTask task) {
+        NodeScore nodeScore = task.nodeScore();
         IntentNode node = nodeScore.getNode();
         return String.format("意图ID: %s, 意图名称: %s", node.getId(), node.getName());
     }
