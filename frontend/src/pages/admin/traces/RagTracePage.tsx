@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
-import { Activity, CheckCircle2, Clock3, Layers, Workflow } from "lucide-react";
+import { Activity, Clock3, Layers, TrendingUp } from "lucide-react";
 import { toast } from "sonner";
 
 import { getRagTraceRuns, type PageResult, type RagTraceRun } from "@/services/ragTraceService";
@@ -129,18 +129,18 @@ export function RagTracePage() {
     tone: StatCardTone;
   }[] = [
     {
-      key: "runs",
-      title: "当前页运行数",
-      value: runs.length.toLocaleString("zh-CN"),
-      icon: <Activity className="h-4 w-4" />,
-      tone: "cyan"
-    },
-    {
       key: "status",
       title: "成功 / 失败 / 运行中",
       value: `${traceStats.successCount} / ${traceStats.failedCount} / ${traceStats.runningCount}`,
-      icon: <CheckCircle2 className="h-4 w-4" />,
+      icon: <Activity className="h-4 w-4" />,
       tone: "emerald"
+    },
+    {
+      key: "successRate",
+      title: "成功率",
+      value: `${traceStats.successRate}%`,
+      icon: <TrendingUp className="h-4 w-4" />,
+      tone: "cyan"
     },
     {
       key: "avg",
@@ -167,34 +167,7 @@ export function RagTracePage() {
           tag="RAG Observability"
           title="链路追踪"
           description="独立列表页聚焦运行检索，点击任意运行记录进入详情页分析慢节点与失败节点"
-          kpis={[
-            {
-              key: "runs",
-              icon: <Workflow className="h-4 w-4" />,
-              label: "Runs",
-              value: total.toLocaleString("zh-CN")
-            },
-            {
-              key: "p95",
-              icon: <Clock3 className="h-4 w-4" />,
-              label: "P95",
-              value: `${p95DurationMetric.value}${p95DurationMetric.unit}`
-            },
-            {
-              key: "successRate",
-              icon: <CheckCircle2 className="h-4 w-4" />,
-              label: "成功率",
-              value: `${traceStats.successRate}%`
-            }
-          ]}
-        />
-
-        <FilterBar
-          filters={filters}
-          onFiltersChange={(next) => setFilters((prev) => ({ ...prev, ...next }))}
-          onSearch={handleSearch}
-          onReset={handleReset}
-          onRefresh={handleRefresh}
+          kpis={[]}
         />
 
         <section className="trace-list-stat-grid">
@@ -209,6 +182,14 @@ export function RagTracePage() {
             />
           ))}
         </section>
+
+        <FilterBar
+          filters={filters}
+          onFiltersChange={(next) => setFilters((prev) => ({ ...prev, ...next }))}
+          onSearch={handleSearch}
+          onReset={handleReset}
+          onRefresh={handleRefresh}
+        />
 
         <RunsTable
           runs={runs}

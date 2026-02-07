@@ -13,10 +13,12 @@ interface PageHeaderProps {
   tag: string;
   title: string;
   description: string;
-  kpis: TraceHeaderKpi[];
+  kpis?: TraceHeaderKpi[];
+  actions?: ReactNode;
+  meta?: ReactNode;
 }
 
-export function PageHeader({ tag, title, description, kpis }: PageHeaderProps) {
+export function PageHeader({ tag, title, description, kpis = [], actions, meta }: PageHeaderProps) {
   return (
     <Card className="trace-list-header-card">
       <CardContent className="trace-list-header-content">
@@ -24,21 +26,26 @@ export function PageHeader({ tag, title, description, kpis }: PageHeaderProps) {
           <p className="trace-list-header-tag">{tag}</p>
           <h1 className="trace-list-header-title">{title}</h1>
           <p className="trace-list-header-description">{description}</p>
+          {meta ? <div className="trace-list-header-meta">{meta}</div> : null}
         </div>
-        <div className="trace-list-kpi-group">
-          {kpis.map((kpi) => (
-            <div
-              key={kpi.key}
-              className={`trace-list-kpi-pill trace-list-kpi-pill--${kpi.key.toLowerCase()}`}
-            >
-              <span className="trace-list-kpi-icon">{kpi.icon}</span>
-              <div className="trace-list-kpi-text">
-                <p className="trace-list-kpi-label">{kpi.label}</p>
-                <p className="trace-list-kpi-value">{kpi.value}</p>
+        {actions ? (
+          <div className="trace-list-header-actions">{actions}</div>
+        ) : kpis.length > 0 ? (
+          <div className="trace-list-kpi-group">
+            {kpis.map((kpi) => (
+              <div
+                key={kpi.key}
+                className={`trace-list-kpi-pill trace-list-kpi-pill--${kpi.key.toLowerCase()}`}
+              >
+                <span className="trace-list-kpi-icon">{kpi.icon}</span>
+                <div className="trace-list-kpi-text">
+                  <p className="trace-list-kpi-label">{kpi.label}</p>
+                  <p className="trace-list-kpi-value">{kpi.value}</p>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );
