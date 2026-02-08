@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -166,6 +167,81 @@ const getNiceStep = (roughStep: number) => {
   return 10 * magnitude;
 };
 
+type PlotPoint = {
+  x: number;
+  y: number;
+  ts: number;
+  value: number;
+};
+
+const buildMonotonePath = (points: PlotPoint[]) => {
+  if (points.length === 0) return "";
+  if (points.length === 1) {
+    const p = points[0];
+    return `M${p.x.toFixed(2)} ${p.y.toFixed(2)}`;
+  }
+
+  const x = points.map((point) => point.x);
+  const y = points.map((point) => point.y);
+  const segmentCount = points.length - 1;
+  const dx = new Array<number>(segmentCount);
+  const delta = new Array<number>(segmentCount);
+  for (let i = 0; i < segmentCount; i += 1) {
+    const span = x[i + 1] - x[i];
+    dx[i] = span;
+    delta[i] = span === 0 ? 0 : (y[i + 1] - y[i]) / span;
+  }
+
+  const slope = new Array<number>(points.length).fill(0);
+  slope[0] = Number.isFinite(delta[0]) ? delta[0] : 0;
+  slope[points.length - 1] = Number.isFinite(delta[segmentCount - 1]) ? delta[segmentCount - 1] : 0;
+
+  for (let i = 1; i < points.length - 1; i += 1) {
+    const prev = delta[i - 1];
+    const next = delta[i];
+    if (!Number.isFinite(prev) || !Number.isFinite(next) || prev === 0 || next === 0 || prev * next < 0) {
+      slope[i] = 0;
+      continue;
+    }
+    const w1 = 2 * dx[i] + dx[i - 1];
+    const w2 = dx[i] + 2 * dx[i - 1];
+    slope[i] = (w1 + w2) / (w1 / prev + w2 / next);
+    if (!Number.isFinite(slope[i])) {
+      slope[i] = 0;
+    }
+  }
+
+  let path = `M${x[0].toFixed(2)} ${y[0].toFixed(2)}`;
+  for (let i = 0; i < segmentCount; i += 1) {
+    const span = dx[i];
+    if (!Number.isFinite(span) || span <= 0) {
+      path += ` L${x[i + 1].toFixed(2)} ${y[i + 1].toFixed(2)}`;
+      continue;
+    }
+    const c1x = x[i] + span / 3;
+    const c1y = y[i] + (slope[i] * span) / 3;
+    const c2x = x[i + 1] - span / 3;
+    const c2y = y[i + 1] - (slope[i + 1] * span) / 3;
+    path += ` C${c1x.toFixed(2)} ${c1y.toFixed(2)} ${c2x.toFixed(2)} ${c2y.toFixed(2)} ${x[i + 1].toFixed(2)} ${y[i + 1].toFixed(2)}`;
+  }
+  return path;
+};
+
+const buildAreaPath = (points: PlotPoint[], baselineY: number) => {
+  if (points.length === 0) return "";
+  const linePath = buildMonotonePath(points);
+  if (!linePath) return "";
+  const first = points[0];
+  const last = points[points.length - 1];
+  return `${linePath} L${last.x.toFixed(2)} ${baselineY.toFixed(2)} L${first.x.toFixed(2)} ${baselineY.toFixed(2)} Z`;
+};
+
+const getThresholdToneColor = (tone?: ChartThreshold["tone"]) => {
+  if (tone === "critical") return "#ef4444";
+  if (tone === "warning") return "#f59e0b";
+  return "#0ea5e9";
+};
+
 const buildYAxisTicks = (
   minValue: number,
   maxValue: number,
@@ -207,6 +283,7 @@ export function SimpleLineChart({
   theme = "light",
   yAxisTickCount = 4
 }: SimpleLineChartProps) {
+  const gradientIdPrefix = useId().replace(/:/g, "");
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [width, setWidth] = useState(0);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
@@ -335,25 +412,6 @@ export function SimpleLineChart({
     return Math.round((index * (xValues.length - 1)) / (xTickCount - 1));
   }).filter((value, index, array) => array.indexOf(value) === index);
 
-  const buildPath = (seriesIndex: number) => {
-    const map = pointMaps[seriesIndex];
-    let path = "";
-    let started = false;
-    xValues.forEach((ts) => {
-      const value = map.get(ts);
-      if (value === undefined || value === null || Number.isNaN(value)) {
-        started = false;
-        return;
-      }
-      const index = xIndexMap.get(ts) || 0;
-      const x = xAt(index);
-      const y = yAt(value);
-      path += `${started ? " L" : "M"}${x.toFixed(2)} ${y.toFixed(2)}`;
-      started = true;
-    });
-    return path;
-  };
-
   const activeTs = hoverIndex !== null ? xValues[hoverIndex] : null;
 
   const onMouseMove = (event: ReactMouseEvent<SVGRectElement>) => {
@@ -380,6 +438,42 @@ export function SimpleLineChart({
     : 0;
   const tooltipTop = hoverPosition ? Math.max(8, hoverPosition.y - 12) : 0;
   const palette = CHART_THEME[theme];
+  const baselineY = margin.top + innerHeight;
+
+  const seriesGeometry = normalizedSeries.map((_, seriesIndex) => {
+    const map = pointMaps[seriesIndex];
+    const segments: PlotPoint[][] = [];
+    let currentSegment: PlotPoint[] = [];
+
+    xValues.forEach((ts) => {
+      const value = map.get(ts);
+      if (value === undefined || value === null || Number.isNaN(value)) {
+        if (currentSegment.length > 0) {
+          segments.push(currentSegment);
+          currentSegment = [];
+        }
+        return;
+      }
+      const xIndex = xIndexMap.get(ts) || 0;
+      currentSegment.push({
+        x: xAt(xIndex),
+        y: yAt(value),
+        ts,
+        value
+      });
+    });
+
+    if (currentSegment.length > 0) {
+      segments.push(currentSegment);
+    }
+
+    const linePath = segments.map((segment) => buildMonotonePath(segment)).filter(Boolean).join(" ");
+    const areaPath = segments.map((segment) => buildAreaPath(segment, baselineY)).filter(Boolean).join(" ");
+    const lastSegment = segments[segments.length - 1];
+    const endpoint = lastSegment ? lastSegment[lastSegment.length - 1] : null;
+
+    return { linePath, areaPath, endpoint };
+  });
 
   return (
     <div ref={containerRef} className="relative w-full" style={CHART_COLOR_VARS}>
@@ -396,6 +490,46 @@ export function SimpleLineChart({
       </div>
 
       <svg width={outerWidth} height={height} className="w-full overflow-visible">
+        <defs>
+          {normalizedSeries.map((item, index) => {
+            const toneColor = TONE_STROKE[item.tone || "primary"];
+            return (
+              <linearGradient
+                key={`gradient-${item.name}-${index}`}
+                id={`${gradientIdPrefix}-series-gradient-${index}`}
+                x1="0"
+                y1={margin.top}
+                x2="0"
+                y2={margin.top + innerHeight}
+                gradientUnits="userSpaceOnUse"
+              >
+                <stop offset="0%" stopColor={toneColor} stopOpacity={0.16} />
+                <stop offset="72%" stopColor={toneColor} stopOpacity={0.05} />
+                <stop offset="100%" stopColor={toneColor} stopOpacity={0} />
+              </linearGradient>
+            );
+          })}
+        </defs>
+
+        {thresholds.map((threshold) => {
+          const clamped = Math.max(Math.min(threshold.value, yAxisTop), yAxisBottom);
+          const y = yAt(clamped);
+          const toneColor = getThresholdToneColor(threshold.tone);
+          const bandHeight = Math.max(0, margin.top + innerHeight - y);
+          if (bandHeight <= 0) return null;
+          return (
+            <rect
+              key={`threshold-band-${threshold.value}-${threshold.label || ""}`}
+              x={margin.left}
+              y={y}
+              width={innerWidth}
+              height={bandHeight}
+              fill={toneColor}
+              opacity={0.04}
+            />
+          );
+        })}
+
         {yTicks.map((tick) => {
           const y = yAt(tick);
           return (
@@ -465,12 +599,7 @@ export function SimpleLineChart({
         {thresholds.map((threshold) => {
           const clamped = Math.max(Math.min(threshold.value, yAxisTop), yAxisBottom);
           const y = yAt(clamped);
-          const toneColor =
-            threshold.tone === "critical"
-              ? "#ef4444"
-              : threshold.tone === "warning"
-                ? "#f59e0b"
-                : "#0ea5e9";
+          const toneColor = getThresholdToneColor(threshold.tone);
           return (
             <g key={`threshold-${threshold.value}-${threshold.label || ""}`}>
               <line
@@ -500,16 +629,62 @@ export function SimpleLineChart({
 
         {normalizedSeries.map((item, index) => (
           <path
-            key={item.name}
-            d={buildPath(index)}
+            key={`${item.name}-area`}
+            d={seriesGeometry[index].areaPath}
+            fill={`url(#${gradientIdPrefix}-series-gradient-${index})`}
+            stroke="none"
+          />
+        ))}
+
+        {normalizedSeries.map((item, index) => (
+          <path
+            key={`${item.name}-glow`}
+            d={seriesGeometry[index].linePath}
             fill="none"
             stroke={TONE_STROKE[item.tone || "primary"]}
-            strokeWidth={2}
+            strokeWidth={5}
+            strokeOpacity={0.18}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
+        ))}
+
+        {normalizedSeries.map((item, index) => (
+          <path
+            key={item.name}
+            d={seriesGeometry[index].linePath}
+            fill="none"
+            stroke={TONE_STROKE[item.tone || "primary"]}
+            strokeWidth={2.2}
             strokeDasharray={item.lineStyle === "dashed" ? "6 4" : undefined}
             strokeLinejoin="round"
             strokeLinecap="round"
           />
         ))}
+
+        {normalizedSeries.map((item, index) => {
+          const endpoint = seriesGeometry[index].endpoint;
+          if (!endpoint) return null;
+          return (
+            <g key={`${item.name}-endpoint`}>
+              <circle
+                cx={endpoint.x}
+                cy={endpoint.y}
+                r={5}
+                fill={TONE_STROKE[item.tone || "primary"]}
+                opacity={0.18}
+              />
+              <circle
+                cx={endpoint.x}
+                cy={endpoint.y}
+                r={3}
+                fill={TONE_STROKE[item.tone || "primary"]}
+                stroke={palette.pointStroke}
+                strokeWidth={1.5}
+              />
+            </g>
+          );
+        })}
 
         {activeTs !== null ? (
           <g>
