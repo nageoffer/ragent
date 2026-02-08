@@ -35,4 +35,6 @@ public class DashboardPerformanceVO {
     private Double errorRate;
 
     private Double noDocRate;
+
+    private Double slowRate;
 }

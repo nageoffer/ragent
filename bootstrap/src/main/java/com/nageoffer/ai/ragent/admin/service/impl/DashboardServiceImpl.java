@@ -60,6 +60,7 @@ public class DashboardServiceImpl implements DashboardService {
     private static final String STATUS_ERROR = "ERROR";
     private static final String GRANULARITY_DAY = "day";
     private static final String GRANULARITY_HOUR = "hour";
+    private static final long SLOW_LATENCY_THRESHOLD_MS = 20000L;
     private static final DateTimeFormatter HOUR_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private final UserMapper userMapper;
@@ -112,10 +113,12 @@ public class DashboardServiceImpl implements DashboardService {
         long success = countTraceRuns(range.start, range.end, STATUS_SUCCESS);
         long error = countTraceRuns(range.start, range.end, STATUS_ERROR);
         long total = success + error;
+        long slowCount = durations.stream().filter(duration -> duration > SLOW_LATENCY_THRESHOLD_MS).count();
 
         double successRate = total == 0 ? 0.0 : round1((success * 100.0) / total);
         double errorRate = total == 0 ? 0.0 : round1((error * 100.0) / total);
         double noDocRate = total == 0 ? 0.0 : 100.0;
+        double slowRate = durations.isEmpty() ? 0.0 : round1((slowCount * 100.0) / durations.size());
 
         return DashboardPerformanceVO.builder()
                 .window(range.windowLabel)
@@ -124,6 +127,7 @@ public class DashboardServiceImpl implements DashboardService {
                 .successRate(successRate)
                 .errorRate(errorRate)
                 .noDocRate(noDocRate)
+                .slowRate(slowRate)
                 .build();
     }
 
@@ -146,6 +150,12 @@ public class DashboardServiceImpl implements DashboardService {
                 Map<LocalDateTime, Long> counts = countConversationsByHour(startHour, endHourExclusive, zoneId);
                 series.add(DashboardTrendSeriesVO.builder()
                         .name("会话数")
+                        .data(buildPointsByHour(startHour, endHourExclusive, zoneId, counts))
+                        .build());
+            } else if ("messages".equals(normalizedMetric)) {
+                Map<LocalDateTime, Long> counts = countMessagesByHour(startHour, endHourExclusive, zoneId);
+                series.add(DashboardTrendSeriesVO.builder()
+                        .name("消息数")
                         .data(buildPointsByHour(startHour, endHourExclusive, zoneId, counts))
                         .build());
             } else if ("activeusers".equals(normalizedMetric)) {
@@ -190,6 +200,12 @@ public class DashboardServiceImpl implements DashboardService {
                 Map<LocalDate, Long> counts = countConversationsByDay(startDay, endExclusiveDay, zoneId);
                 series.add(DashboardTrendSeriesVO.builder()
                         .name("会话数")
+                        .data(buildPoints(startDay, endExclusiveDay, zoneId, counts))
+                        .build());
+            } else if ("messages".equals(normalizedMetric)) {
+                Map<LocalDate, Long> counts = countMessagesByDay(startDay, endExclusiveDay, zoneId);
+                series.add(DashboardTrendSeriesVO.builder()
+                        .name("消息数")
                         .data(buildPoints(startDay, endExclusiveDay, zoneId, counts))
                         .build());
             } else if ("activeusers".equals(normalizedMetric)) {
@@ -328,6 +344,15 @@ public class DashboardServiceImpl implements DashboardService {
         return mapLongResults(conversationMapper.selectMaps(wrapper));
     }
 
+    private Map<LocalDate, Long> countMessagesByDay(LocalDate start, LocalDate endExclusive, ZoneId zoneId) {
+        QueryWrapper<ConversationMessageDO> wrapper = new QueryWrapper<>();
+        wrapper.select("date_format(create_time,'%Y-%m-%d') as d", "count(*) as cnt")
+                .ge("create_time", toDate(start, zoneId))
+                .lt("create_time", toDate(endExclusive, zoneId))
+                .groupBy("d");
+        return mapLongResults(messageMapper.selectMaps(wrapper));
+    }
+
     private Map<LocalDate, Long> countActiveUsersByDay(LocalDate start, LocalDate endExclusive, ZoneId zoneId) {
         QueryWrapper<ConversationMessageDO> wrapper = new QueryWrapper<>();
         wrapper.select("date_format(create_time,'%Y-%m-%d') as d", "count(distinct user_id) as cnt")
@@ -380,6 +405,15 @@ public class DashboardServiceImpl implements DashboardService {
                 .lt("create_time", toDate(endExclusive, zoneId))
                 .groupBy("h");
         return mapLongResultsByHour(conversationMapper.selectMaps(wrapper));
+    }
+
+    private Map<LocalDateTime, Long> countMessagesByHour(LocalDateTime start, LocalDateTime endExclusive, ZoneId zoneId) {
+        QueryWrapper<ConversationMessageDO> wrapper = new QueryWrapper<>();
+        wrapper.select("date_format(create_time,'%Y-%m-%d %H:00:00') as h", "count(*) as cnt")
+                .ge("create_time", toDate(start, zoneId))
+                .lt("create_time", toDate(endExclusive, zoneId))
+                .groupBy("h");
+        return mapLongResultsByHour(messageMapper.selectMaps(wrapper));
     }
 
     private Map<LocalDateTime, Long> countActiveUsersByHour(LocalDateTime start, LocalDateTime endExclusive, ZoneId zoneId) {

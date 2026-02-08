@@ -27,6 +27,7 @@ export type DashboardPerformance = {
   successRate: number;
   errorRate: number;
   noDocRate: number;
+  slowRate: number;
 };
 
 export type DashboardTrendPoint = {

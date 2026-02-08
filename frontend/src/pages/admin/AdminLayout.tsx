@@ -180,6 +180,7 @@ export function AdminLayout() {
   const [searchFocused, setSearchFocused] = useState(false);
   const blurTimeoutRef = useRef<number | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const isDashboardRoute = location.pathname.startsWith("/admin/dashboard");
 
   const handleLogout = async () => {
     await logout();
@@ -577,7 +578,12 @@ export function AdminLayout() {
         </div>
       </aside>
 
-      <div className="admin-main flex min-h-screen flex-1 flex-col overflow-auto">
+      <div
+        className={cn(
+          "admin-main flex min-h-screen flex-1 flex-col overflow-auto",
+          isDashboardRoute && "dashboard-scroll-shell"
+        )}
+      >
         <header className="admin-topbar">
           <div className="admin-topbar-inner">
             <div className="flex items-center gap-3">
