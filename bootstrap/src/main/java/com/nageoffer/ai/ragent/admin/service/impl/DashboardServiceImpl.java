@@ -58,6 +58,8 @@ public class DashboardServiceImpl implements DashboardService {
 
     private static final String STATUS_SUCCESS = "SUCCESS";
     private static final String STATUS_ERROR = "ERROR";
+    private static final String ROLE_ASSISTANT = "assistant";
+    private static final String NO_DOC_REPLY = "未检索到与问题相关的文档内容。";
     private static final String GRANULARITY_DAY = "day";
     private static final String GRANULARITY_HOUR = "hour";
     private static final long SLOW_LATENCY_THRESHOLD_MS = 20000L;
@@ -113,11 +115,13 @@ public class DashboardServiceImpl implements DashboardService {
         long success = countTraceRuns(range.start, range.end, STATUS_SUCCESS);
         long error = countTraceRuns(range.start, range.end, STATUS_ERROR);
         long total = success + error;
+        long assistantCount = countAssistantMessages(range.start, range.end);
+        long noDocCount = countNoDocMessages(range.start, range.end);
         long slowCount = durations.stream().filter(duration -> duration > SLOW_LATENCY_THRESHOLD_MS).count();
 
         double successRate = total == 0 ? 0.0 : round1((success * 100.0) / total);
         double errorRate = total == 0 ? 0.0 : round1((error * 100.0) / total);
-        double noDocRate = total == 0 ? 0.0 : 100.0;
+        double noDocRate = assistantCount == 0 ? 0.0 : round1((noDocCount * 100.0) / assistantCount);
         double slowRate = durations.isEmpty() ? 0.0 : round1((slowCount * 100.0) / durations.size());
 
         return DashboardPerformanceVO.builder()
@@ -173,13 +177,17 @@ public class DashboardServiceImpl implements DashboardService {
             } else if ("quality".equals(normalizedMetric)) {
                 Map<LocalDateTime, Long> successMap = countTraceRunsByHour(startHour, endHourExclusive, zoneId, STATUS_SUCCESS);
                 Map<LocalDateTime, Long> errorMap = countTraceRunsByHour(startHour, endHourExclusive, zoneId, STATUS_ERROR);
+                Map<LocalDateTime, Long> assistantCountMap = countAssistantMessagesByHour(startHour, endHourExclusive, zoneId);
+                Map<LocalDateTime, Long> noDocCountMap = countNoDocMessagesByHour(startHour, endHourExclusive, zoneId);
                 Map<LocalDateTime, Double> errorRate = new HashMap<>();
                 Map<LocalDateTime, Double> noDocRate = new HashMap<>();
                 for (LocalDateTime hour = startHour; hour.isBefore(endHourExclusive); hour = hour.plusHours(1)) {
                     long total = successMap.getOrDefault(hour, 0L) + errorMap.getOrDefault(hour, 0L);
+                    long assistantCount = assistantCountMap.getOrDefault(hour, 0L);
                     long error = errorMap.getOrDefault(hour, 0L);
+                    long noDocCount = noDocCountMap.getOrDefault(hour, 0L);
                     double err = total == 0 ? 0.0 : round1((error * 100.0) / total);
-                    double noDoc = total == 0 ? 0.0 : 100.0;
+                    double noDoc = assistantCount == 0 ? 0.0 : round1((noDocCount * 100.0) / assistantCount);
                     errorRate.put(hour, err);
                     noDocRate.put(hour, noDoc);
                 }
@@ -223,13 +231,17 @@ public class DashboardServiceImpl implements DashboardService {
             } else if ("quality".equals(normalizedMetric)) {
                 Map<LocalDate, Long> successMap = countTraceRunsByDay(startDay, endExclusiveDay, zoneId, STATUS_SUCCESS);
                 Map<LocalDate, Long> errorMap = countTraceRunsByDay(startDay, endExclusiveDay, zoneId, STATUS_ERROR);
+                Map<LocalDate, Long> assistantCountMap = countAssistantMessagesByDay(startDay, endExclusiveDay, zoneId);
+                Map<LocalDate, Long> noDocCountMap = countNoDocMessagesByDay(startDay, endExclusiveDay, zoneId);
                 Map<LocalDate, Double> errorRate = new HashMap<>();
                 Map<LocalDate, Double> noDocRate = new HashMap<>();
                 for (LocalDate day = startDay; day.isBefore(endExclusiveDay); day = day.plusDays(1)) {
                     long total = successMap.getOrDefault(day, 0L) + errorMap.getOrDefault(day, 0L);
+                    long assistantCount = assistantCountMap.getOrDefault(day, 0L);
                     long error = errorMap.getOrDefault(day, 0L);
+                    long noDocCount = noDocCountMap.getOrDefault(day, 0L);
                     double err = total == 0 ? 0.0 : round1((error * 100.0) / total);
-                    double noDoc = total == 0 ? 0.0 : 100.0;
+                    double noDoc = assistantCount == 0 ? 0.0 : round1((noDocCount * 100.0) / assistantCount);
                     errorRate.put(day, err);
                     noDocRate.put(day, noDoc);
                 }
@@ -285,6 +297,23 @@ public class DashboardServiceImpl implements DashboardService {
             wrapper.eq("status", status);
         }
         return traceRunMapper.selectCount(wrapper);
+    }
+
+    private long countAssistantMessages(Date start, Date end) {
+        QueryWrapper<ConversationMessageDO> wrapper = new QueryWrapper<>();
+        wrapper.ge("create_time", start)
+                .lt("create_time", end)
+                .eq("role", ROLE_ASSISTANT);
+        return messageMapper.selectCount(wrapper);
+    }
+
+    private long countNoDocMessages(Date start, Date end) {
+        QueryWrapper<ConversationMessageDO> wrapper = new QueryWrapper<>();
+        wrapper.ge("create_time", start)
+                .lt("create_time", end)
+                .eq("role", ROLE_ASSISTANT)
+                .eq("content", NO_DOC_REPLY);
+        return messageMapper.selectCount(wrapper);
     }
 
     private List<Long> listDurations(Date start, Date end) {
@@ -353,6 +382,27 @@ public class DashboardServiceImpl implements DashboardService {
         return mapLongResults(messageMapper.selectMaps(wrapper));
     }
 
+    private Map<LocalDate, Long> countAssistantMessagesByDay(LocalDate start, LocalDate endExclusive, ZoneId zoneId) {
+        QueryWrapper<ConversationMessageDO> wrapper = new QueryWrapper<>();
+        wrapper.select("date_format(create_time,'%Y-%m-%d') as d", "count(*) as cnt")
+                .ge("create_time", toDate(start, zoneId))
+                .lt("create_time", toDate(endExclusive, zoneId))
+                .eq("role", ROLE_ASSISTANT)
+                .groupBy("d");
+        return mapLongResults(messageMapper.selectMaps(wrapper));
+    }
+
+    private Map<LocalDate, Long> countNoDocMessagesByDay(LocalDate start, LocalDate endExclusive, ZoneId zoneId) {
+        QueryWrapper<ConversationMessageDO> wrapper = new QueryWrapper<>();
+        wrapper.select("date_format(create_time,'%Y-%m-%d') as d", "count(*) as cnt")
+                .ge("create_time", toDate(start, zoneId))
+                .lt("create_time", toDate(endExclusive, zoneId))
+                .eq("role", ROLE_ASSISTANT)
+                .eq("content", NO_DOC_REPLY)
+                .groupBy("d");
+        return mapLongResults(messageMapper.selectMaps(wrapper));
+    }
+
     private Map<LocalDate, Long> countActiveUsersByDay(LocalDate start, LocalDate endExclusive, ZoneId zoneId) {
         QueryWrapper<ConversationMessageDO> wrapper = new QueryWrapper<>();
         wrapper.select("date_format(create_time,'%Y-%m-%d') as d", "count(distinct user_id) as cnt")
@@ -412,6 +462,27 @@ public class DashboardServiceImpl implements DashboardService {
         wrapper.select("date_format(create_time,'%Y-%m-%d %H:00:00') as h", "count(*) as cnt")
                 .ge("create_time", toDate(start, zoneId))
                 .lt("create_time", toDate(endExclusive, zoneId))
+                .groupBy("h");
+        return mapLongResultsByHour(messageMapper.selectMaps(wrapper));
+    }
+
+    private Map<LocalDateTime, Long> countAssistantMessagesByHour(LocalDateTime start, LocalDateTime endExclusive, ZoneId zoneId) {
+        QueryWrapper<ConversationMessageDO> wrapper = new QueryWrapper<>();
+        wrapper.select("date_format(create_time,'%Y-%m-%d %H:00:00') as h", "count(*) as cnt")
+                .ge("create_time", toDate(start, zoneId))
+                .lt("create_time", toDate(endExclusive, zoneId))
+                .eq("role", ROLE_ASSISTANT)
+                .groupBy("h");
+        return mapLongResultsByHour(messageMapper.selectMaps(wrapper));
+    }
+
+    private Map<LocalDateTime, Long> countNoDocMessagesByHour(LocalDateTime start, LocalDateTime endExclusive, ZoneId zoneId) {
+        QueryWrapper<ConversationMessageDO> wrapper = new QueryWrapper<>();
+        wrapper.select("date_format(create_time,'%Y-%m-%d %H:00:00') as h", "count(*) as cnt")
+                .ge("create_time", toDate(start, zoneId))
+                .lt("create_time", toDate(endExclusive, zoneId))
+                .eq("role", ROLE_ASSISTANT)
+                .eq("content", NO_DOC_REPLY)
                 .groupBy("h");
         return mapLongResultsByHour(messageMapper.selectMaps(wrapper));
     }

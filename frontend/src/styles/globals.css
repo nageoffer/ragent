@@ -2181,6 +2181,28 @@ textarea {
   background: #9ca3af;
 }
 
+.insight-scroll-shell {
+  scrollbar-width: none;
+}
+
+.insight-scroll-shell::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.insight-scroll-shell.is-scrollbar-visible {
+  scrollbar-width: thin;
+}
+
+.insight-scroll-shell.is-scrollbar-visible::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.insight-scroll-shell.is-scrollbar-visible::-webkit-scrollbar-thumb {
+  background: #9ca3af;
+}
+
 .user-message {
   background: #f5f5f5;
   color: #333333;

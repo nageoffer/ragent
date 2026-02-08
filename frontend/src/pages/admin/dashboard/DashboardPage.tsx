@@ -99,7 +99,7 @@ const WINDOW_LABEL_MAP: Record<DashboardTimeWindow, string> = {
 };
 
 const DASHBOARD_THRESHOLDS = {
-  latency: { good: 15000, warning: 20000 },
+  latency: { good: 10000, warning: 15000 },
   successRate: { good: 99, warning: 95 },
   errorRate: { good: 1, warning: 5 },
   noDocRate: { good: 10, warning: 30 }
@@ -831,22 +831,7 @@ const TrafficOverviewSection = ({
       <DashCard className={cn("flex flex-col", className)}>
         <div className="mb-3">
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">流量概览</p>
-          <p className="mt-1 text-3xl font-bold text-slate-900">{formatNumber(totalMessages)}</p>
-          <p className="text-xs text-slate-400">消息总量</p>
-          {showChange && (
-              <div className="mt-1 flex items-center gap-1">
-                {isUp ? (
-                    <TrendingUp className="h-4 w-4 text-emerald-500" />
-                ) : (
-                    <TrendingDown className="h-4 w-4 text-red-500" />
-                )}
-                <span className={cn("text-sm font-medium", isUp ? "text-emerald-500" : "text-red-500")}>
-              {change.value > 0 ? "+" : ""}
-                  {change.value.toFixed(1)}%
-            </span>
-                <span className="text-sm text-slate-400">较上周期</span>
-              </div>
-          )}
+          {showChange}
         </div>
 
         {loading ? (
@@ -972,8 +957,8 @@ const TrendSection = ({
               yAxisLabel="单位：毫秒"
               loading={loading}
               thresholds={[
-                { value: DASHBOARD_THRESHOLDS.latency.good, label: "良好 ≤15s", tone: "info" },
-                { value: DASHBOARD_THRESHOLDS.latency.warning, label: "警告 >20s", tone: "critical" }
+                { value: DASHBOARD_THRESHOLDS.latency.good, label: "良好 ≤10s", tone: "info" },
+                { value: DASHBOARD_THRESHOLDS.latency.warning, label: "警告 >15s", tone: "critical" }
               ]}
           />
           <TrendChartItem
@@ -1359,11 +1344,80 @@ const InsightSection = ({
       () => buildInsightList(performance, timeWindowLabel, timestamp),
       [performance, timeWindowLabel, timestamp]
   );
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const [isScrollable, setIsScrollable] = useState(false);
+  const [showScrollbar, setShowScrollbar] = useState(false);
+  const hideScrollbarTimerRef = useRef<number | null>(null);
+
+  const handleScroll = useCallback(() => {
+    if (!isScrollable) return;
+    setShowScrollbar(true);
+
+    if (hideScrollbarTimerRef.current !== null) {
+      window.clearTimeout(hideScrollbarTimerRef.current);
+    }
+
+    hideScrollbarTimerRef.current = window.setTimeout(() => {
+      setShowScrollbar(false);
+      hideScrollbarTimerRef.current = null;
+    }, 500);
+  }, [isScrollable]);
+
+  useEffect(() => {
+    const el = contentRef.current;
+    if (!el) return;
+
+    const updateScrollable = () => {
+      setIsScrollable((prev) => {
+        const next = el.scrollHeight > el.clientHeight + 1;
+        return prev === next ? prev : next;
+      });
+    };
+
+    updateScrollable();
+    const resizeObserver = new ResizeObserver(updateScrollable);
+    resizeObserver.observe(el);
+    window.addEventListener("resize", updateScrollable);
+
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener("resize", updateScrollable);
+    };
+  }, [items]);
+
+  useEffect(
+      () => () => {
+        if (hideScrollbarTimerRef.current !== null) {
+          window.clearTimeout(hideScrollbarTimerRef.current);
+          hideScrollbarTimerRef.current = null;
+        }
+      },
+      []
+  );
+
+  useEffect(() => {
+    if (isScrollable) return;
+    setShowScrollbar(false);
+
+    if (hideScrollbarTimerRef.current !== null) {
+      window.clearTimeout(hideScrollbarTimerRef.current);
+      hideScrollbarTimerRef.current = null;
+    }
+  }, [isScrollable]);
 
   return (
       <DashCard className={cn("flex flex-col", className)}>
         <CardTitle>运营洞察</CardTitle>
-        <div className="flex-1 space-y-3 overflow-y-auto pr-1">
+        <div
+            ref={contentRef}
+            onScroll={handleScroll}
+            className={cn(
+                "flex-1 space-y-3",
+                isScrollable
+                    ? cn("overflow-y-auto pr-1 insight-scroll-shell", showScrollbar && "is-scrollbar-visible")
+                    : "overflow-y-hidden"
+            )}
+        >
           {items.map((item, i) => (
               <InsightCard key={`${item.title}-${i}`} item={item} />
           ))}
