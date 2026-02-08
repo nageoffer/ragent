@@ -21,12 +21,6 @@ const WINDOW_OPTIONS: Array<{ value: DashboardTimeWindow; label: string }> = [
   { value: "30d", label: "30d" }
 ];
 
-const WINDOW_LABEL: Record<DashboardTimeWindow, string> = {
-  "24h": "滚动 24h",
-  "7d": "近 7 天",
-  "30d": "近 30 天"
-};
-
 const formatLastUpdated = (timestamp: number | null) => {
   if (!timestamp) return "-";
   return new Date(timestamp).toLocaleString("zh-CN", {
@@ -49,23 +43,23 @@ export const DashboardHeader = ({
   onTimeWindowChange
 }: DashboardHeaderProps) => {
   return (
-    <header className="sticky top-0 z-40 border-b border-slate-200 bg-white">
+    <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/90 backdrop-blur-sm supports-[backdrop-filter]:bg-white/75">
       <div className="mx-auto flex max-w-[1600px] flex-col gap-4 px-6 py-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">{title}</h1>
+          <h1 className="text-xl font-semibold tracking-tight text-slate-900">{title}</h1>
           <p className="mt-0.5 text-sm text-slate-500">{subtitle}</p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <div className="inline-flex items-center rounded-lg bg-slate-100 p-1">
+          <div className="inline-flex items-center rounded-lg bg-slate-100 p-0.5">
             {WINDOW_OPTIONS.map((option) => (
               <button
                 key={option.value}
                 className={cn(
-                  "rounded-md px-4 py-1.5 text-sm font-medium transition-all",
+                  "rounded-md px-3.5 py-1.5 text-sm font-medium transition-all",
                   timeWindow === option.value
                     ? "bg-white text-slate-900 shadow-sm"
-                    : "text-slate-600 hover:text-slate-900"
+                    : "text-slate-500 hover:text-slate-900"
                 )}
                 disabled={loading}
                 onClick={() => onTimeWindowChange(option.value)}
@@ -75,13 +69,9 @@ export const DashboardHeader = ({
             ))}
           </div>
 
-          <div className="rounded-lg border-l border-slate-200 pl-3 text-xs text-slate-500">
-            <div>当前窗口：{WINDOW_LABEL[timeWindow]}</div>
-            <div className="mt-0.5 flex items-center gap-1.5">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-              <Clock3 className="h-3 w-3" />
-              <span>最近更新：{formatLastUpdated(lastUpdated)}</span>
-            </div>
+          <div className="flex items-center gap-1.5 text-xs text-slate-400">
+            <Clock3 className="h-3 w-3" />
+            <span>{formatLastUpdated(lastUpdated)}</span>
           </div>
 
           <Button
@@ -89,9 +79,9 @@ export const DashboardHeader = ({
             size="icon"
             onClick={onRefresh}
             disabled={loading}
-            className="rounded-lg border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+            className="h-8 w-8 rounded-lg border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-900"
           >
-            <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+            <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
           </Button>
         </div>
       </div>

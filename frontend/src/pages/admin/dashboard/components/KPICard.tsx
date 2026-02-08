@@ -1,9 +1,6 @@
 import type { ReactNode } from "react";
-import { ArrowDown, ArrowUp, Minus } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-
-import { Sparkline } from "./Sparkline";
 
 interface KPIChange {
   value: number;
@@ -15,66 +12,76 @@ export interface KPICardProps {
   label: string;
   value: string | number;
   change?: KPIChange;
-  sparklineData?: number[];
   status?: "normal" | "warning" | "critical";
   icon?: ReactNode;
+  accentColor: string;
+  accentBg: string;
 }
 
-const STATUS_BORDER: Record<NonNullable<KPICardProps["status"]>, string> = {
-  normal: "border-l-slate-200",
-  warning: "border-l-amber-400",
-  critical: "border-l-red-400"
-};
-
-const SPARKLINE_COLOR: Record<NonNullable<KPICardProps["status"]>, string> = {
-  normal: "#3B82F6",
-  warning: "#F59E0B",
-  critical: "#EF4444"
-};
-
-const getTrendTone = (change?: KPIChange) => {
-  if (!change || change.value === 0) return "text-slate-400";
-  const rising = change.value > 0;
-  const falling = change.value < 0;
-  const isGood = (rising && change.isPositive) || (falling && !change.isPositive);
-  return isGood ? "text-emerald-600" : "text-red-600";
+const STATUS_CARD: Record<NonNullable<KPICardProps["status"]>, string> = {
+  normal: "bg-white border-slate-200",
+  warning: "bg-amber-50/40 border-amber-200",
+  critical: "bg-red-50/40 border-red-200"
 };
 
 export const KPICard = ({
   label,
   value,
   change,
-  sparklineData = [],
   status = "normal",
-  icon
+  icon,
+  accentColor,
+  accentBg
 }: KPICardProps) => {
-  const trendTone = getTrendTone(change);
-  const TrendIcon = change?.trend === "up" ? ArrowUp : change?.trend === "down" ? ArrowDown : Minus;
+  const changeText =
+    change && change.trend !== "flat"
+      ? `${change.value > 0 ? "+" : ""}${change.value.toFixed(1)}%`
+      : null;
+
+  const changeColor =
+    change?.trend === "up"
+      ? change.isPositive
+        ? "text-emerald-600"
+        : "text-red-500"
+      : change?.trend === "down"
+        ? change.isPositive
+          ? "text-red-500"
+          : "text-emerald-600"
+        : "text-slate-400";
 
   return (
     <div
       className={cn(
-        "rounded-xl border border-slate-200 border-l-4 bg-white p-5 transition-all duration-200 hover:border-slate-300 hover:shadow-md",
-        STATUS_BORDER[status]
+        "relative overflow-hidden rounded-xl border p-5 transition-all duration-200 hover:shadow-md",
+        STATUS_CARD[status]
       )}
     >
-      <div className="mb-3 flex items-center justify-between">
-        <p className="text-sm font-medium text-slate-600">{label}</p>
-        {icon ? <div className="text-slate-400">{icon}</div> : null}
+      {/* Top accent bar */}
+      <div className="absolute inset-x-0 top-0 h-1" style={{ backgroundColor: accentColor }} />
+
+      <div className="mb-4 flex items-center justify-between">
+        <p className="text-sm font-medium text-slate-500">{label}</p>
+        <div
+          className="flex h-9 w-9 items-center justify-center rounded-lg"
+          style={{ backgroundColor: accentBg }}
+        >
+          <div style={{ color: accentColor }}>{icon}</div>
+        </div>
       </div>
 
-      <div className="text-4xl font-bold tracking-tight text-slate-900">{value}</div>
-
-      <div className="mb-4 mt-2 flex items-center gap-1.5 text-xs">
-        {change?.value ? <TrendIcon className={cn("h-3.5 w-3.5", trendTone)} /> : <Minus className="h-3.5 w-3.5 text-slate-400" />}
-        <span className={cn("font-medium", trendTone)}>
-          {change ? `${Math.abs(change.value).toFixed(1)}%` : "0.0%"}
-        </span>
-        <span className="text-slate-400">vs last period</span>
+      <div className="text-[2.25rem] font-bold leading-none tracking-tight text-slate-900">
+        {value}
       </div>
 
-      <div className="h-12">
-        <Sparkline data={sparklineData} color={SPARKLINE_COLOR[status]} fillOpacity={0.15} strokeWidth={2} />
+      <div className="mt-2 h-5">
+        {changeText ? (
+          <span className={cn("text-sm font-medium", changeColor)}>
+            {changeText}
+            <span className="ml-1 text-xs font-normal text-slate-400">vs 上周期</span>
+          </span>
+        ) : (
+          <span className="text-sm text-slate-400">--</span>
+        )}
       </div>
     </div>
   );

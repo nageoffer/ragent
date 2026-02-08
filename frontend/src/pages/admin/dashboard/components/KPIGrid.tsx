@@ -1,15 +1,12 @@
-import { Activity, MessageSquare, Users, Zap } from "lucide-react";
+import { Activity, CheckCircle2, MessageSquare, Zap } from "lucide-react";
 
-import { type DashboardOverview, type DashboardTrends } from "@/services/dashboardService";
+import { type DashboardOverview, type DashboardPerformance } from "@/services/dashboardService";
 
 import { KPICard } from "./KPICard";
 
 interface KPIGridProps {
   overview: DashboardOverview | null;
-  trends: {
-    sessions: DashboardTrends | null;
-    activeUsers: DashboardTrends | null;
-  };
+  performance: DashboardPerformance | null;
 }
 
 const formatNumber = (value?: number | null) => {
@@ -32,74 +29,60 @@ const toChange = (deltaPct?: number | null) => {
 
 const toStatus = (deltaPct?: number | null): "normal" | "warning" | "critical" => {
   if (deltaPct === null || deltaPct === undefined) return "normal";
-  if (deltaPct <= -20) return "critical";
-  if (deltaPct < 0) return "warning";
+  if (deltaPct <= -50) return "critical";
+  if (deltaPct <= -20) return "warning";
   return "normal";
 };
 
-const readSparkline = (trend: DashboardTrends | null) => {
-  if (!trend?.series?.length) return [];
-  return trend.series[0].data.slice(-12).map((item) => item.value);
-};
-
-export const KPIGrid = ({ overview, trends }: KPIGridProps) => {
+export const KPIGrid = ({ overview, performance }: KPIGridProps) => {
   const kpis = overview?.kpis;
-  const sessionsSparkline = readSparkline(trends.sessions);
-  const activeSparkline = readSparkline(trends.activeUsers);
 
   const items = [
-    {
-      label: "总用户数",
-      value: formatNumber(kpis?.totalUsers.value),
-      change: toChange(kpis?.totalUsers.deltaPct),
-      sparklineData: activeSparkline,
-      status: toStatus(kpis?.totalUsers.deltaPct),
-      icon: <Users className="h-4 w-4" />
-    },
     {
       label: "活跃用户",
       value: formatNumber(kpis?.activeUsers.value),
       change: toChange(kpis?.activeUsers.deltaPct),
-      sparklineData: activeSparkline,
       status: toStatus(kpis?.activeUsers.deltaPct),
-      icon: <Activity className="h-4 w-4" />
-    },
-    {
-      label: "总会话数",
-      value: formatNumber(kpis?.totalSessions.value),
-      change: toChange(kpis?.totalSessions.deltaPct),
-      sparklineData: sessionsSparkline,
-      status: toStatus(kpis?.totalSessions.deltaPct),
-      icon: <MessageSquare className="h-4 w-4" />
+      icon: <Activity className="h-4.5 w-4.5" />,
+      accentColor: "#3B82F6",
+      accentBg: "#EFF6FF"
     },
     {
       label: "会话数(窗口)",
       value: formatNumber(kpis?.sessions24h.value),
       change: toChange(kpis?.sessions24h.deltaPct),
-      sparklineData: sessionsSparkline,
       status: toStatus(kpis?.sessions24h.deltaPct),
-      icon: <Zap className="h-4 w-4" />
-    },
-    {
-      label: "总消息数",
-      value: formatNumber(kpis?.totalMessages.value),
-      change: toChange(kpis?.totalMessages.deltaPct),
-      sparklineData: sessionsSparkline,
-      status: toStatus(kpis?.totalMessages.deltaPct),
-      icon: <MessageSquare className="h-4 w-4" />
+      icon: <MessageSquare className="h-4.5 w-4.5" />,
+      accentColor: "#8B5CF6",
+      accentBg: "#F5F3FF"
     },
     {
       label: "消息数(窗口)",
       value: formatNumber(kpis?.messages24h.value),
       change: toChange(kpis?.messages24h.deltaPct),
-      sparklineData: sessionsSparkline,
       status: toStatus(kpis?.messages24h.deltaPct),
-      icon: <Zap className="h-4 w-4" />
+      icon: <Zap className="h-4.5 w-4.5" />,
+      accentColor: "#F59E0B",
+      accentBg: "#FFFBEB"
+    },
+    {
+      label: "成功率",
+      value: performance ? `${performance.successRate.toFixed(1)}%` : "-",
+      change: undefined,
+      status:
+        performance && performance.successRate < 95
+          ? "critical" as const
+          : performance && performance.successRate < 99
+            ? "warning" as const
+            : "normal" as const,
+      icon: <CheckCircle2 className="h-4.5 w-4.5" />,
+      accentColor: "#10B981",
+      accentBg: "#ECFDF5"
     }
   ];
 
   return (
-    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
       {items.map((item) => (
         <KPICard key={item.label} {...item} />
       ))}

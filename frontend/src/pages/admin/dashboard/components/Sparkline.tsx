@@ -37,8 +37,8 @@ const toAreaPath = (linePath: string, points: Point[]) => {
 export const Sparkline = ({
   data,
   color = "#3B82F6",
-  fillOpacity = 0.15,
-  strokeWidth = 2
+  fillOpacity = 0.25,
+  strokeWidth = 2.5
 }: SparklineProps) => {
   const gradientId = useId().replace(/:/g, "");
 
@@ -69,7 +69,15 @@ export const Sparkline = ({
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-      <circle cx={lastPoint.x} cy={lastPoint.y} r={4} fill="#ffffff" stroke={color} strokeWidth={2} />
+      <circle
+        cx={lastPoint.x}
+        cy={lastPoint.y}
+        r={5}
+        fill="#ffffff"
+        stroke={color}
+        strokeWidth={2.5}
+        className="drop-shadow-sm"
+      />
     </svg>
   );
 };

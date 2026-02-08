@@ -28,6 +28,18 @@ const LoadingBlock = ({ className }: { className: string }) => {
   return <div className={`animate-pulse rounded bg-slate-100 ${className}`} />;
 };
 
+const TONE_COLOR: Record<
+  NonNullable<TrendSeries["tone"]>,
+  string
+> = {
+  primary: "#3B82F6",
+  success: "#10B981",
+  warning: "#F59E0B",
+  danger: "#EF4444",
+  info: "#8B5CF6",
+  neutral: "#64748B"
+};
+
 export const TrendChartCard = ({
   title,
   subtitle,
@@ -64,7 +76,7 @@ export const TrendChartCard = ({
           <LoadingBlock className="mt-2 h-4 w-40" />
         </CardHeader>
         <CardContent>
-          <LoadingBlock className="h-64 w-full" />
+          <LoadingBlock className="h-72 w-full" />
         </CardContent>
       </Card>
     );
@@ -102,15 +114,27 @@ export const TrendChartCard = ({
         </div>
       </CardHeader>
       <CardContent className="space-y-2">
-        {yAxisLabel ? <div className="text-xs text-slate-500">{yAxisLabel}</div> : null}
-        <div className="h-64">
+        <div className="flex items-center gap-3 text-xs">
+          {yAxisLabel ? <span className="text-slate-400">{yAxisLabel}</span> : null}
+          {mergedSeries[0] ? (
+            <span className="flex items-center gap-1.5">
+              <span
+                className="h-2.5 w-2.5 rounded-sm"
+                style={{ backgroundColor: TONE_COLOR[mergedSeries[0].tone ?? "primary"] }}
+              />
+              <span className="font-medium text-slate-600">{mergedSeries[0].name}</span>
+            </span>
+          ) : null}
+        </div>
+        <div className="h-72">
           <SimpleLineChart
             series={mergedSeries}
             xAxisMode={xAxisMode}
             yAxisType={yAxisType}
             thresholds={thresholds}
-            height={250}
+            height={280}
             theme="light"
+            yAxisTickCount={4}
           />
         </div>
       </CardContent>

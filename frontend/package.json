@@ -37,6 +37,7 @@
     "react-router-dom": "^6.26.2",
     "react-syntax-highlighter": "^15.5.0",
     "react-virtuoso": "^4.9.2",
+    "recharts": "^3.7.0",
     "remark-gfm": "^4.0.0",
     "sonner": "^1.5.0",
     "tailwind-merge": "^2.5.2",

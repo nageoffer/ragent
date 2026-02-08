@@ -38,6 +38,7 @@ interface SimpleLineChartProps {
   xAxisMode?: ChartXAxisMode;
   thresholds?: ChartThreshold[];
   theme?: "light" | "dark";
+  yAxisTickCount?: number;
 }
 
 const FALLBACK_TONES: ChartTone[] = ["primary", "success", "warning", "danger", "info", "neutral"];
@@ -62,7 +63,7 @@ const TONE_STROKE: Record<ChartTone, string> = {
 
 const CHART_THEME = {
   light: {
-    grid: "#e2e8f0",
+    grid: "#f1f5f9",
     axis: "#94a3b8",
     label: "#64748b",
     legend: "#475569",
@@ -165,20 +166,30 @@ const getNiceStep = (roughStep: number) => {
   return 10 * magnitude;
 };
 
-const buildYAxisTicks = (minValue: number, maxValue: number, yAxisType: ChartYAxisType) => {
+const buildYAxisTicks = (
+  minValue: number,
+  maxValue: number,
+  yAxisType: ChartYAxisType,
+  yAxisTickCount: number
+) => {
   if (yAxisType === "percent") {
-    return [100, 75, 50, 25, 0];
+    const step = 100 / Math.max(yAxisTickCount, 1);
+    return Array.from({ length: yAxisTickCount + 1 }, (_, index) =>
+      Math.round((100 - index * step) * 10) / 10
+    );
   }
 
+  const segmentCount = Math.max(yAxisTickCount, 2);
   const range = Math.max(maxValue - minValue, 1);
-  const step = getNiceStep(range / 4);
+  const step = getNiceStep(range / segmentCount);
   const tickMin = Math.floor(minValue / step) * step;
   const tickMax = Math.ceil(maxValue / step) * step;
   const ticks: number[] = [];
+  const maxTicks = segmentCount + 2;
 
   for (let cursor = tickMax; cursor >= tickMin - step / 2; cursor -= step) {
     ticks.push(Number(cursor.toFixed(6)));
-    if (ticks.length > 8) break;
+    if (ticks.length > maxTicks) break;
   }
 
   if (ticks.length < 2) {
@@ -193,7 +204,8 @@ export function SimpleLineChart({
   yAxisType = "number",
   xAxisMode = "date",
   thresholds = [],
-  theme = "light"
+  theme = "light",
+  yAxisTickCount = 4
 }: SimpleLineChartProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [width, setWidth] = useState(0);
@@ -268,8 +280,8 @@ export function SimpleLineChart({
   }, [values, yAxisType]);
 
   const yTicks = useMemo(() => {
-    return buildYAxisTicks(minValue, maxValue, yAxisType);
-  }, [maxValue, minValue, yAxisType]);
+    return buildYAxisTicks(minValue, maxValue, yAxisType, yAxisTickCount);
+  }, [maxValue, minValue, yAxisType, yAxisTickCount]);
 
   const yAxisTop = yTicks[0] ?? maxValue;
   const yAxisBottom = yTicks[yTicks.length - 1] ?? minValue;
@@ -394,7 +406,7 @@ export function SimpleLineChart({
                 x2={margin.left + innerWidth}
                 y2={y}
                 stroke={palette.grid}
-                strokeDasharray="3 3"
+                strokeDasharray="4 4"
               />
               <text
                 x={margin.left - 8}

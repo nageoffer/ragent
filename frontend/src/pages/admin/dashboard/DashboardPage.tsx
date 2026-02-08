@@ -1,12 +1,17 @@
 import { useEffect } from "react";
 import { toast } from "sonner";
 
+import { ActiveUsersAreaChart } from "./components/ActiveUsersAreaChart";
 import { AIPerformanceRadar } from "./components/AIPerformanceRadar";
 import { AlertBar } from "./components/AlertBar";
 import { BackgroundDecoration } from "./components/BackgroundDecoration";
 import { DashboardHeader } from "./components/DashboardHeader";
 import { InsightList } from "./components/InsightList";
 import { KPIGrid } from "./components/KPIGrid";
+import { PerformanceMetricsTable } from "./components/PerformanceMetricsTable";
+import { SessionBarChart } from "./components/SessionBarChart";
+import { SuccessRateDonut } from "./components/SuccessRateDonut";
+import { TopInsightsTable } from "./components/TopInsightsTable";
 import { TrendChartsGrid } from "./components/TrendChartsGrid";
 import { useDashboardData } from "./hooks/useDashboardData";
 import { useHealthStatus } from "./hooks/useHealthStatus";
@@ -54,18 +59,18 @@ export function DashboardPage() {
           onTimeWindowChange={setTimeWindow}
         />
 
-        <div className="mx-auto max-w-[1600px] px-6 py-4">
-          <AlertBar health={health} performance={performance} />
-        </div>
+        <main className="mx-auto max-w-[1600px] space-y-5 px-6 py-5">
+          <AlertBar health={health} />
 
-        <main className="mx-auto max-w-[1600px] px-6 pb-6">
-          <div className="grid gap-6 xl:grid-cols-12">
-            <div className="space-y-6 xl:col-span-8">
-              <KPIGrid overview={overview} trends={trends} />
+          <KPIGrid overview={overview} performance={performance} />
+
+          {/* Trend charts + Radar / Insights sidebar */}
+          <div className="grid gap-5 xl:grid-cols-12">
+            <div className="xl:col-span-8">
               <TrendChartsGrid trends={trends} timeWindow={timeWindow} loading={loading} />
             </div>
 
-            <aside className="space-y-6 xl:col-span-4 xl:sticky xl:top-24 xl:self-start">
+            <aside className="space-y-5 xl:col-span-4">
               <AIPerformanceRadar performance={performance} metricStatus={metricStatus} />
               <InsightList
                 performance={performance}
@@ -73,6 +78,23 @@ export function DashboardPage() {
                 timestamp={lastUpdated}
               />
             </aside>
+          </div>
+
+          {/* Recharts visualizations */}
+          <div className="grid gap-5 md:grid-cols-3">
+            <SuccessRateDonut performance={performance} loading={loading} />
+            <SessionBarChart trend={trends.sessions} loading={loading} />
+            <ActiveUsersAreaChart trend={trends.activeUsers} loading={loading} />
+          </div>
+
+          {/* Performance table + Insights table */}
+          <div className="grid gap-5 md:grid-cols-2">
+            <PerformanceMetricsTable performance={performance} loading={loading} />
+            <TopInsightsTable
+              performance={performance}
+              timeWindowLabel={WINDOW_LABEL_MAP[timeWindow]}
+              loading={loading}
+            />
           </div>
         </main>
       </div>
