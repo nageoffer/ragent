@@ -830,7 +830,7 @@ const TrafficOverviewSection = ({
   return (
       <DashCard className={cn("flex flex-col", className)}>
         <div className="mb-3">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">流量概览</p>
+          <p className="text-sm font-semibold text-slate-700">流量概览</p>
           {showChange}
         </div>
 
@@ -923,9 +923,9 @@ const TrendSection = ({
 }) => {
   const xAxisMode = timeWindow === "24h" ? "hour" : "date";
 
-  const sessionsSeries = useMemo(() => mapSeries(trends.sessions, "primary"), [trends.sessions]);
+  const sessionsSeries = useMemo(() => mapSeries(trends.sessions, "success"), [trends.sessions]);
   const activeSeries = useMemo(
-      () => mapSeries(trends.activeUsers, "success"),
+      () => mapSeries(trends.activeUsers, "teal"),
       [trends.activeUsers]
   );
   const latencySeries = useMemo(() => mapSeries(trends.latency, "warning"), [trends.latency]);
@@ -1301,7 +1301,7 @@ const buildInsightList = (
     });
   }
 
-  if (performance.avgLatencyMs > 3000) {
+  if (performance.avgLatencyMs > 15000) {
     items.push({
       type: "recommendation",
       severity: "warning",
