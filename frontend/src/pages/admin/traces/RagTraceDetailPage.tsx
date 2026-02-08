@@ -4,7 +4,6 @@ import {
   AlertTriangle,
   ArrowLeft,
   CheckCircle2,
-  Copy,
   RefreshCw,
   XCircle,
   Loader2,

@@ -537,7 +537,7 @@ const SimpleAreaChart = ({
   valueLabel?: string;
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
+  const [, setDimensions] = useState({ width: 0, height: 0 });
   const [tooltip, setTooltip] = useState<{
     show: boolean;
     x: number;
@@ -821,11 +821,9 @@ const TrafficOverviewSection = ({
     return points.map((p) => ({ ts: p.ts, value: p.value }));
   }, [trends.messages]);
 
-  const totalMessages = overview?.kpis?.messages24h?.value ?? 0;
   const deltaPct = overview?.kpis?.messages24h?.deltaPct;
   const change = toChange(deltaPct);
   const showChange = change.trend !== "flat";
-  const isUp = change.trend === "up";
 
   return (
       <DashCard className={cn("flex flex-col", className)}>
@@ -925,7 +923,7 @@ const TrendSection = ({
 
   const sessionsSeries = useMemo(() => mapSeries(trends.sessions, "success"), [trends.sessions]);
   const activeSeries = useMemo(
-      () => mapSeries(trends.activeUsers, "teal"),
+      () => mapSeries(trends.activeUsers, "primary"),
       [trends.activeUsers]
   );
   const latencySeries = useMemo(() => mapSeries(trends.latency, "warning"), [trends.latency]);

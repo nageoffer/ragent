@@ -13,7 +13,7 @@ export type TrendPoint = {
   value: number;
 };
 
-export type ChartTone = "primary" | "success" | "warning" | "danger" | "info" | "teal" | "neutral";
+export type ChartTone = "primary" | "success" | "warning" | "danger" | "info" | "neutral";
 
 export type TrendSeries = {
   name: string;
@@ -42,15 +42,14 @@ interface SimpleLineChartProps {
   yAxisTickCount?: number;
 }
 
-const FALLBACK_TONES: ChartTone[] = ["primary", "success", "warning", "danger", "info", "teal", "neutral"];
+const FALLBACK_TONES: ChartTone[] = ["primary", "success", "warning", "danger", "info", "neutral"];
 
 const CHART_COLOR_VARS: CSSProperties = {
-  ["--chart-primary" as string]: "#3b82f6",
+  ["--chart-primary" as string]: "#8b5cf6",
   ["--chart-success" as string]: "#22c55e",
   ["--chart-warning" as string]: "#f59e0b",
   ["--chart-danger" as string]: "#ef4444",
   ["--chart-info" as string]: "#06b6d4",
-  ["--chart-teal" as string]: "#8b5cf6",
   ["--chart-neutral" as string]: "#64748b"
 };
 
@@ -60,7 +59,6 @@ const TONE_STROKE: Record<ChartTone, string> = {
   warning: "var(--chart-warning)",
   danger: "var(--chart-danger)",
   info: "var(--chart-info)",
-  teal: "var(--chart-teal)",
   neutral: "var(--chart-neutral)"
 };
 
