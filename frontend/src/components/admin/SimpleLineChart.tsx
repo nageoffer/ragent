@@ -18,17 +18,26 @@ export type TrendSeries = {
   name: string;
   data: TrendPoint[];
   tone?: ChartTone;
+  lineStyle?: "solid" | "dashed";
 };
 
 export type ChartYAxisType = "number" | "percent" | "duration";
 
 export type ChartXAxisMode = "date" | "hour";
 
+export type ChartThreshold = {
+  value: number;
+  label?: string;
+  tone?: "warning" | "critical" | "info";
+};
+
 interface SimpleLineChartProps {
   series: TrendSeries[];
   height?: number;
   yAxisType?: ChartYAxisType;
   xAxisMode?: ChartXAxisMode;
+  thresholds?: ChartThreshold[];
+  theme?: "light" | "dark";
 }
 
 const FALLBACK_TONES: ChartTone[] = ["primary", "success", "warning", "danger", "info", "neutral"];
@@ -50,6 +59,33 @@ const TONE_STROKE: Record<ChartTone, string> = {
   info: "var(--chart-info)",
   neutral: "var(--chart-neutral)"
 };
+
+const CHART_THEME = {
+  light: {
+    grid: "#e2e8f0",
+    axis: "#94a3b8",
+    label: "#64748b",
+    legend: "#475569",
+    hoverLine: "#94a3b8",
+    pointStroke: "#ffffff",
+    tooltipBg: "rgba(255,255,255,0.95)",
+    tooltipBorder: "#e2e8f0",
+    tooltipText: "#334155",
+    tooltipSecondary: "#64748b"
+  },
+  dark: {
+    grid: "rgba(148,163,184,0.12)",
+    axis: "rgba(148,163,184,0.35)",
+    label: "#64748b",
+    legend: "#94a3b8",
+    hoverLine: "rgba(148,163,184,0.45)",
+    pointStroke: "#0f172a",
+    tooltipBg: "rgba(15,23,42,0.95)",
+    tooltipBorder: "rgba(71,85,105,0.65)",
+    tooltipText: "#e2e8f0",
+    tooltipSecondary: "#94a3b8"
+  }
+} as const;
 
 const DEFAULT_HEIGHT = 220;
 
@@ -155,7 +191,9 @@ export function SimpleLineChart({
   series,
   height = DEFAULT_HEIGHT,
   yAxisType = "number",
-  xAxisMode = "date"
+  xAxisMode = "date",
+  thresholds = [],
+  theme = "light"
 }: SimpleLineChartProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [width, setWidth] = useState(0);
@@ -205,8 +243,10 @@ export function SimpleLineChart({
   }, [normalizedSeries]);
 
   const values = useMemo(() => {
-    return pointMaps.flatMap((map) => Array.from(map.values())).filter((value) => Number.isFinite(value));
-  }, [pointMaps]);
+    const lineValues = pointMaps.flatMap((map) => Array.from(map.values())).filter((value) => Number.isFinite(value));
+    const thresholdValues = thresholds.map((item) => item.value).filter((value) => Number.isFinite(value));
+    return [...lineValues, ...thresholdValues];
+  }, [pointMaps, thresholds]);
 
   const { minValue, maxValue } = useMemo(() => {
     if (!values.length) {
@@ -246,10 +286,11 @@ export function SimpleLineChart({
     ).size;
     return firstDate !== lastDate && uniqueClock <= 2;
   }, [xAxisMode, xValues]);
+  const noDataColor = theme === "dark" ? "#64748b" : "#94a3b8";
 
   if (!hasData) {
     return (
-      <div className="flex h-[180px] items-center justify-center text-sm text-slate-400">
+      <div className="flex h-[180px] items-center justify-center text-sm" style={{ color: noDataColor }}>
         暂无数据
       </div>
     );
@@ -326,10 +367,11 @@ export function SimpleLineChart({
     ? Math.min(Math.max(8, hoverPosition.x + 12), outerWidth - tooltipWidth - 8)
     : 0;
   const tooltipTop = hoverPosition ? Math.max(8, hoverPosition.y - 12) : 0;
+  const palette = CHART_THEME[theme];
 
   return (
     <div ref={containerRef} className="relative w-full" style={CHART_COLOR_VARS}>
-      <div className="mb-2 flex flex-wrap items-center gap-3 text-xs text-slate-500">
+      <div className="mb-2 flex flex-wrap items-center gap-3 text-xs" style={{ color: palette.legend }}>
         {normalizedSeries.map((item) => (
           <div key={item.name} className="inline-flex items-center gap-1.5">
             <span
@@ -351,14 +393,15 @@ export function SimpleLineChart({
                 y1={y}
                 x2={margin.left + innerWidth}
                 y2={y}
-                stroke="#e2e8f0"
+                stroke={palette.grid}
                 strokeDasharray="3 3"
               />
               <text
                 x={margin.left - 8}
                 y={y + 4}
                 textAnchor="end"
-                className="fill-slate-400 text-[11px]"
+                fill={palette.label}
+                fontSize={11}
               >
                 {formatYAxisValue(tick, yAxisType)}
               </text>
@@ -371,7 +414,7 @@ export function SimpleLineChart({
           y1={margin.top}
           x2={margin.left}
           y2={margin.top + innerHeight}
-          stroke="#cbd5e1"
+          stroke={palette.axis}
         />
 
         <line
@@ -379,7 +422,7 @@ export function SimpleLineChart({
           y1={margin.top + innerHeight}
           x2={margin.left + innerWidth}
           y2={margin.top + innerHeight}
-          stroke="#cbd5e1"
+          stroke={palette.axis}
         />
 
         {xTickIndexes.map((index) => {
@@ -392,16 +435,53 @@ export function SimpleLineChart({
                 y1={margin.top + innerHeight}
                 x2={x}
                 y2={margin.top + innerHeight + 4}
-                stroke="#94a3b8"
+                stroke={palette.axis}
               />
               <text
                 x={x}
                 y={margin.top + innerHeight + 18}
                 textAnchor="middle"
-                className="fill-slate-400 text-[11px]"
+                fill={palette.label}
+                fontSize={11}
               >
                 {formatXAxisValue(ts, xAxisMode, showDateOnHourAxis)}
               </text>
+            </g>
+          );
+        })}
+
+        {thresholds.map((threshold) => {
+          const clamped = Math.max(Math.min(threshold.value, yAxisTop), yAxisBottom);
+          const y = yAt(clamped);
+          const toneColor =
+            threshold.tone === "critical"
+              ? "#ef4444"
+              : threshold.tone === "warning"
+                ? "#f59e0b"
+                : "#0ea5e9";
+          return (
+            <g key={`threshold-${threshold.value}-${threshold.label || ""}`}>
+              <line
+                x1={margin.left}
+                y1={y}
+                x2={margin.left + innerWidth}
+                y2={y}
+                stroke={toneColor}
+                strokeWidth={1}
+                strokeDasharray="5 4"
+                opacity={0.9}
+              />
+              {threshold.label ? (
+                <text
+                  x={margin.left + innerWidth - 4}
+                  y={y - 4}
+                  textAnchor="end"
+                  fill={palette.label}
+                  fontSize={10}
+                >
+                  {threshold.label}
+                </text>
+              ) : null}
             </g>
           );
         })}
@@ -413,6 +493,7 @@ export function SimpleLineChart({
             fill="none"
             stroke={TONE_STROKE[item.tone || "primary"]}
             strokeWidth={2}
+            strokeDasharray={item.lineStyle === "dashed" ? "6 4" : undefined}
             strokeLinejoin="round"
             strokeLinecap="round"
           />
@@ -425,7 +506,7 @@ export function SimpleLineChart({
               y1={margin.top}
               x2={xAt(hoverIndex || 0)}
               y2={margin.top + innerHeight}
-              stroke="#94a3b8"
+              stroke={palette.hoverLine}
               strokeDasharray="4 4"
             />
             {normalizedSeries.map((item, index) => {
@@ -438,7 +519,7 @@ export function SimpleLineChart({
                   cy={yAt(value)}
                   r={3.5}
                   fill={TONE_STROKE[item.tone || "primary"]}
-                  stroke="#ffffff"
+                  stroke={palette.pointStroke}
                   strokeWidth={1.5}
                 />
               );
@@ -459,23 +540,31 @@ export function SimpleLineChart({
 
       {activeTs !== null && hoverPosition ? (
         <div
-          className="pointer-events-none absolute z-10 rounded-md border border-slate-200 bg-white/95 px-3 py-2 text-xs shadow-sm"
-          style={{ left: tooltipLeft, top: tooltipTop, width: tooltipWidth }}
+          className="pointer-events-none absolute z-10 rounded-md border px-3 py-2 text-xs shadow-sm"
+          style={{
+            left: tooltipLeft,
+            top: tooltipTop,
+            width: tooltipWidth,
+            borderColor: palette.tooltipBorder,
+            backgroundColor: palette.tooltipBg
+          }}
         >
-          <div className="mb-1 text-slate-500">{formatTooltipTime(activeTs, xAxisMode)}</div>
+          <div className="mb-1" style={{ color: palette.tooltipSecondary }}>
+            {formatTooltipTime(activeTs, xAxisMode)}
+          </div>
           <div className="space-y-1">
             {normalizedSeries.map((item, index) => {
               const value = pointMaps[index].get(activeTs);
               return (
                 <div key={item.name} className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-1.5 text-slate-500">
+                  <div className="flex items-center gap-1.5" style={{ color: palette.tooltipSecondary }}>
                     <span
                       className="h-2 w-2 rounded-full"
                       style={{ backgroundColor: TONE_STROKE[item.tone || "primary"] }}
                     />
                     <span>{item.name}</span>
                   </div>
-                  <span className="font-medium text-slate-700">
+                  <span className="font-medium" style={{ color: palette.tooltipText }}>
                     {value === undefined || value === null ? "-" : formatYAxisValue(value, yAxisType)}
                   </span>
                 </div>
