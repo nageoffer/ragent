@@ -1,470 +1,274 @@
 # RAgent
 
-<p align="center">
-  <strong>企业级 RAG 智能体服务</strong><br/>
-  基于 Spring Boot 构建的智能文档处理与检索增强生成系统
-</p>
+企业级 RAG 智能体平台，包含：
+- 多版本问答链路（`v1/v2/v3`）
+- 多通道检索引擎（意图定向 + 全局向量兜底 + 后处理器链）
+- 数据通道（Ingestion Pipeline）编排
+- MCP 工具调用
+- 会话记忆、链路追踪、并发限流
+- 管理后台（React + Vite）
 
-<p align="center">
-  <img src="https://img.shields.io/badge/JDK-17+-green.svg" alt="JDK Version"/>
-  <img src="https://img.shields.io/badge/Spring%20Boot-3.5.x-brightgreen.svg" alt="Spring Boot"/>
-  <img src="https://img.shields.io/badge/Milvus-2.6.x-blue.svg" alt="Milvus"/>
-  <img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License"/>
-</p>
+后端默认入口：`http://localhost:8080/api/ragent`
 
----
+## 1. 最新架构总览
 
-## 简介
+### 1.1 模块分层（Monorepo）
 
-RAgent 是一个功能完备的企业级 RAG（Retrieval-Augmented Generation）智能体服务，集成向量数据库，提供智能问答、知识库管理、会话记忆、意图识别、深度思考等能力。支持多模型路由、MCP 工具调用，开箱即用。
-
-## 核心特性
-
-### RAG 能力
-- **文档解析与索引**：支持 PDF / Markdown / DOC / DOCX 等格式，自动切分为语义 Chunk 并入库
-- **向量检索**：基于 Milvus HNSW + COSINE 高效向量召回
-- **结果重排序**：支持 Rerank 模型精排，提升 TopK 命中质量
-- **Query 重写**：上下文感知的问题改写，提升检索准确率
-- **流式输出**：SSE / 纯文本流式响应，实时推送生成内容
-
-### 智能体能力
-- **意图识别**：基于意图树的多层级意图分类
-- **MCP 工具调用**：可扩展的工具执行框架，支持自定义工具注册
-- **会话记忆**：多轮对话记忆管理，支持摘要压缩
-- **深度思考**：支持深度思考模式（Deep Thinking），适配推理增强模型
-
-### 企业级特性
-- **多模型路由**：统一模型调度，支持故障转移与优先级策略
-- **知识库管理**：完整的知识库 CRUD、文档管理、Chunk 管理
-- **用户认证**：集成 Sa-Token 权限框架
-- **分布式支持**：Redis 缓存 + MySQL 持久化
-
-## 项目架构
-
-```
-ragent/
-├── bootstrap/          # 启动模块：控制器、服务、RAG 核心逻辑
-│   ├── controller/     # REST API 控制器
-│   ├── service/        # 业务服务层
-│   ├── rag/            # RAG 核心组件
-│   │   ├── chunk/      #   文档切分策略
-│   │   ├── extractor/  #   文本提取器
-│   │   ├── intent/     #   意图识别
-│   │   ├── mcp/        #   MCP 工具框架
-│   │   ├── memory/     #   会话记忆
-│   │   ├── prompt/     #   Prompt 模板
-│   │   ├── retrieve/   #   检索服务
-│   │   ├── rewrite/    #   Query 重写
-│   │   └── vector/     #   向量存储
-│   └── dao/            # 数据访问层
-├── framework/          # 基础框架：通用工具、异常处理、Web 配置
-├── infra-ai/           # AI 基础设施：LLM/Embedding/Rerank 抽象与实现
-│   ├── chat/           #   LLM 对话服务
-│   ├── embedding/      #   向量化服务
-│   ├── rerank/         #   重排序服务
-│   └── model/          #   模型路由与调度
-└── mcp-server/         # MCP Server 模块（扩展）
+```text
+ragent
+├── bootstrap      # 应用入口与业务实现（Controller/Service/RAG Core/Ingestion/User/Admin）
+├── framework      # 通用基础层（统一返回、异常、上下文、幂等、trace基础能力）
+├── infra-ai       # AI基础设施层（Chat/Embedding/Rerank 客户端与模型路由）
+├── mcp-server     # MCP扩展模块（当前为预留模块）
+├── frontend       # React 管理台与聊天前端
+├── docs           # 架构与示例文档
+└── resources      # 基础设施资源（如 Milvus compose）
 ```
 
-## 技术栈
+### 1.2 运行时架构
 
-| 类别 | 技术 |
-|------|------|
-| 框架 | Spring Boot 3.5.x |
-| 向量数据库 | Milvus 2.6.x |
-| 关系数据库 | MySQL 8.x |
-| 缓存 | Redis |
-| 文档解析 | Apache Tika 3.x |
-| 认证授权 | Sa-Token |
-| HTTP 客户端 | OkHttp |
-| 工具库 | Hutool、Guava、Gson |
-| 对象存储 | S3 兼容（RustFS/MinIO） |
+```text
+Browser (frontend:5173)
+  -> /api/ragent/* (Vite Proxy or direct API base URL)
+  -> Spring Boot (bootstrap:8080)
+       -> framework (context/result/trace/idempotent)
+       -> rag core (rewrite/intent/retrieve/prompt/memory/mcp)
+       -> ingestion engine (pipeline + nodes)
+       -> infra-ai (LLM/Embedding/Rerank routing + fallback + circuit breaker)
+       -> MySQL / Redis / Milvus / RustFS(S3)
+```
 
-## 支持的模型厂商
+## 2. 关键能力
 
-| 厂商 | Chat | Embedding | Rerank |
-|------|------|-----------|--------|
-| 阿里百炼（DashScope） | ✅ | - | ✅ |
-| SiliconFlow | ✅ | ✅ | - |
-| Ollama（本地） | ✅ | ✅ | - |
+- `RAG v1`：快速检索 + Rerank + LLM 流式回复
+- `RAG v2`：在 v1 基础上增加 Query Rewrite + 意图识别
+- `RAG v3`：企业链路，支持多问句拆分、MCP 工具、记忆、深度思考、任务取消
+- 多通道检索：`IntentDirectedSearchChannel` + `VectorGlobalSearchChannel`
+- 后处理器链：`DeduplicationPostProcessor` -> `RerankPostProcessor`
+- 数据通道（Ingestion）：支持 `fetcher/parser/enhancer/chunker/enricher/indexer`
+- 数据源：`file/url/feishu/s3`
+- 文档处理模式：`chunk`（直接分块）或 `pipeline`（走数据通道）
+- URL 文档定时刷新：基于 cron 扫描并增量重建
+- 模型路由：多候选优先级 + 失败降级 + 熔断恢复
+- 认证与权限：Sa-Token，前端区分 `user/admin`
+- 链路追踪：RAG run + node 维度追踪（Trace 页面可视化）
 
-## 快速开始
+## 3. 两条主流程
 
-### 环境要求
+### 3.1 RAG v3 流程（推荐）
+
+```text
+问题输入
+  -> 会话上下文加载（memory）
+  -> 查询改写与多问句拆分（rewrite）
+  -> 子问题并行意图识别（intent）
+  -> 歧义引导判定（guidance，可提前返回引导提示）
+  -> RetrievalEngine
+       -> KB: MultiChannelRetrievalEngine (IntentDirected + conditional VectorGlobal)
+       -> MCP: Tool 参数抽取 + 执行 + 聚合
+  -> Prompt 组装（KB only / MCP only / Mixed）
+  -> 路由LLM流式输出（支持 deepThinking）
+  -> SSE 事件推送 + 消息落库 + 标题生成
+```
+
+### 3.2 Ingestion Pipeline 流程
+
+```text
+创建流水线（节点 + nextNodeId 连线）
+  -> 创建任务（source + pipelineId）
+  -> IngestionEngine 链式执行节点
+       fetcher -> parser -> enhancer -> chunker -> enricher -> indexer
+  -> 写入 Milvus，任务与节点日志落库
+```
+
+## 4. 技术栈
+
+- Java 17 / Spring Boot 3.5.x
+- MyBatis-Plus / MySQL / Redis / Redisson
+- Milvus 2.6.x（向量库）
+- RustFS（S3 兼容对象存储）
+- Apache Tika（文档解析）
+- React 18 + Vite + TypeScript + Tailwind + Zustand
+
+## 5. 快速启动
+
+### 5.1 环境要求
 
 - JDK 17+
 - Maven 3.9+
-- MySQL 8.x
+- Node.js 18+
+- MySQL 8+
 - Redis
-- Milvus 2.6.x
+- Docker（用于 Milvus/RustFS）
 
-### 1. 启动基础设施
-
-使用 Docker Compose 启动 Milvus 及依赖服务：
+### 5.2 启动 Milvus 相关服务
 
 ```bash
 cd resources/docker/milvus
 docker compose -f milvus-stack-2.6.6.compose.yaml up -d
 ```
 
-该命令将启动：
-- Milvus Standalone（端口 19530）
-- RustFS 对象存储（端口 9000）
-- Etcd
-- Attu 可视化管理界面（端口 8000）
+会启动：
+- `milvus-standalone`（`19530`）
+- `rustfs`（`9000`）
+- `etcd`
+- `attu`（`8000`）
 
-### 2. 配置数据库
+### 5.3 配置后端
 
-创建 MySQL 数据库 `ragent`，并执行相关建表脚本。
+编辑 `bootstrap/src/main/resources/application.yaml`：
+- `spring.datasource.*`
+- `spring.data.redis.*`
+- `milvus.uri`
+- `rustfs.*`
+- `ai.providers.*.api-key`（如使用百炼/SiliconFlow）
 
-### 3. 配置应用
+说明：
+- 默认 `server.port=8080`
+- 默认 `server.servlet.context-path=/api/ragent`
 
-修改 `bootstrap/src/main/resources/application.yaml`：
-
-```yaml
-spring:
-  datasource:
-    url: jdbc:mysql://127.0.0.1:3306/ragent?...
-    username: your_username
-    password: your_password
-  data:
-    redis:
-      host: 127.0.0.1
-      port: 6379
-      password: your_redis_password
-
-# AI 模型配置
-ai:
-  providers:
-    bailian:
-      api-key: ${BAILIAN_API_KEY:sk-xxx}
-    siliconflow:
-      api-key: ${SILICONFLOW_API_KEY:sk-xxx}
-```
-
-### 4. 启动应用
+### 5.4 启动后端
 
 ```bash
-# 开发模式
-./mvnw spring-boot:run -pl bootstrap
+./mvnw -pl bootstrap spring-boot:run
+```
 
-# 或打包运行
+或：
+
+```bash
 ./mvnw clean package -DskipTests
 java -jar bootstrap/target/bootstrap-*.jar
 ```
 
-应用启动后访问：`http://localhost:8080/api/ragent`
-
-## API 接口
-
-### RAG 问答
-
-| 版本 | 路径 | 特性 |
-|------|------|------|
-| V1 快速版 | `/api/ragent/rag/v1/*` | 简单检索 + LLM |
-| V2 标准版 | `/api/ragent/rag/v2/*` | + 意图识别 + Query 重写 + Rerank |
-| V3 企业版 | `/api/ragent/rag/v3/*` | + MCP 工具 + 记忆系统 + 深度思考 |
-
-#### V3 企业版（推荐）
+### 5.5 启动前端
 
 ```bash
-# SSE 流式问答
-curl -H "Accept: text/event-stream" \
-  "http://localhost:8080/api/ragent/rag/v3/chat?question=公司如何开票?&conversationId=xxx&deepThinking=false"
-
-# 停止任务
-curl -X POST "http://localhost:8080/api/ragent/rag/v3/stop?taskId=xxx"
+cd frontend
+npm install
 ```
 
-#### V1/V2 快速问答
+创建 `frontend/.env.local`（推荐）：
 
 ```bash
-# SSE 流式
-curl "http://localhost:8080/api/ragent/rag/v1/chat?question=公司如何开票?&topK=3"
-
-# 纯文本流式
-curl "http://localhost:8080/api/ragent/rag/v1/stream-text?question=公司如何开票?&topK=3"
+VITE_API_BASE_URL=/api/ragent
 ```
 
-### 知识库管理
+说明：
+- 使用上面配置时，前端通过 Vite 代理(`/api` -> `http://localhost:8080`)访问后端
+- 如不走代理，可改成：`VITE_API_BASE_URL=http://localhost:8080/api/ragent`
+
+启动：
 
 ```bash
-# 创建知识库
-curl -X POST http://localhost:8080/api/ragent/knowledge-base \
-  -H "Content-Type: application/json" \
-  -d '{"name": "公司规章制度", "description": "内部规章文档库"}'
-
-# 查询知识库列表
-curl "http://localhost:8080/api/ragent/knowledge-base?pageNo=1&pageSize=10"
-
-# 查询知识库详情
-curl http://localhost:8080/api/ragent/knowledge-base/{kb-id}
-
-# 重命名知识库
-curl -X PUT http://localhost:8080/api/ragent/knowledge-base/{kb-id} \
-  -H "Content-Type: application/json" \
-  -d '{"name": "新名称"}'
-
-# 删除知识库
-curl -X DELETE http://localhost:8080/api/ragent/knowledge-base/{kb-id}
+npm run dev
 ```
 
-### 文档管理
+访问：
+- 前端：`http://localhost:5173`
+- 后端：`http://localhost:8080/api/ragent`
 
-```bash
-# 上传文档
-curl -X POST http://localhost:8080/api/ragent/knowledge-base/{kb-id}/docs/upload \
-  -F "file=@/path/to/document.pdf"
+## 6. API 地图（核心）
 
-# 开始分块（解析 -> 切分 -> 向量化 -> 入库）
-curl -X POST http://localhost:8080/api/ragent/knowledge-base/docs/{doc-id}/chunk
+### 6.1 认证与用户
 
-# 查询文档列表
-curl "http://localhost:8080/api/ragent/knowledge-base/{kb-id}/docs?pageNo=1&pageSize=10"
+- `POST /auth/login`
+- `POST /auth/logout`
+- `GET /user/me`
+- `GET /users` `POST /users` `PUT /users/{id}` `DELETE /users/{id}`
 
-# 启用/禁用文档
-curl -X PATCH "http://localhost:8080/api/ragent/knowledge-base/docs/{doc-id}/enable?value=true"
+### 6.2 问答
 
-# 删除文档
-curl -X DELETE http://localhost:8080/api/ragent/knowledge-base/docs/{doc-id}
-```
+- `GET /rag/v1/chat`
+- `GET /rag/v1/stream-text`
+- `GET /rag/v2/chat`
+- `GET /rag/v2/stream-text`
+- `GET /rag/v3/chat`
+- `POST /rag/v3/stop`
 
-### Chunk 管理
+### 6.3 会话
 
-```bash
-# 查询文档的 Chunk 列表
-curl "http://localhost:8080/api/ragent/knowledge-base/docs/{doc-id}/chunks?pageNo=1&pageSize=20"
+- `GET /conversations`
+- `PUT /conversations/{conversationId}`
+- `DELETE /conversations/{conversationId}`
+- `GET /conversations/{conversationId}/messages`
+- `POST /conversations/messages/{messageId}/feedback`
 
-# 新增 Chunk
-curl -X POST http://localhost:8080/api/ragent/knowledge-base/docs/{doc-id}/chunks \
-  -H "Content-Type: application/json" \
-  -d '{"content": "自定义内容"}'
+### 6.4 知识库与文档
 
-# 更新 Chunk
-curl -X PUT http://localhost:8080/api/ragent/knowledge-base/docs/{doc-id}/chunks/{chunk-id} \
-  -H "Content-Type: application/json" \
-  -d '{"content": "更新后的内容"}'
+- `POST /knowledge-base` `GET /knowledge-base` `GET /knowledge-base/{kb-id}`
+- `PUT /knowledge-base/{kb-id}` `DELETE /knowledge-base/{kb-id}`
+- `POST /knowledge-base/{kb-id}/docs/upload`
+- `POST /knowledge-base/docs/{doc-id}/chunk`
+- `GET /knowledge-base/{kb-id}/docs`
+- `PATCH /knowledge-base/docs/{docId}/enable`
+- `GET /knowledge-base/docs/search`
+- `GET /knowledge-base/docs/{docId}/chunk-logs`
+- `GET|POST|PUT|DELETE /knowledge-base/docs/{doc-id}/chunks...`
 
-# 启用/禁用 Chunk
-curl -X POST http://localhost:8080/api/ragent/knowledge-base/docs/{doc-id}/chunks/{chunk-id}/enable
-curl -X POST http://localhost:8080/api/ragent/knowledge-base/docs/{doc-id}/chunks/{chunk-id}/disable
+### 6.5 数据通道（Ingestion）
 
-# 重建文档向量
-curl -X POST http://localhost:8080/api/ragent/knowledge-base/docs/{doc-id}/chunks/rebuild
-```
+- `POST /ingestion/pipelines`
+- `PUT /ingestion/pipelines/{id}`
+- `GET /ingestion/pipelines/{id}`
+- `GET /ingestion/pipelines`
+- `DELETE /ingestion/pipelines/{id}`
+- `POST /ingestion/tasks`
+- `POST /ingestion/tasks/upload`
+- `GET /ingestion/tasks/{id}`
+- `GET /ingestion/tasks/{id}/nodes`
+- `GET /ingestion/tasks`
 
-### 意图树管理
+### 6.6 配置与观测
 
-```bash
-# 获取意图树
-curl http://localhost:8080/api/ragent/intent-tree/trees
+- `GET /rag/settings`
+- `GET /rag/traces/runs`
+- `GET /rag/traces/runs/{traceId}`
+- `GET /rag/traces/runs/{traceId}/nodes`
+- `GET /admin/dashboard/overview`
+- `GET /admin/dashboard/performance`
+- `GET /admin/dashboard/trends`
 
-# 创建意图节点
-curl -X POST http://localhost:8080/api/ragent/intent-tree \
-  -H "Content-Type: application/json" \
-  -d '{"name": "报销咨询", "parentId": null, "keywords": ["报销", "费用"]}'
+## 7. SSE 事件协议（v3）
 
-# 更新意图节点
-curl -X PUT http://localhost:8080/api/ragent/intent-tree/{id} \
-  -H "Content-Type: application/json" \
-  -d '{"name": "新名称"}'
+`GET /rag/v3/chat` 会按事件流返回：
 
-# 删除意图节点
-curl -X DELETE http://localhost:8080/api/ragent/intent-tree/{id}
-```
+- `meta`：`{ conversationId, taskId }`
+- `message`：`{ type: "response" | "think", delta }`
+- `finish`：`{ messageId, title }`
+- `cancel`：`{ messageId, title }`
+- `reject`：`{ type: "response", delta }`
+- `done`：`[DONE]`
 
-### 会话管理
+## 8. 内置 MCP 工具
 
-```bash
-# 获取会话列表
-curl http://localhost:8080/api/ragent/conversations
+当前默认注册了一个示例工具：
+- `sales_query`（销售数据查询，支持汇总/排名/明细/趋势）
 
-# 获取会话消息
-curl http://localhost:8080/api/ragent/conversations/{conversationId}/messages
+可通过实现 `MCPToolExecutor` 并注册 Spring Bean 扩展新工具。
 
-# 重命名会话
-curl -X PUT http://localhost:8080/api/ragent/conversations/{conversationId} \
-  -H "Content-Type: application/json" \
-  -d '{"title": "新标题"}'
+## 9. 数据库说明
 
-# 删除会话
-curl -X DELETE http://localhost:8080/api/ragent/conversations/{conversationId}
-```
+当前仓库未内置建表 SQL，请按实体建表或导入已有库结构。主要表包括：
 
-### 认证
+- `t_user`
+- `t_conversation` `t_message` `t_conversation_summary`
+- `t_intent_node` `t_sample_question`
+- `t_query_term_mapping` `t_message_feedback`
+- `t_knowledge_base` `t_knowledge_document` `t_knowledge_chunk`
+- `t_knowledge_document_chunk_log`
+- `t_knowledge_document_schedule` `t_knowledge_document_schedule_exec`
+- `t_ingestion_pipeline` `t_ingestion_pipeline_node`
+- `t_ingestion_task` `t_ingestion_task_node`
+- `t_rag_trace_run` `t_rag_trace_node`
 
-```bash
-# 登录
-curl -X POST http://localhost:8080/api/ragent/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"username": "admin", "password": "xxx"}'
+## 10. 相关文档
 
-# 登出
-curl -X POST http://localhost:8080/api/ragent/auth/logout \
-  -H "Authorization: {token}"
-```
+- 多通道检索：`docs/multi-channel-retrieval.md`
+- 重构说明：`docs/refactoring-summary.md`
+- 快速说明：`docs/quick-start.md`
+- PDF 数据通道示例：`docs/examples/pdf-ingestion-example.md`
+- 流水线请求样例：`docs/examples/pdf-pipeline-request.json`
 
-## 配置说明
+## 11. License
 
-### AI 模型配置
-
-```yaml
-ai:
-  # 模型厂商配置
-  providers:
-    ollama:
-      url: http://localhost:11434
-      endpoints:
-        chat: /api/chat
-        embedding: /api/embed
-    bailian:
-      url: https://dashscope.aliyuncs.com
-      api-key: ${BAILIAN_API_KEY:}
-    siliconflow:
-      url: https://api.siliconflow.cn
-      api-key: ${SILICONFLOW_API_KEY:}
-
-  # 对话模型配置
-  chat:
-    default-model: qwen-plus
-    deep-thinking-model: glm-4.7    # 深度思考专用模型
-    candidates:
-      - id: qwen-plus
-        provider: bailian
-        model: qwen-plus-latest
-        priority: 1
-
-  # 向量化模型配置
-  embedding:
-    default-model: qwen-emb-8b
-    candidates:
-      - id: qwen-emb-8b
-        provider: siliconflow
-        model: Qwen/Qwen3-Embedding-8B
-        dimension: 4096
-        priority: 1
-
-  # 重排序模型配置
-  rerank:
-    default-model: qwen3-rerank
-    candidates:
-      - id: qwen3-rerank
-        provider: bailian
-        model: qwen3-rerank
-        priority: 1
-```
-
-### RAG 配置
-
-```yaml
-rag:
-  # 默认向量空间配置
-  default:
-    collection-name: rag_default_store
-    dimension: 4096
-    metric-type: COSINE
-
-  # Query 重写配置
-  query-rewrite:
-    enabled: true
-    max-history-messages: 4
-    max-history-chars: 500
-
-  # 会话记忆配置
-  memory:
-    history-keep-turns: 4       # 保留最近对话轮数
-    summary-start-turns: 5      # 触发摘要的轮数
-    summary-enabled: true
-    ttl-minutes: 60
-```
-
-## 工作原理
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         用户问题                                 │
-└─────────────────────────────────┬───────────────────────────────┘
-                                  ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                       意图识别 (Intent)                          │
-│              基于意图树分类，确定问题类型                          │
-└─────────────────────────────────┬───────────────────────────────┘
-                                  ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    Query 重写 (Rewrite)                          │
-│           结合上下文改写问题，消除指代、补全信息                    │
-└─────────────────────────────────┬───────────────────────────────┘
-                                  ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      向量检索 (Retrieve)                         │
-│      问题向量化 → Milvus TopK 召回 → 候选 Chunk 列表              │
-└─────────────────────────────────┬───────────────────────────────┘
-                                  ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      重排序 (Rerank)                             │
-│              Rerank 模型精排，筛选最相关 Chunk                    │
-└─────────────────────────────────┬───────────────────────────────┘
-                                  ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                   MCP 工具调用 (可选)                             │
-│           根据意图调用外部工具获取实时数据                         │
-└─────────────────────────────────┬───────────────────────────────┘
-                                  ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    Prompt 组装 & LLM 生成                        │
-│      系统提示 + 历史对话 + 上下文 + 问题 → 流式生成答案            │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-## 前端集成
-
-### SSE 流式接入
-
-```javascript
-const es = new EventSource('/api/ragent/rag/v3/chat?question=问题&conversationId=xxx');
-
-es.onmessage = (event) => {
-  console.log('收到内容:', event.data);
-};
-
-es.onerror = (error) => {
-  console.error('连接错误:', error);
-  es.close();
-};
-```
-
-### Fetch 流式接入
-
-```javascript
-async function streamChat(question) {
-  const response = await fetch(`/api/ragent/rag/v1/stream-text?question=${encodeURIComponent(question)}`);
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder('utf-8');
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    console.log(decoder.decode(value));
-  }
-}
-```
-
-## Roadmap
-
-- [ ] **多模态支持**：图片、表格、代码块的解析与检索
-- [ ] **更多模型厂商**：OpenAI / DeepSeek / Azure / 本地 vLLM
-- [ ] **索引策略优化**：更智能的切分、摘要与段落关联
-- [ ] **元数据过滤**：按文档类型、标签、业务线进行检索过滤
-- [ ] **引用溯源**：返回答案所依据的文档片段，支持引用展示
-- [ ] **评测与监控**：召回率、精准率、延迟与成本的监控面板
-- [ ] **权限与隔离**：多租户数据隔离与细粒度权限控制
-
-## 许可证
-
-本项目采用 [Apache License 2.0](LICENSE) 许可证。
-
----
-
-<p align="center">
-  Made with ❤️ by <a href="https://github.com/nageoffer">Nageoffer</a>
-</p>
+[Apache License 2.0](LICENSE)
