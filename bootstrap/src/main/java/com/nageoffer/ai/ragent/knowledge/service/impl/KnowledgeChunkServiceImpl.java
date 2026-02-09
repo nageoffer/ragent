@@ -297,6 +297,7 @@ public class KnowledgeChunkServiceImpl implements KnowledgeChunkService {
     public void enableChunk(String docId, String chunkId, boolean enabled) {
         KnowledgeDocumentDO documentDO = documentMapper.selectById(docId);
         Assert.notNull(documentDO, () -> new ClientException("文档不存在"));
+        validateDocumentEnabledForChunkEnable(documentDO, enabled);
 
         KnowledgeChunkDO chunkDO = chunkMapper.selectById(chunkId);
         Assert.notNull(chunkDO, () -> new ClientException("Chunk 不存在"));
@@ -432,6 +433,7 @@ public class KnowledgeChunkServiceImpl implements KnowledgeChunkService {
     private void batchUpdateEnabled(String docId, KnowledgeChunkBatchRequest requestParam, boolean enabled) {
         KnowledgeDocumentDO documentDO = documentMapper.selectById(docId);
         Assert.notNull(documentDO, () -> new ClientException("文档不存在"));
+        validateDocumentEnabledForChunkEnable(documentDO, enabled);
 
         List<KnowledgeChunkDO> chunks;
         if (requestParam == null || requestParam.getChunkIds() == null || requestParam.getChunkIds().isEmpty()) {
@@ -472,6 +474,18 @@ public class KnowledgeChunkServiceImpl implements KnowledgeChunkService {
             for (Long chunkId : needUpdateIds) {
                 deleteChunkFromMilvus(kbId, String.valueOf(chunkId));
             }
+        }
+    }
+
+    /**
+     * 启用 chunk 前必须保证所属文档为启用状态
+     */
+    private void validateDocumentEnabledForChunkEnable(KnowledgeDocumentDO documentDO, boolean enableChunk) {
+        if (!enableChunk) {
+            return;
+        }
+        if (!Integer.valueOf(1).equals(documentDO.getEnabled())) {
+            throw new ClientException("文档未启用，无法启用Chunk，请先启用文档");
         }
     }
 
