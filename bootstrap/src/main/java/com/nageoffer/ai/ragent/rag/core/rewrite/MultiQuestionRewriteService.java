@@ -45,7 +45,7 @@ import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.QUERY_REWRITE_AND
  * 查询预处理：改写 + 拆分多问句
  */
 @Slf4j
-@Service("multiQuestionRewriteService")
+@Service
 @RequiredArgsConstructor
 public class MultiQuestionRewriteService implements QueryRewriteService {
 

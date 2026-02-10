@@ -19,35 +19,32 @@ package com.nageoffer.ai.ragent.rag.service.impl;
 
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
-import com.nageoffer.ai.ragent.rag.dto.IntentGroup;
-import com.nageoffer.ai.ragent.rag.dto.RetrievalContext;
-import com.nageoffer.ai.ragent.rag.dto.SubQuestionIntent;
 import com.nageoffer.ai.ragent.framework.context.UserContext;
-import com.nageoffer.ai.ragent.framework.trace.RagTraceContext;
 import com.nageoffer.ai.ragent.framework.convention.ChatMessage;
 import com.nageoffer.ai.ragent.framework.convention.ChatRequest;
+import com.nageoffer.ai.ragent.framework.trace.RagTraceContext;
 import com.nageoffer.ai.ragent.infra.chat.LLMService;
 import com.nageoffer.ai.ragent.infra.chat.StreamCallback;
 import com.nageoffer.ai.ragent.infra.chat.StreamCancellationHandle;
-import com.nageoffer.ai.ragent.infra.config.AIModelProperties;
+import com.nageoffer.ai.ragent.rag.aop.ChatRateLimit;
+import com.nageoffer.ai.ragent.rag.core.guidance.GuidanceDecision;
+import com.nageoffer.ai.ragent.rag.core.guidance.IntentGuidanceService;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentResolver;
 import com.nageoffer.ai.ragent.rag.core.memory.ConversationMemoryService;
 import com.nageoffer.ai.ragent.rag.core.prompt.PromptContext;
 import com.nageoffer.ai.ragent.rag.core.prompt.PromptTemplateLoader;
-import com.nageoffer.ai.ragent.rag.core.prompt.RAGEnterprisePromptService;
+import com.nageoffer.ai.ragent.rag.core.prompt.RAGPromptService;
 import com.nageoffer.ai.ragent.rag.core.retrieve.RetrievalEngine;
 import com.nageoffer.ai.ragent.rag.core.rewrite.QueryRewriteService;
 import com.nageoffer.ai.ragent.rag.core.rewrite.RewriteResult;
-import com.nageoffer.ai.ragent.rag.service.ConversationGroupService;
-import com.nageoffer.ai.ragent.rag.service.RAGEnterpriseService;
-import com.nageoffer.ai.ragent.rag.core.guidance.GuidanceDecision;
-import com.nageoffer.ai.ragent.rag.core.guidance.IntentGuidanceService;
-import com.nageoffer.ai.ragent.rag.aop.ChatRateLimit;
+import com.nageoffer.ai.ragent.rag.dto.IntentGroup;
+import com.nageoffer.ai.ragent.rag.dto.RetrievalContext;
+import com.nageoffer.ai.ragent.rag.dto.SubQuestionIntent;
+import com.nageoffer.ai.ragent.rag.service.RAGChatService;
 import com.nageoffer.ai.ragent.rag.service.handler.StreamCallbackFactory;
 import com.nageoffer.ai.ragent.rag.service.handler.StreamTaskManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -57,23 +54,23 @@ import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.CHAT_SYSTEM_PROMP
 import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.DEFAULT_TOP_K;
 
 /**
- * RAG 企业版服务（V3）
+ * RAG 对话服务默认实现
  * <p>
- * 支持三种意图类型：SYSTEM / KB / MCP，以及 KB + MCP 混合场景
+ * 核心流程：
+ * 记忆加载 -> 改写拆分 -> 意图解析 -> 歧义引导 -> 检索(MCP+KB) -> Prompt 组装 -> 流式输出
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class RAGEnterpriseServiceImpl implements RAGEnterpriseService {
+public class RAGChatServiceImpl implements RAGChatService {
 
     private final LLMService llmService;
-    private final RAGEnterprisePromptService promptBuilder;
+    private final RAGPromptService promptBuilder;
     private final PromptTemplateLoader promptTemplateLoader;
     private final ConversationMemoryService memoryService;
     private final StreamTaskManager taskManager;
     private final IntentGuidanceService guidanceService;
     private final StreamCallbackFactory callbackFactory;
-    @Qualifier("multiQuestionRewriteService")
     private final QueryRewriteService queryRewriteService;
     private final IntentResolver intentResolver;
     private final RetrievalEngine retrievalEngine;
@@ -85,9 +82,9 @@ public class RAGEnterpriseServiceImpl implements RAGEnterpriseService {
         String taskId = StrUtil.isBlank(RagTraceContext.getTaskId())
                 ? IdUtil.getSnowflakeNextIdStr()
                 : RagTraceContext.getTaskId();
-        log.info("打印会话消息参数，会话ID：{}，单次消息ID：{}", conversationId, taskId);
+        log.info("开始流式对话，会话ID：{}，任务ID：{}", actualConversationId, taskId);
+        boolean thinkingEnabled = Boolean.TRUE.equals(deepThinking);
 
-        // 使用工厂创建 Callback
         StreamCallback callback = callbackFactory.createChatEventHandler(emitter, actualConversationId, taskId);
 
         String userId = UserContext.getUserId();
@@ -127,7 +124,7 @@ public class RAGEnterpriseServiceImpl implements RAGEnterpriseService {
                 ctx,
                 mergedGroup,
                 history,
-                deepThinking,
+                thinkingEnabled,
                 callback
         );
         taskManager.bindHandle(taskId, handle);

@@ -54,7 +54,7 @@ import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.INTENT_CLASSIFIER
  * 将所有意图节点一次性发送给 LLM 进行识别打分，适用于意图数量较少的场景
  */
 @Slf4j
-@Service("defaultIntentClassifier")
+@Service
 @RequiredArgsConstructor
 public class DefaultIntentClassifier implements IntentClassifier, IntentNodeRegistry {
 

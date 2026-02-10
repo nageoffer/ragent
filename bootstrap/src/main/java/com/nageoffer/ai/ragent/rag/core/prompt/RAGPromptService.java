@@ -23,6 +23,7 @@ import com.nageoffer.ai.ragent.framework.convention.ChatMessage;
 import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentNode;
 import com.nageoffer.ai.ragent.rag.core.intent.NodeScore;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -34,20 +35,22 @@ import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.MCP_KB_MIXED_PROM
 import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.MCP_ONLY_PROMPT_PATH;
 import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.RAG_ENTERPRISE_PROMPT_PATH;
 
+/**
+ * RAG Prompt 编排服务
+ * <p>
+ * 根据检索结果场景（KB / MCP / Mixed）选择模板，并构造最终发送给 LLM 的消息序列
+ */
 @Service
-public class RAGEnterprisePromptService {
+@RequiredArgsConstructor
+public class RAGPromptService {
 
     private static final String MCP_CONTEXT_HEADER = "## 动态数据片段";
     private static final String KB_CONTEXT_HEADER = "## 文档内容";
 
     private final PromptTemplateLoader promptTemplateLoader;
 
-    public RAGEnterprisePromptService(PromptTemplateLoader promptTemplateLoader) {
-        this.promptTemplateLoader = promptTemplateLoader;
-    }
-
     /**
-     * 允许 2+ 个连续换行被压成 2 个，成品更干净
+     * 生成系统提示词，并对模板格式做清理
      */
     public String buildSystemPrompt(PromptContext context) {
         PromptBuildPlan plan = plan(context);
@@ -57,6 +60,9 @@ public class RAGEnterprisePromptService {
         return StrUtil.isBlank(template) ? "" : PromptTemplateUtils.cleanupPrompt(template);
     }
 
+    /**
+     * 构造发送给 LLM 的完整消息列表（system + evidence + history + user）
+     */
     public List<ChatMessage> buildStructuredMessages(PromptContext context,
                                                      List<ChatMessage> history,
                                                      String question,
@@ -76,7 +82,7 @@ public class RAGEnterprisePromptService {
             messages.addAll(history);
         }
 
-        // 构建用户消息：如果有多个子问题，明确列出
+        // 多子问题场景下，显式编号以降低模型漏答风险
         if (CollUtil.isNotEmpty(subQuestions) && subQuestions.size() > 1) {
             StringBuilder userMessage = new StringBuilder();
             userMessage.append("请基于上述文档内容，回答以下问题：\n\n");
@@ -196,7 +202,7 @@ public class RAGEnterprisePromptService {
     // === 工具方法 ===
 
     /**
-     * 统一从 IntentNode 取 key（优先 intentCode，退化为 id）
+     * 从意图节点提取用于映射检索结果的 key
      */
     private static String nodeKey(IntentNode node) {
         if (node == null) return "";
