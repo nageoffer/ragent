@@ -76,7 +76,7 @@ public class RAGPromptService {
             messages.add(ChatMessage.system(formatEvidence(MCP_CONTEXT_HEADER, context.getMcpContext())));
         }
         if (StrUtil.isNotBlank(context.getKbContext())) {
-            messages.add(ChatMessage.system(formatEvidence(KB_CONTEXT_HEADER, context.getKbContext())));
+            messages.add(ChatMessage.user(formatEvidence(KB_CONTEXT_HEADER, context.getKbContext())));
         }
         if (CollUtil.isNotEmpty(history)) {
             messages.addAll(history);
