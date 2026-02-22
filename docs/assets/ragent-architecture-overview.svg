@@ -1,0 +1,153 @@
+<svg width="1400" height="900" viewBox="0 0 1400 900" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">RAgent architecture overview</title>
+  <desc id="desc">Runtime topology and core modules for RAgent including frontend, Spring Boot services, RAG core, ingestion engine, AI infra and storage dependencies.</desc>
+
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1400" y2="900" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#07121F"/>
+      <stop offset="1" stop-color="#0B0F1A"/>
+    </linearGradient>
+    <linearGradient id="cyan" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#00E5FF"/>
+      <stop offset="1" stop-color="#00FFA3"/>
+    </linearGradient>
+    <linearGradient id="violet" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#7AA2FF"/>
+      <stop offset="1" stop-color="#8E7CFF"/>
+    </linearGradient>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M 32 0 L 0 0 0 32" stroke="#182233" stroke-width="1"/>
+    </pattern>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#52E3FF"/>
+    </marker>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect width="1400" height="900" fill="url(#bg)"/>
+  <rect width="1400" height="900" fill="url(#grid)" opacity="0.55"/>
+
+  <text x="60" y="72" fill="#E6F1FF" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="34" font-weight="700">RAgent :: Runtime Architecture</text>
+  <text x="60" y="106" fill="#8EA0B8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16">RAG + MCP + Ingestion Pipeline + Model Routing (Monorepo)</text>
+
+  <!-- Edge -->
+  <g>
+    <rect x="60" y="160" width="280" height="180" rx="18" fill="#0F1C2D" stroke="#2F4C6D"/>
+    <text x="84" y="196" fill="#CFE8FF" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" font-weight="700">Client Edge</text>
+    <rect x="84" y="214" width="232" height="46" rx="10" fill="#0C2736" stroke="#2A8FA4"/>
+    <text x="100" y="242" fill="#9DEEFF" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="15">Browser / App Client</text>
+    <rect x="84" y="274" width="232" height="46" rx="10" fill="#0C2736" stroke="#2A8FA4"/>
+    <text x="100" y="302" fill="#9DEEFF" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="15">frontend (React + Vite)</text>
+  </g>
+
+  <!-- API Gateway / App -->
+  <g>
+    <rect x="390" y="140" width="570" height="700" rx="22" fill="#0B1525" stroke="#2D3F61" stroke-width="1.2"/>
+    <text x="420" y="180" fill="#D9E7FF" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="20" font-weight="700">bootstrap :: Spring Boot App</text>
+    <text x="420" y="206" fill="#7F95B4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14">context-path = /api/ragent</text>
+
+    <rect x="420" y="228" width="510" height="74" rx="14" fill="#0F1E33" stroke="#4E6AA3"/>
+    <text x="440" y="254" fill="#AFC7FF" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="15">Controllers / APIs</text>
+    <text x="440" y="280" fill="#E7EEFF" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14">RAGChatController, ConversationController, Ingestion*Controller, Admin*</text>
+
+    <!-- RAG Core block -->
+    <rect x="420" y="322" width="320" height="350" rx="16" fill="#101D2E" stroke="#00C4FF" stroke-opacity="0.65"/>
+    <text x="442" y="352" fill="#BFF4FF" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17" font-weight="700">RAG Core Pipeline</text>
+    <text x="442" y="378" fill="#DCEBFF" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14">1) Memory load + append question</text>
+    <text x="442" y="406" fill="#DCEBFF" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14">2) Query rewrite + split</text>
+    <text x="442" y="434" fill="#DCEBFF" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14">3) Intent resolve + guidance</text>
+    <text x="442" y="462" fill="#DCEBFF" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14">4) RetrievalEngine (KB + MCP)</text>
+    <text x="442" y="490" fill="#DCEBFF" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14">5) Prompt assembly (KB/MCP/Mixed)</text>
+    <text x="442" y="518" fill="#DCEBFF" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14">6) RoutingLLMService stream output</text>
+    <text x="442" y="546" fill="#DCEBFF" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14">7) SSE push + persist + trace</text>
+
+    <rect x="442" y="572" width="276" height="78" rx="10" fill="#0A2734" stroke="#1FD6FF" stroke-opacity="0.75"/>
+    <text x="458" y="600" fill="#93F2FF" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14">KB multi-channel retrieval</text>
+    <text x="458" y="624" fill="#E0FAFF" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13">SearchChannel[] -> PostProcessor[]</text>
+
+    <!-- Ingestion block -->
+    <rect x="760" y="322" width="170" height="350" rx="16" fill="#151729" stroke="#8EA2FF" stroke-opacity="0.65"/>
+    <text x="779" y="352" fill="#D6DBFF" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17" font-weight="700">Ingestion</text>
+    <text x="779" y="382" fill="#ECF0FF" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13">Fetcher</text>
+    <text x="779" y="410" fill="#ECF0FF" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13">Parser (Tika)</text>
+    <text x="779" y="438" fill="#ECF0FF" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13">Enhancer</text>
+    <text x="779" y="466" fill="#ECF0FF" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13">Chunker</text>
+    <text x="779" y="494" fill="#ECF0FF" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13">Enricher</text>
+    <text x="779" y="522" fill="#ECF0FF" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13">Indexer</text>
+    <text x="779" y="568" fill="#BFC9FF" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12">Task / Node logs</text>
+    <text x="779" y="590" fill="#BFC9FF" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12">Pipeline graph exec</text>
+
+    <!-- Framework / Cross-cutting -->
+    <rect x="420" y="696" width="510" height="116" rx="14" fill="#121A2A" stroke="#2D4A7B"/>
+    <text x="442" y="726" fill="#C8D7F5" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16" font-weight="700">framework (cross-cutting)</text>
+    <text x="442" y="752" fill="#E2EAFF" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13">Result / Exception / UserContext / Idempotent / RagTrace / SSE helpers</text>
+    <text x="442" y="778" fill="#90A5C8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12">Used by RAG, Ingestion, Admin and User modules</text>
+  </g>
+
+  <!-- infra-ai -->
+  <g>
+    <rect x="1010" y="160" width="330" height="340" rx="20" fill="#0D1624" stroke="#365178"/>
+    <text x="1038" y="196" fill="#E4EEFF" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="19" font-weight="700">infra-ai</text>
+    <text x="1038" y="222" fill="#8DA3C1" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14">Model routing + provider clients</text>
+
+    <rect x="1038" y="244" width="274" height="54" rx="12" fill="#0D2732" stroke="#1DE1FF"/>
+    <text x="1054" y="266" fill="#A4F5FF" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13">RoutingLLMService</text>
+    <text x="1054" y="286" fill="#DFFBFF" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12">priority / fallback / first-packet probe</text>
+
+    <rect x="1038" y="312" width="274" height="46" rx="12" fill="#1A1930" stroke="#8E8DFF"/>
+    <text x="1054" y="340" fill="#D5D4FF" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13">RoutingEmbeddingService</text>
+
+    <rect x="1038" y="372" width="274" height="46" rx="12" fill="#1A1930" stroke="#8E8DFF"/>
+    <text x="1054" y="400" fill="#D5D4FF" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13">RoutingRerankService</text>
+
+    <rect x="1038" y="432" width="274" height="48" rx="12" fill="#101F31" stroke="#4F77B9"/>
+    <text x="1054" y="460" fill="#CFE1FF" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13">Providers: Ollama / Bailian / SiliconFlow</text>
+  </g>
+
+  <!-- Data stores -->
+  <g>
+    <rect x="1010" y="536" width="330" height="304" rx="20" fill="#0D1422" stroke="#35506F"/>
+    <text x="1038" y="572" fill="#E5EEFF" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="19" font-weight="700">State + Storage</text>
+
+    <rect x="1038" y="596" width="132" height="56" rx="12" fill="#132335" stroke="#52E3FF" filter="url(#glow)">
+      <animate attributeName="stroke-opacity" values="0.9;0.4;0.9" dur="3s" repeatCount="indefinite"/>
+    </rect>
+    <text x="1078" y="628" fill="#A8F6FF" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="15">MySQL</text>
+
+    <rect x="1180" y="596" width="132" height="56" rx="12" fill="#132335" stroke="#52E3FF"/>
+    <text x="1223" y="628" fill="#A8F6FF" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="15">Redis</text>
+
+    <rect x="1038" y="668" width="132" height="56" rx="12" fill="#151A30" stroke="#8E8DFF"/>
+    <text x="1074" y="700" fill="#D7D6FF" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="15">Milvus</text>
+
+    <rect x="1180" y="668" width="132" height="56" rx="12" fill="#151A30" stroke="#8E8DFF"/>
+    <text x="1212" y="700" fill="#D7D6FF" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="15">RustFS (S3)</text>
+
+    <text x="1038" y="770" fill="#95A8C5" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12">Documents, chunks, sessions, traces, vectors, objects</text>
+  </g>
+
+  <!-- Arrows -->
+  <g stroke="#52E3FF" stroke-width="2.4" fill="none" marker-end="url(#arrow)">
+    <path d="M 340 250 C 360 250, 360 250, 390 250"/>
+    <path d="M 960 270 C 980 270, 980 270, 1010 270"/>
+    <path d="M 960 430 C 980 430, 980 430, 1010 430"/>
+    <path d="M 960 760 C 980 760, 980 760, 1010 760"/>
+    <path d="M 740 490 C 752 490, 752 490, 760 490"/>
+    <path d="M 1120 500 C 1120 516, 1120 516, 1120 536"/>
+  </g>
+
+  <!-- labels on edges -->
+  <text x="352" y="240" fill="#79EFFF" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12">HTTP / SSE</text>
+  <text x="971" y="259" fill="#79EFFF" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12">chat/stream</text>
+  <text x="968" y="419" fill="#79EFFF" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12">embedding / rerank</text>
+  <text x="972" y="750" fill="#79EFFF" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12">persistence</text>
+
+  <!-- footer -->
+  <text x="60" y="862" fill="#6D819F" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12">Generated as editable SVG for README. Tweak in docs/assets/ragent-architecture-overview.svg</text>
+</svg>
