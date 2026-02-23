@@ -133,7 +133,7 @@ Ragent 是一个企业级 RAG 智能体平台，基于 Java 17 + Spring Boot 3 +
 
 Ragent 采用前后端分离的单体架构，后端按职责分为四个 Maven 模块：
 
-![](https://oss.open8gu.com/image-20260223130413104.png)
+<img src="https://oss.open8gu.com/image-20260223130413104.png" width="50%" />
 
 这个分层不是为了炫技，而是解决实际问题：`framework` 层提供与业务无关的通用能力，`infra-ai` 层屏蔽不同模型供应商的差异，`bootstrap` 层专注业务逻辑。换模型供应商不用改业务代码，换业务逻辑不用动基础设施。
 
@@ -181,7 +181,7 @@ Ragent 采用前后端分离的单体架构，后端按职责分为四个 Maven 
 
 文档从上传到可检索，经过一条基于节点编排的 Pipeline：
 
-![](https://oss.open8gu.com/image-20260223124821415.png)
+<img src="https://oss.open8gu.com/image-20260223124821415.png" width="25%" />
 
 每个节点的配置存储在数据库中，支持条件执行和输出链式传递。每个任务和节点都有独立的执行日志，出了问题能精确定位到哪一步。
 
