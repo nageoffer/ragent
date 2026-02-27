@@ -23,7 +23,6 @@ import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentNode;
 import com.nageoffer.ai.ragent.rag.core.intent.NodeScore;
 import com.nageoffer.ai.ragent.rag.core.mcp.MCPResponse;
-import com.nageoffer.ai.ragent.rag.core.mcp.MCPService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -36,8 +35,6 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class DefaultContextFormatter implements ContextFormatter {
-
-    private final MCPService mcpService;
 
     @Override
     public String formatKbContext(List<NodeScore> kbIntents, Map<String, List<RetrievedChunk>> rerankedByIntent, int topK) {
@@ -150,7 +147,7 @@ public class DefaultContextFormatter implements ContextFormatter {
             return "";
         }
         if (CollUtil.isEmpty(mcpIntents)) {
-            return mcpService.mergeResponsesToText(responses);
+            return mergeResponsesToText(responses);
         }
 
         Map<String, IntentNode> toolToIntent = new LinkedHashMap<>();
@@ -175,7 +172,7 @@ public class DefaultContextFormatter implements ContextFormatter {
                     }
                     IntentNode node = entry.getValue();
                     String snippet = StrUtil.emptyIfNull(node.getPromptSnippet()).trim();
-                    String body = mcpService.mergeResponsesToText(toolResponses);
+                    String body = mergeResponsesToText(toolResponses);
                     if (StrUtil.isBlank(body)) {
                         return "";
                     }
@@ -188,5 +185,43 @@ public class DefaultContextFormatter implements ContextFormatter {
                 })
                 .filter(StrUtil::isNotBlank)
                 .collect(Collectors.joining("\n\n"));
+    }
+
+    /**
+     * 将多个 MCP 响应合并为文本（用于拼接到 Prompt）
+     */
+    private String mergeResponsesToText(List<MCPResponse> responses) {
+        if (responses == null || responses.isEmpty()) {
+            return "";
+        }
+
+        List<String> successResults = new ArrayList<>();
+        List<String> errorResults = new ArrayList<>();
+
+        for (MCPResponse response : responses) {
+            if (response.isSuccess() && response.getTextResult() != null) {
+                successResults.add(response.getTextResult());
+            } else if (!response.isSuccess()) {
+                errorResults.add(String.format("工具 %s 调用失败: %s",
+                        response.getToolId(), response.getErrorMessage()));
+            }
+        }
+
+        StringBuilder sb = new StringBuilder();
+
+        if (!successResults.isEmpty()) {
+            for (String result : successResults) {
+                sb.append(result).append("\n\n");
+            }
+        }
+
+        if (!errorResults.isEmpty()) {
+            sb.append("【部分查询失败】\n");
+            for (String error : errorResults) {
+                sb.append("- ").append(error).append("\n");
+            }
+        }
+
+        return sb.toString().trim();
     }
 }

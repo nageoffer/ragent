@@ -30,7 +30,6 @@ import com.nageoffer.ai.ragent.rag.core.intent.NodeScore;
 import com.nageoffer.ai.ragent.rag.core.mcp.MCPParameterExtractor;
 import com.nageoffer.ai.ragent.rag.core.mcp.MCPRequest;
 import com.nageoffer.ai.ragent.rag.core.mcp.MCPResponse;
-import com.nageoffer.ai.ragent.rag.core.mcp.MCPService;
 import com.nageoffer.ai.ragent.rag.core.mcp.MCPTool;
 import com.nageoffer.ai.ragent.rag.core.mcp.MCPToolExecutor;
 import com.nageoffer.ai.ragent.rag.core.mcp.MCPToolRegistry;
@@ -39,6 +38,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
+
+import java.util.HashMap;
 
 import java.util.List;
 import java.util.Map;
@@ -62,12 +63,13 @@ import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.MULTI_CHANNEL_KEY
 public class RetrievalEngine {
 
     private final ContextFormatter contextFormatter;
-    private final MCPService mcpService;
     private final MCPParameterExtractor mcpParameterExtractor;
     private final MCPToolRegistry mcpToolRegistry;
     private final MultiChannelRetrievalEngine multiChannelRetrievalEngine;
     @Qualifier("ragContextThreadPoolExecutor")
     private final Executor ragContextExecutor;
+    @Qualifier("mcpBatchThreadPoolExecutor")
+    private final Executor mcpBatchExecutor;
 
     /**
      * 检索方法：根据子问题意图列表执行检索，整合知识库和MCP工具的结果
@@ -228,7 +230,34 @@ public class RetrievalEngine {
                 .filter(Objects::nonNull)
                 .toList();
 
-        return requests.isEmpty() ? List.of() : mcpService.executeBatch(requests);
+        if (requests.isEmpty()) {
+            return List.of();
+        }
+
+        // 并行执行所有 MCP 工具调用
+        List<CompletableFuture<MCPResponse>> futures = requests.stream()
+                .map(request -> CompletableFuture.supplyAsync(() -> executeSingleMcpTool(request), mcpBatchExecutor))
+                .toList();
+
+        return futures.stream()
+                .map(CompletableFuture::join)
+                .toList();
+    }
+
+    private MCPResponse executeSingleMcpTool(MCPRequest request) {
+        String toolId = request.getToolId();
+        Optional<MCPToolExecutor> executorOpt = mcpToolRegistry.getExecutor(toolId);
+        if (executorOpt.isEmpty()) {
+            log.warn("MCP 工具执行失败, 工具不存在: {}", toolId);
+            return MCPResponse.error(toolId, "TOOL_NOT_FOUND", "工具不存在: " + toolId);
+        }
+
+        try {
+            return executorOpt.get().execute(request);
+        } catch (Exception e) {
+            log.error("MCP 工具执行异常, toolId: {}", toolId, e);
+            return MCPResponse.error(toolId, "EXECUTION_ERROR", "工具调用异常: " + e.getMessage());
+        }
     }
 
     private MCPRequest buildMcpRequest(String question, IntentNode intentNode) {
@@ -247,7 +276,7 @@ public class RetrievalEngine {
         return MCPRequest.builder()
                 .toolId(toolId)
                 .userQuestion(question)
-                .parameters(params)
+                .parameters(params != null ? params : new HashMap<>())
                 .build();
     }
 

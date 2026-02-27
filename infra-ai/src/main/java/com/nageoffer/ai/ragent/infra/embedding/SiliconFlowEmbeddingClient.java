@@ -17,6 +17,7 @@
 
 package com.nageoffer.ai.ragent.infra.embedding;
 
+import cn.hutool.core.collection.CollUtil;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -37,7 +38,6 @@ import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
 import okhttp3.ResponseBody;
-import org.apache.commons.collections4.CollectionUtils;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -68,7 +68,7 @@ public class SiliconFlowEmbeddingClient implements EmbeddingClient {
 
     @Override
     public List<List<Float>> embedBatch(List<String> texts, ModelTarget target) {
-        if (CollectionUtils.isEmpty(texts)) {
+        if (CollUtil.isEmpty(texts)) {
             return Collections.emptyList();
         }
 

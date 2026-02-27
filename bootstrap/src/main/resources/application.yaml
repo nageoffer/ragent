@@ -68,6 +68,11 @@ rag:
       batch-size: 20
       min-interval-seconds: 60
 
+  mcp:
+    servers:
+      - name: default
+        url: http://localhost:8081
+
   search:
     channels:
       vector-global:

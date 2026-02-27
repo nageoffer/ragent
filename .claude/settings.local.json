@@ -19,7 +19,13 @@
       "Bash(git mv:*)",
       "Bash(npm install:*)",
       "Bash(npx tsc:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(tee:*)",
+      "Bash(git checkout:*)",
+      "WebFetch(domain:spring.io)",
+      "Bash(gh api:*)",
+      "Bash(gh auth:*)",
+      "Bash(JAVA_HOME=/Library/Java/JavaVirtualMachines/zulu-17.jdk/Contents/Home mvn clean:*)"
     ]
   }
 }
