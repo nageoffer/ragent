@@ -54,7 +54,7 @@ public class HttpMCPClient implements MCPClient {
     private final AtomicLong requestId = new AtomicLong(1);
 
     @Override
-    public void initialize() {
+    public boolean initialize() {
         JsonObject params = new JsonObject();
         params.addProperty("protocolVersion", "2026-02-28");
         JsonObject clientInfo = new JsonObject();
@@ -65,10 +65,11 @@ public class HttpMCPClient implements MCPClient {
         JsonObject result = sendRequest("initialize", params);
         if (result == null) {
             log.warn("MCP 初始化失败，跳过 initialized 通知发送");
-            return;
+            return false;
         }
         // MCP 协议要求：收到 initialize 响应后，发送 notifications/initialized 通知
         sendInitializedNotification();
+        return true;
     }
 
     @Override

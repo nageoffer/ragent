@@ -30,8 +30,10 @@ public interface MCPClient {
 
     /**
      * 初始化连接，获取 server 能力
+     *
+     * @return 初始化是否成功
      */
-    void initialize();
+    boolean initialize();
 
     /**
      * 获取远程工具列表

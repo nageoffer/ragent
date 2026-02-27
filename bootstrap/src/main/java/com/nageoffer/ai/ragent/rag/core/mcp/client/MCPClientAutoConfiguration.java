@@ -64,7 +64,11 @@ public class MCPClientAutoConfiguration {
             HttpMCPClient mcpClient = new HttpMCPClient(okHttpClient, serverUrl);
 
             // 初始化连接
-            mcpClient.initialize();
+            boolean initialized = mcpClient.initialize();
+            if (!initialized) {
+                log.warn("MCP Server [{}] 初始化失败，跳过工具注册", serverName);
+                return;
+            }
 
             // 获取远程工具列表
             List<MCPTool> tools = mcpClient.listTools();
