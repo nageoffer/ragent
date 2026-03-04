@@ -72,7 +72,7 @@ rag:
   mcp:
     servers:
       - name: default
-        url: http://localhost:9091
+        url: http://localhost:9099
 
   search:
     channels:
