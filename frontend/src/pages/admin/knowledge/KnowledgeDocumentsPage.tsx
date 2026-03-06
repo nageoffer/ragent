@@ -141,6 +141,8 @@ export function KnowledgeDocumentsPage() {
   const [uploadOpen, setUploadOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<KnowledgeDocument | null>(null);
   const [chunkTarget, setChunkTarget] = useState<KnowledgeDocument | null>(null);
+  const [chunkAllOpen, setChunkAllOpen] = useState(false);
+  const [chunkAllLoading, setChunkAllLoading] = useState(false);
   const [detailTarget, setDetailTarget] = useState<KnowledgeDocument | null>(null);
   const [detailName, setDetailName] = useState("");
   const [detailSaving, setDetailSaving] = useState(false);
@@ -248,6 +250,61 @@ export function KnowledgeDocumentsPage() {
     } catch (error) {
       toast.error(getErrorMessage(error, "分块失败"));
       console.error(error);
+    }
+  };
+
+  const handleChunkAll = async () => {
+    if (!kbId) return;
+    setChunkAllLoading(true);
+    try {
+      const allDocs: KnowledgeDocument[] = [];
+      let current = 1;
+      let totalPages = 1;
+
+      do {
+        const page = await getDocumentsPage(kbId, {
+          pageNo: current,
+          pageSize: 100,
+          status: statusFilter,
+          keyword: keyword || undefined
+        });
+        allDocs.push(...(page.records || []));
+        totalPages = page.pages || 1;
+        current += 1;
+      } while (current <= totalPages);
+
+      if (allDocs.length === 0) {
+        toast.error("当前筛选条件下暂无可分块文档");
+        return;
+      }
+
+      let successCount = 0;
+      const failedDocs: string[] = [];
+
+      for (const doc of allDocs) {
+        try {
+          await startDocumentChunk(String(doc.id));
+          successCount += 1;
+        } catch {
+          failedDocs.push(doc.docName || String(doc.id));
+        }
+      }
+
+      if (failedDocs.length > 0) {
+        const preview = failedDocs.slice(0, 3).join("、");
+        const suffix = failedDocs.length > 3 ? " 等" : "";
+        toast.error(`已分块 ${successCount} 个，失败 ${failedDocs.length} 个（${preview}${suffix}）`);
+      } else {
+        toast.success(`已开始分块 ${successCount} 个文档`);
+      }
+
+      setChunkAllOpen(false);
+      await loadDocuments(pageNo, statusFilter, keyword);
+    } catch (error) {
+      toast.error(getErrorMessage(error, "全部分块失败"));
+      console.error(error);
+    } finally {
+      setChunkAllLoading(false);
     }
   };
 
@@ -395,6 +452,14 @@ export function KnowledgeDocumentsPage() {
               <Button variant="outline" onClick={handleRefresh}>
                 <RefreshCw className="mr-2 h-4 w-4" />
                 刷新
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setChunkAllOpen(true)}
+                disabled={loading || chunkAllLoading}
+              >
+                <PlayCircle className="mr-2 h-4 w-4" />
+                全部分块
               </Button>
             </div>
           </div>
@@ -560,8 +625,32 @@ export function KnowledgeDocumentsPage() {
         onOpenChange={setUploadOpen}
         onSubmit={async (payload) => {
           if (!kbId) return;
-          await uploadDocument(kbId, payload);
-          toast.success("上传成功");
+          if (payload.sourceType === "file") {
+            const selectedFiles = payload.files?.length
+              ? payload.files
+              : payload.file
+                ? [payload.file]
+                : [];
+            if (!selectedFiles.length) {
+              toast.error("请选择文件");
+              return;
+            }
+
+            let successCount = 0;
+            for (const currentFile of selectedFiles) {
+              await uploadDocument(kbId, {
+                ...payload,
+                file: currentFile,
+                files: null
+              });
+              successCount += 1;
+            }
+            toast.success(successCount > 1 ? `已上传 ${successCount} 个文件` : "上传成功");
+          } else {
+            await uploadDocument(kbId, payload);
+            toast.success("上传成功");
+          }
+
           setUploadOpen(false);
           setPageNo(1);
           await loadDocuments(1, statusFilter, keyword);
@@ -605,6 +694,29 @@ export function KnowledgeDocumentsPage() {
             <AlertDialogCancel>取消</AlertDialogCancel>
             <AlertDialogAction onClick={handleChunk}>
               {chunkTarget?.chunkCount ? "确认" : "开始"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={chunkAllOpen} onOpenChange={(open) => (!chunkAllLoading ? setChunkAllOpen(open) : null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认全部分块？</AlertDialogTitle>
+            <AlertDialogDescription>
+              将对当前筛选条件下的全部文档执行分块。
+              <br />
+              {statusFilter || keyword
+                ? `当前筛选：状态=${statusFilter || "全部"}，关键词=${keyword || "无"}`
+                : "当前筛选：全部文档"}
+              <br />
+              <span className="font-medium text-amber-600">已存在分块的文档重新执行会清空原有 Chunk 记录及向量数据。</span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={chunkAllLoading}>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={handleChunkAll} disabled={chunkAllLoading}>
+              {chunkAllLoading ? "执行中..." : "确认执行"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -930,7 +1042,7 @@ const uploadSchema = z
 type UploadFormValues = z.infer<typeof uploadSchema>;
 
 function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [saving, setSaving] = useState(false);
   const [noChunk, setNoChunk] = useState(false);
   const [originalChunkSize, setOriginalChunkSize] = useState("512");
@@ -981,7 +1093,7 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
 
   useEffect(() => {
     if (open) {
-      setFile(null);
+      setFiles([]);
       form.reset({
         sourceType: "file",
         sourceLocation: "",
@@ -1005,7 +1117,7 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
 
   useEffect(() => {
     if (isUrlSource) {
-      setFile(null);
+      setFiles([]);
     }
   }, [isUrlSource]);
 
@@ -1037,7 +1149,7 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
   };
 
   const handleSubmit = async (values: UploadFormValues) => {
-    if (values.sourceType === "file" && !file) {
+    if (values.sourceType === "file" && files.length === 0) {
       toast.error("请选择文件");
       return;
     }
@@ -1052,7 +1164,8 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
     try {
       const payload: KnowledgeDocumentUploadPayload = {
         sourceType: values.sourceType,
-        file: values.sourceType === "file" ? file : null,
+        file: values.sourceType === "file" ? files[0] || null : null,
+        files: values.sourceType === "file" ? files : null,
         sourceLocation: values.sourceType === "url" ? values.sourceLocation.trim() : null,
         scheduleEnabled: values.sourceType === "url" ? values.scheduleEnabled : false,
         scheduleCron:
@@ -1137,8 +1250,13 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
               <FormItem>
                 <FormLabel>本地文件</FormLabel>
                 <FormControl>
-                  <Input type="file" onChange={(event) => setFile(event.target.files?.[0] || null)} />
+                  <Input
+                    type="file"
+                    multiple
+                    onChange={(event) => setFiles(Array.from(event.target.files || []))}
+                  />
                 </FormControl>
+                <FormDescription>支持批量选择多个文件上传</FormDescription>
               </FormItem>
             )}
 
