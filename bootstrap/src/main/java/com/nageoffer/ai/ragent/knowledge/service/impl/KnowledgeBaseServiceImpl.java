@@ -88,7 +88,7 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
 
         knowledgeBaseMapper.insert(kbDO);
 
-        String bucketName = requestParam.getCollectionName();
+        String bucketName = "kb-" + kbDO.getId();
         try {
             s3Client.createBucket(builder -> builder.bucket(bucketName));
             log.info("成功创建RestFS存储桶，Bucket名称: {}", bucketName);
