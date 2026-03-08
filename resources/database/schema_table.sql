@@ -150,7 +150,6 @@ CREATE TABLE `t_knowledge_base`
     `update_time`     datetime                                NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     `deleted`         tinyint(1) NOT NULL DEFAULT '0' COMMENT '是否删除 0：正常 1：删除',
     PRIMARY KEY (`id`),
-    UNIQUE KEY `uk_collection_name` (`collection_name`) COMMENT 'Collection 唯一约束',
     KEY               `idx_kb_name` (`name`)
 ) ENGINE=InnoDB AUTO_INCREMENT=2018586042835763201 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='RAG知识库表';
 
