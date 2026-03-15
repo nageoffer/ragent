@@ -119,6 +119,11 @@ const menuGroups: MenuGroup[] = [
         ]
       },
       {
+        path: "/admin/mappings",
+        label: "关键词映射",
+        icon: KeyRound
+      },
+      {
         path: "/admin/traces",
         label: "链路追踪",
         icon: Workflow
@@ -155,6 +160,7 @@ const breadcrumbMap: Record<string, string> = {
   ingestion: "数据通道",
   traces: "链路追踪",
   "sample-questions": "示例问题",
+  mappings: "关键词映射",
   settings: "系统设置",
   users: "用户管理"
 };
