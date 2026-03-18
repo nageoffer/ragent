@@ -55,7 +55,7 @@ type DashboardTrendBundle = {
   quality: DashboardTrends | null;
 };
 
-type HealthStatus = "healthy" | "attention" | "critical";
+type HealthStatus = "healthy" | "attention" | "critical" | "unknown";
 type MetricTone = "good" | "warning" | "bad";
 
 type MetricStatusView = {
@@ -151,9 +151,10 @@ const getHealthStatus = (
       successRate?: number | null;
       errorRate?: number | null;
       noDocRate?: number | null;
-    } | null
+    } | null,
+    windowMessages?: number
 ): HealthStatus => {
-  if (!performance) return "attention";
+  if (!performance || !windowMessages) return "unknown";
   if ((performance.errorRate ?? 0) > DASHBOARD_THRESHOLDS.errorRate.warning) return "critical";
   if ((performance.successRate ?? 0) < DASHBOARD_THRESHOLDS.successRate.warning) return "critical";
   if ((performance.noDocRate ?? 0) > 20) return "attention";
@@ -299,8 +300,9 @@ const useDashboardData = () => {
   };
 };
 
-const useHealthStatus = (performance: DashboardPerformance | null) => {
-  const health = useMemo(() => getHealthStatus(performance), [performance]);
+const useHealthStatus = (performance: DashboardPerformance | null, overview: DashboardOverview | null) => {
+  const windowMessages = overview?.kpis?.messages24h?.value;
+  const health = useMemo(() => getHealthStatus(performance, windowMessages), [performance, windowMessages]);
 
   const metricStatus = useMemo<MetricStatusView>(
       () => ({
@@ -340,7 +342,8 @@ const LoadingBlock = ({ className }: { className?: string }) => (
 const HEALTH_CONFIG: Record<HealthStatus, { bg: string; text: string; label: string }> = {
   healthy: { bg: "bg-emerald-100", text: "text-emerald-700", label: "运行正常" },
   attention: { bg: "bg-amber-100", text: "text-amber-700", label: "需要关注" },
-  critical: { bg: "bg-red-100", text: "text-red-700", label: "风险偏高" }
+  critical: { bg: "bg-red-100", text: "text-red-700", label: "风险偏高" },
+  unknown: { bg: "bg-slate-100", text: "text-slate-500", label: "暂无数据" }
 };
 
 const DashboardHeader = ({
@@ -1243,19 +1246,21 @@ const InsightCard = ({ item }: { item: InsightCardData }) => {
 const buildInsightList = (
     performance: DashboardPerformance | null,
     timeWindowLabel: string,
-    timestamp: number | null
+    timestamp: number | null,
+    overview: DashboardOverview | null
 ): InsightCardData[] => {
   const t = formatTime(timestamp);
+  const windowMessages = overview?.kpis?.messages24h?.value;
 
-  if (!performance) {
+  if (!performance || !windowMessages) {
     return [
       {
         type: "trend",
         severity: "info",
-        title: "等待数据回传",
+        title: "暂无会话数据",
         metric: "Dashboard",
         change: timeWindowLabel,
-        context: "当前窗口尚未返回完整性能数据",
+        context: "当前窗口内暂无消息记录，各项指标将在会话产生后自动更新",
         timestamp: t
       }
     ];
@@ -1329,18 +1334,20 @@ const buildInsightList = (
 
 const InsightSection = ({
                           performance,
+                          overview,
                           timeWindowLabel,
                           timestamp,
                           className
                         }: {
   performance: DashboardPerformance | null;
+  overview: DashboardOverview | null;
   timeWindowLabel: string;
   timestamp: number | null;
   className?: string;
 }) => {
   const items = useMemo(
-      () => buildInsightList(performance, timeWindowLabel, timestamp),
-      [performance, timeWindowLabel, timestamp]
+      () => buildInsightList(performance, timeWindowLabel, timestamp, overview),
+      [performance, timeWindowLabel, timestamp, overview]
   );
   const contentRef = useRef<HTMLDivElement | null>(null);
   const [isScrollable, setIsScrollable] = useState(false);
@@ -1441,7 +1448,7 @@ export function DashboardPage() {
     refresh
   } = useDashboardData();
 
-  const { health, metricStatus } = useHealthStatus(performance);
+  const { health, metricStatus } = useHealthStatus(performance, overview);
 
   useEffect(() => {
     if (error) toast.error(error);
@@ -1480,6 +1487,7 @@ export function DashboardPage() {
             />
             <InsightSection
                 performance={performance}
+                overview={overview}
                 timeWindowLabel={WINDOW_LABEL_MAP[timeWindow]}
                 timestamp={lastUpdated}
                 className="h-[360px]"
