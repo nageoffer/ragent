@@ -222,6 +222,7 @@ public class RoutingLLMService implements LLMService {
         private final Object lock = new Object();
         private final List<BufferedEvent> bufferedEvents = new ArrayList<>();
         private volatile boolean committed;
+        private boolean draining;
 
         private ProbeBufferingCallback(StreamCallback downstream, FirstPacketAwaiter awaiter) {
             this.downstream = downstream;
@@ -259,34 +260,23 @@ public class RoutingLLMService implements LLMService {
          * 2. 按事件顺序回放缓存，保证时序一致
          */
         private void commit() {
-            List<BufferedEvent> snapshot;
             synchronized (lock) {
                 if (committed) {
                     return;
                 }
                 committed = true;
-                if (bufferedEvents.isEmpty()) {
-                    return;
-                }
-                snapshot = new ArrayList<>(bufferedEvents);
-                bufferedEvents.clear();
             }
-            for (BufferedEvent event : snapshot) {
-                dispatch(event);
-            }
+            drain();
         }
 
         private void bufferOrDispatch(BufferedEvent event) {
-            boolean dispatchNow;
             synchronized (lock) {
-                dispatchNow = committed;
-                if (!dispatchNow) {
-                    bufferedEvents.add(event);
+                bufferedEvents.add(event);
+                if (!committed) {
+                    return;
                 }
             }
-            if (dispatchNow) {
-                dispatch(event);
-            }
+            drain();
         }
 
         private void dispatch(BufferedEvent event) {
@@ -297,6 +287,26 @@ public class RoutingLLMService implements LLMService {
                 case ERROR -> downstream.onError(event.error() != null
                         ? event.error()
                         : new RemoteException("流式请求失败", BaseErrorCode.REMOTE_ERROR));
+            }
+        }
+
+        private void drain() {
+            while (true) {
+                BufferedEvent event;
+                synchronized (lock) {
+                    if (draining || bufferedEvents.isEmpty()) {
+                        return;
+                    }
+                    draining = true;
+                    event = bufferedEvents.remove(0);
+                }
+                try {
+                    dispatch(event);
+                } finally {
+                    synchronized (lock) {
+                        draining = false;
+                    }
+                }
             }
         }
 
