@@ -71,7 +71,8 @@ public class RagTraceQueryServiceImpl implements RagTraceQueryService {
             wrapper.eq(RagTraceRunDO::getStatus, request.getStatus());
         }
 
-        IPage<RagTraceRunDO> pageResult = runMapper.selectPage(request, wrapper);
+        IPage<RagTraceRunDO> pageParam = new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(request.getCurrent(), request.getSize());
+        IPage<RagTraceRunDO> pageResult = runMapper.selectPage(pageParam, wrapper);
         Map<String, String> usernameMap = loadUsernameMap(pageResult.getRecords());
         return pageResult.convert(run -> toRunVO(run, usernameMap));
     }
