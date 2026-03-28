@@ -91,7 +91,7 @@ export function ChatInput() {
                   return;
                 }
                 event.preventDefault();
-                handleSubmit();
+                await handleSubmit();
               }
             }}
             aria-label="聊天输入框"
