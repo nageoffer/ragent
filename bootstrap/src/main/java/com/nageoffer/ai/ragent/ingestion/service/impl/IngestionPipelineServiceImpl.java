@@ -127,7 +127,7 @@ public class IngestionPipelineServiceImpl implements IngestionPipelineService {
         Assert.notNull(pipeline, () -> new ClientException("未找到流水线"));
         pipeline.setDeleted(1);
         pipeline.setUpdatedBy(UserContext.getUsername());
-        pipelineMapper.updateById(pipeline);
+        pipelineMapper.deleteById(pipeline);
 
         LambdaQueryWrapper<IngestionPipelineNodeDO> qw = new LambdaQueryWrapper<IngestionPipelineNodeDO>()
                 .eq(IngestionPipelineNodeDO::getPipelineId, pipeline.getId());
