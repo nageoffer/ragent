@@ -22,11 +22,11 @@ import cn.hutool.core.util.StrUtil;
 import com.nageoffer.ai.ragent.rag.dto.KbResult;
 import com.nageoffer.ai.ragent.rag.dto.RetrievalContext;
 import com.nageoffer.ai.ragent.rag.dto.SubQuestionIntent;
-import com.nageoffer.ai.ragent.rag.enums.IntentKind;
 import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
 import com.nageoffer.ai.ragent.framework.trace.RagTraceNode;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentNode;
 import com.nageoffer.ai.ragent.rag.core.intent.NodeScore;
+import com.nageoffer.ai.ragent.rag.core.intent.NodeScoreFilters;
 import com.nageoffer.ai.ragent.rag.core.mcp.MCPParameterExtractor;
 import com.nageoffer.ai.ragent.rag.core.mcp.MCPRequest;
 import com.nageoffer.ai.ragent.rag.core.mcp.MCPResponse;
@@ -51,7 +51,6 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 
 import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.DEFAULT_TOP_K;
-import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.INTENT_MIN_SCORE;
 import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.MULTI_CHANNEL_KEY;
 
 /**
@@ -136,8 +135,8 @@ public class RetrievalEngine {
     }
 
     private SubQuestionContext buildSubQuestionContext(SubQuestionIntent intent, int topK) {
-        List<NodeScore> kbIntents = filterKbIntents(intent.nodeScores());
-        List<NodeScore> mcpIntents = filterMCPIntents(intent.nodeScores());
+        List<NodeScore> kbIntents = NodeScoreFilters.kb(intent.nodeScores());
+        List<NodeScore> mcpIntents = NodeScoreFilters.mcp(intent.nodeScores());
 
         KbResult kbResult = retrieveAndRerank(intent, kbIntents, topK);
 
@@ -154,7 +153,7 @@ public class RetrievalEngine {
      * 2. 没有任何可用节点级 topK：回退到全局 topK
      */
     private int resolveSubQuestionTopK(SubQuestionIntent intent, int fallbackTopK) {
-        return filterKbIntents(intent.nodeScores()).stream()
+        return NodeScoreFilters.kb(intent.nodeScores()).stream()
                 .map(NodeScore::getNode)
                 .filter(Objects::nonNull)
                 .map(IntentNode::getTopK)
@@ -169,27 +168,6 @@ public class RetrievalEngine {
                 .append("**子问题**：").append(question).append("\n\n")
                 .append("**相关文档**：\n")
                 .append(context).append("\n\n");
-    }
-
-    private List<NodeScore> filterMCPIntents(List<NodeScore> nodeScores) {
-        return nodeScores.stream()
-                .filter(ns -> ns.getScore() >= INTENT_MIN_SCORE)
-                .filter(ns -> ns.getNode() != null && ns.getNode().getKind() == IntentKind.MCP)
-                .filter(ns -> StrUtil.isNotBlank(ns.getNode().getMcpToolId()))
-                .toList();
-    }
-
-    private List<NodeScore> filterKbIntents(List<NodeScore> nodeScores) {
-        return nodeScores.stream()
-                .filter(ns -> ns.getScore() >= INTENT_MIN_SCORE)
-                .filter(ns -> {
-                    IntentNode node = ns.getNode();
-                    if (node == null) {
-                        return false;
-                    }
-                    return node.getKind() == null || node.getKind() == IntentKind.KB;
-                })
-                .toList();
     }
 
     private String executeMcpAndMerge(String question, List<NodeScore> mcpIntents) {
