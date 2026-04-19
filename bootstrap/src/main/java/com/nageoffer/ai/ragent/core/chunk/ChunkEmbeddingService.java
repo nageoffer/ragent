@@ -45,16 +45,18 @@ public class ChunkEmbeddingService {
         if (chunks == null || chunks.isEmpty()) {
             return;
         }
-        if (chunks.stream().allMatch(c -> c.getEmbedding() != null && c.getEmbedding().length > 0)) {
-            return;
-        }
-        List<String> texts = chunks.stream()
+        List<VectorChunk> toEmbed = chunks.stream()
+            .filter(c -> c.getEmbedding() == null || c.getEmbedding().length == 0)
+            .toList();
+        if (!toEmbed.isEmpty()) {
+            List<String> texts = toEmbed.stream()
                 .map(c -> c.getContent() == null ? "" : c.getContent())
                 .toList();
-        List<List<Float>> vectors = StringUtils.hasText(embeddingModel)
+            List<List<Float>> vectors = StringUtils.hasText(embeddingModel)
                 ? embeddingService.embedBatch(texts, embeddingModel)
                 : embeddingService.embedBatch(texts);
-        applyEmbeddings(chunks, vectors);
+            applyEmbeddings(toEmbed, vectors);   
+        }
     }
 
     private void applyEmbeddings(List<VectorChunk> chunks, List<List<Float>> vectors) {
