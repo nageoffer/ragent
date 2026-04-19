@@ -50,12 +50,6 @@ public class SearchChannelResult {
     private List<RetrievedChunk> chunks;
 
     /**
-     * 通道置信度（0-1）
-     * 表示该通道对结果的信心程度
-     */
-    private double confidence;
-
-    /**
      * 检索耗时（毫秒）
      */
     private long latencyMs;

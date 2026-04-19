@@ -126,17 +126,15 @@ public class MultiChannelRetrievalEngine {
 
             if (chunkCount > 0) {
                 successCount++;
-                log.info("通道 {} 完成 ✓ - 检索到 {} 个 Chunk，置信度：{}，耗时：{}ms",
+                log.info("通道 {} 完成 ✓ - 检索到 {} 个 Chunk，耗时：{}ms",
                         result.getChannelName(),
                         chunkCount,
-                        result.getConfidence(),
                         result.getLatencyMs()
                 );
             } else {
                 failureCount++;
-                log.warn("通道 {} 完成但无结果 - 置信度：{}，耗时：{}ms",
+                log.warn("通道 {} 完成但无结果 - 耗时：{}ms",
                         result.getChannelName(),
-                        result.getConfidence(),
                         result.getLatencyMs()
                 );
             }
@@ -203,7 +201,6 @@ public class MultiChannelRetrievalEngine {
                 .channelType(channel.getType())
                 .channelName(channel.getName())
                 .chunks(List.of())
-                .confidence(0.0)
                 .build();
     }
 

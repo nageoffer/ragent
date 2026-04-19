@@ -93,7 +93,6 @@ public class IntentDirectedSearchChannel implements SearchChannel {
                         .channelType(SearchChannelType.INTENT_DIRECTED)
                         .channelName(getName())
                         .chunks(List.of())
-                        .confidence(0.0)
                         .latencyMs(System.currentTimeMillis() - startTime)
                         .build();
             }
@@ -109,22 +108,15 @@ public class IntentDirectedSearchChannel implements SearchChannel {
                     topKMultiplier
             );
 
-            // 计算置信度（基于意图分数）
-            double confidence = kbIntents.stream()
-                    .mapToDouble(NodeScore::getScore)
-                    .max()
-                    .orElse(0.0);
-
             long latency = System.currentTimeMillis() - startTime;
 
-            log.info("意图定向检索完成，检索到 {} 个 Chunk，置信度：{}，耗时 {}ms",
-                    allChunks.size(), confidence, latency);
+            log.info("意图定向检索完成，检索到 {} 个 Chunk，耗时 {}ms",
+                    allChunks.size(), latency);
 
             return SearchChannelResult.builder()
                     .channelType(SearchChannelType.INTENT_DIRECTED)
                     .channelName(getName())
                     .chunks(allChunks)
-                    .confidence(confidence)
                     .latencyMs(latency)
                     .metadata(Map.of("intentCount", kbIntents.size()))
                     .build();
@@ -135,7 +127,6 @@ public class IntentDirectedSearchChannel implements SearchChannel {
                     .channelType(SearchChannelType.INTENT_DIRECTED)
                     .channelName(getName())
                     .chunks(List.of())
-                    .confidence(0.0)
                     .latencyMs(System.currentTimeMillis() - startTime)
                     .build();
         }

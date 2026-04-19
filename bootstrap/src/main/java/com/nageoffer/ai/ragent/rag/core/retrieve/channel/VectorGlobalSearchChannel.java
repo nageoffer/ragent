@@ -117,7 +117,6 @@ public class VectorGlobalSearchChannel implements SearchChannel {
                         .channelType(SearchChannelType.VECTOR_GLOBAL)
                         .channelName(getName())
                         .chunks(List.of())
-                        .confidence(0.0)
                         .latencyMs(System.currentTimeMillis() - startTime)
                         .build();
             }
@@ -138,7 +137,6 @@ public class VectorGlobalSearchChannel implements SearchChannel {
                     .channelType(SearchChannelType.VECTOR_GLOBAL)
                     .channelName(getName())
                     .chunks(allChunks)
-                    .confidence(0.7)  // 全局检索置信度中等
                     .latencyMs(latency)
                     .build();
 
@@ -148,7 +146,6 @@ public class VectorGlobalSearchChannel implements SearchChannel {
                     .channelType(SearchChannelType.VECTOR_GLOBAL)
                     .channelName(getName())
                     .chunks(List.of())
-                    .confidence(0.0)
                     .latencyMs(System.currentTimeMillis() - startTime)
                     .build();
         }
