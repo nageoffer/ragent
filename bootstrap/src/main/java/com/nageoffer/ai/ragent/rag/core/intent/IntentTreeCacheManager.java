@@ -98,15 +98,11 @@ public class IntentTreeCacheManager {
      * 在意图节点发生增删改时调用
      */
     public void clearIntentTreeCache() {
-        try {
-            Boolean deleted = stringRedisTemplate.delete(INTENT_TREE_CACHE_KEY);
-            if (deleted) {
-                log.info("意图树缓存已清除，Key: {}", INTENT_TREE_CACHE_KEY);
-            } else {
-                log.warn("意图树缓存清除失败或缓存不存在");
-            }
-        } catch (Exception e) {
-            log.error("清除意图树缓存失败", e);
+        Boolean deleted = stringRedisTemplate.delete(INTENT_TREE_CACHE_KEY);
+        if (deleted) {
+            log.info("意图树缓存已清除，Key: {}", INTENT_TREE_CACHE_KEY);
+        } else {
+            log.info("意图树缓存不存在，无需清除");
         }
     }
 
@@ -117,8 +113,7 @@ public class IntentTreeCacheManager {
      */
     public boolean isCacheExists() {
         try {
-            Boolean exists = stringRedisTemplate.hasKey(INTENT_TREE_CACHE_KEY);
-            return Boolean.TRUE.equals(exists);
+            return stringRedisTemplate.hasKey(INTENT_TREE_CACHE_KEY);
         } catch (Exception e) {
             log.error("检查意图树缓存是否存在失败", e);
             return false;

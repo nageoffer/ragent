@@ -63,6 +63,12 @@ public class SearchChannelProperties {
         private double confidenceThreshold = 0.6;
 
         /**
+         * 单意图补充检索阈值
+         * 当仅识别出一个意图且分数低于此阈值时，启用全局检索作为安全网
+         */
+        private double singleIntentSupplementThreshold = 0.8;
+
+        /**
          * TopK 倍数
          * 全局检索时召回更多候选，后续通过 Rerank 筛选
          */

@@ -38,9 +38,6 @@ import java.util.concurrent.Executor;
 
 /**
  * 向量全局检索通道
- * <p>
- * 在所有知识库中进行向量检索，作为兜底策略
- * 当意图识别失败或置信度低时启用
  */
 @Slf4j
 @Component
@@ -76,7 +73,6 @@ public class VectorGlobalSearchChannel implements SearchChannel {
             return false;
         }
 
-        // 条件1：没有识别出任何意图
         List<NodeScore> allScores = context.getIntents().stream()
                 .flatMap(si -> si.nodeScores().stream())
                 .toList();
@@ -85,7 +81,6 @@ public class VectorGlobalSearchChannel implements SearchChannel {
             return true;
         }
 
-        // 条件2：意图置信度都很低
         double maxScore = allScores.stream()
                 .mapToDouble(NodeScore::getScore)
                 .max()
@@ -94,6 +89,12 @@ public class VectorGlobalSearchChannel implements SearchChannel {
         double threshold = properties.getChannels().getVectorGlobal().getConfidenceThreshold();
         if (maxScore < threshold) {
             log.info("意图置信度过低（{}），启用全局检索", maxScore);
+            return true;
+        }
+
+        double supplementThreshold = properties.getChannels().getVectorGlobal().getSingleIntentSupplementThreshold();
+        if (allScores.size() == 1 && maxScore < supplementThreshold) {
+            log.info("单一中等置信度意图（{}），启用补充全局检索", maxScore);
             return true;
         }
 
