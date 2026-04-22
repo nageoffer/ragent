@@ -27,21 +27,38 @@ jobs:
           java-version: '17'
           cache: maven
 
-      - name: Set NVD API Key
-        env:
-          NVD_API_KEY: "0574a531-3097-4bd4-8777-e72d99aa6bed"  # 直接在这里设置环境变量
-        run: |
-          echo "NVD_API_KEY is set"
-          # 这里可以使用 $NVD_API_KEY 作为环境变量
-
-      - name: Run Maven build and static analysis
+      - name: Run static analysis tools
         run: |
           mvn clean verify -DskipTests
 
-      - name: Upload analysis reports
+      - name: Upload Checkstyle HTML report
         uses: actions/upload-artifact@v4
         with:
-          name: analysis-reports
-          path: target/reports/checkstyle.html  # 修改为实际生成的 HTML 文件路径
+          name: checkstyle-report-html
+          path: target/reports/checkstyle.html  # 上传 Checkstyle HTML 格式报告
           retention-days: 7
           if-no-files-found: warn
+
+#      - name: Upload PMD report
+#        uses: actions/upload-artifact@v4
+#        with:
+#          name: pmd-report
+#          path: target/pmd.xml  # 确保 PMD 报告路径正确
+#          retention-days: 7
+#          if-no-files-found: warn
+#
+#      - name: Upload SpotBugs report (XML)
+#        uses: actions/upload-artifact@v4
+#        with:
+#          name: spotbugs-report-xml
+#          path: target/spotbugs/spotbugs-xml.xml  # 确保 SpotBugs XML 报告路径正确
+#          retention-days: 7
+#          if-no-files-found: warn
+#
+#      - name: Upload SpotBugs report (HTML)
+#        uses: actions/upload-artifact@v4
+#        with:
+#          name: spotbugs-report-html
+#          path: target/spotbugs/spotbugs.html  # 确保 SpotBugs HTML 报告路径正确
+#          retention-days: 7
+#          if-no-files-found: warn
