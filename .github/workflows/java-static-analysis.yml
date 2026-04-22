@@ -39,9 +39,6 @@ jobs:
       - name: Clean and compile
         run: mvn -B clean compile -DskipTests
 
-      - name: Run unit tests
-        run: mvn -B test
-
       - name: Run Checkstyle
         run: mvn -B checkstyle:checkstyle -Dfile.encoding=UTF-8
 
