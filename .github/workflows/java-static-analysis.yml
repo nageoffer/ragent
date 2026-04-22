@@ -3,14 +3,10 @@ name: Java Static Analysis
 on:
   push:
     branches:
-      - chore/static-analysis
-      - master
-      - develop
+      - '**'
   pull_request:
     branches:
-      - chore/static-analysis
-      - master
-      - develop
+      - '**'
   workflow_dispatch:
 
 permissions:
@@ -22,10 +18,10 @@ jobs:
 
     steps:
       - name: Checkout source code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Set up JDK 17 with Maven cache
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
@@ -40,19 +36,19 @@ jobs:
         run: mvn -B clean compile -DskipTests
 
       - name: Run Checkstyle
-        run: mvn -B checkstyle:checkstyle -Dfile.encoding=UTF-8
+        run: mvn -B checkstyle:checkstyle -DskipTests -Dfile.encoding=UTF-8
 
       - name: Run PMD
-        run: mvn -B pmd:pmd
+        run: mvn -B pmd:pmd -DskipTests
 
       - name: Run SpotBugs + Find Security Bugs
-        run: mvn -B spotbugs:spotbugs
+        run: mvn -B spotbugs:spotbugs -DskipTests
 
       - name: Run OWASP Dependency-Check update
-        run: mvn -B org.owasp:dependency-check-maven:update-only -DassemblyAnalyzerEnabled=false
+        run: mvn -B org.owasp:dependency-check-maven:update-only -DskipTests -DassemblyAnalyzerEnabled=false
 
       - name: Run OWASP Dependency-Check scan
-        run: mvn -B dependency-check:check -DassemblyAnalyzerEnabled=false
+        run: mvn -B dependency-check:check -DskipTests -DassemblyAnalyzerEnabled=false
 
       - name: Upload Checkstyle reports
         uses: actions/upload-artifact@v4
