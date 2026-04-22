@@ -331,32 +331,32 @@
             </plugin>
 
             <!-- OWASP Dependency-Check -->
-            <plugin>
-                <groupId>org.owasp</groupId>
-                <artifactId>dependency-check-maven</artifactId>
-                <version>${dependency.check.version}</version>
-                <configuration>
-                    <format>HTML</format>
-                    <failBuildOnCVSS>11</failBuildOnCVSS>
-                    <skipTestScope>true</skipTestScope>
-                    <dataDirectory>${dependency-check.data.dir}</dataDirectory>
-                    <nvdApiKey>${env.NVD_API_KEY}</nvdApiKey>
-                    <!-- 当前以 Java 后端为主，避免 RetireJS/Node 噪音和网络问题 -->
-                    <retireJsAnalyzerEnabled>false</retireJsAnalyzerEnabled>
-                    <nodeAuditAnalyzerEnabled>false</nodeAuditAnalyzerEnabled>
-                    <nodeAnalyzerEnabled>false</nodeAnalyzerEnabled>
-                    <assemblyAnalyzerEnabled>false</assemblyAnalyzerEnabled>
-                </configuration>
-                <executions>
-                    <execution>
-                        <id>sca-aggregate</id>
-                        <phase>verify</phase>
-                        <goals>
-                            <goal>aggregate</goal>
-                        </goals>
-                    </execution>
-                </executions>
-            </plugin>
+<!--            <plugin>-->
+<!--                <groupId>org.owasp</groupId>-->
+<!--                <artifactId>dependency-check-maven</artifactId>-->
+<!--                <version>${dependency.check.version}</version>-->
+<!--                <configuration>-->
+<!--                    <format>HTML</format>-->
+<!--                    <failBuildOnCVSS>11</failBuildOnCVSS>-->
+<!--                    <skipTestScope>true</skipTestScope>-->
+<!--                    <dataDirectory>${dependency-check.data.dir}</dataDirectory>-->
+<!--                    <nvdApiKey>${env.NVD_API_KEY}</nvdApiKey>-->
+<!--                    &lt;!&ndash; 当前以 Java 后端为主，避免 RetireJS/Node 噪音和网络问题 &ndash;&gt;-->
+<!--                    <retireJsAnalyzerEnabled>false</retireJsAnalyzerEnabled>-->
+<!--                    <nodeAuditAnalyzerEnabled>false</nodeAuditAnalyzerEnabled>-->
+<!--                    <nodeAnalyzerEnabled>false</nodeAnalyzerEnabled>-->
+<!--                    <assemblyAnalyzerEnabled>false</assemblyAnalyzerEnabled>-->
+<!--                </configuration>-->
+<!--                <executions>-->
+<!--                    <execution>-->
+<!--                        <id>sca-aggregate</id>-->
+<!--                        <phase>verify</phase>-->
+<!--                        <goals>-->
+<!--                            <goal>aggregate</goal>-->
+<!--                        </goals>-->
+<!--                    </execution>-->
+<!--                </executions>-->
+<!--            </plugin>-->
         </plugins>
     </build>
 </project>

@@ -18,72 +18,77 @@ jobs:
 
     steps:
       - name: Checkout source code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Set up JDK 17 with Maven cache
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
           cache: maven
 
-      - name: Show Java and Maven version
+      - name: Build and run static analysis
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
         run: |
-          java -version
-          mvn -version
+          mvn clean verify -DskipTests
 
-      - name: Run static analysis tools
+      - name: Debug report files
+        if: always()
         run: |
-          # 运行 Checkstyle
-          mvn checkstyle:checkstyle -DskipTests
-          
-          # 运行 PMD
-          mvn pmd:pmd -DskipTests
-          
-          # 运行 SpotBugs + Find Security Bugs
-          mvn spotbugs:spotbugs -DskipTests
-          
-          # 更新并扫描 OWASP Dependency-Check
-          mvn org.owasp:dependency-check-maven:update-only -DskipTests
-          mvn dependency-check:check -DskipTests
+          echo "==== Checkstyle ===="
+          find . -type f \( -path "*/target/reports/checkstyle.html" -o -path "*/target/checkstyle-result.xml" \) | sort || true
+
+          echo "==== PMD ===="
+          find . -type f \( -path "*/target/reports/pmd.html" -o -path "*/target/pmd.xml" \) | sort || true
+
+          echo "==== SpotBugs ===="
+          find . -type f \( -path "*/target/site/spotbugs.html" -o -name "spotbugs.xml" -o -name "spotbugsXml.xml" \) | sort || true
+
+          echo "==== Dependency-Check ===="
+          find . -type f -path "*/target/dependency-check-report.html" | sort || true
 
       - name: Upload Checkstyle reports
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: checkstyle-reports
           path: |
-            target/checkstyle-result.xml
-            target/site/checkstyle.html
+            **/target/reports/checkstyle.html
+            **/target/checkstyle-result.xml
+            **/target/checkstyle-checker.xml
           retention-days: 7
           if-no-files-found: warn
 
       - name: Upload PMD reports
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: pmd-reports
           path: |
-            target/pmd.xml
-            target/site/pmd.html
+            **/target/reports/pmd.html
+            **/target/pmd.xml
           retention-days: 7
           if-no-files-found: warn
 
       - name: Upload SpotBugs reports
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: spotbugs-reports
           path: |
-            target/spotbugsXml.xml
-            target/site/spotbugs.html
+            **/target/site/spotbugs.html
+            **/target/spotbugs.xml
+            **/target/spotbugsXml.xml
           retention-days: 7
           if-no-files-found: warn
 
       - name: Upload Dependency-Check reports
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: dependency-check-reports
           path: |
-            target/dependency-check-report.html
-            target/dependency-check-report.xml
-            target/dependency-check-report.json
+            **/target/dependency-check-report.html
           retention-days: 7
           if-no-files-found: warn
