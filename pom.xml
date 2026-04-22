@@ -235,29 +235,29 @@
             </plugin>
 
             <!-- Checkstyle -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-checkstyle-plugin</artifactId>
-                <version>${checkstyle.version}</version>
-                <configuration>
-                    <configLocation>${checkstyle.config}</configLocation>
-                    <propertyExpansion>checkstyle.suppressions.file=${checkstyle.suppressions}</propertyExpansion>
-                    <consoleOutput>true</consoleOutput>
-                    <failsOnError>false</failsOnError>
-                    <failOnViolation>false</failOnViolation>
-                    <includeTestSourceDirectory>false</includeTestSourceDirectory>
-                    <outputFileFormat>xml</outputFileFormat>
-                </configuration>
-                <executions>
-                    <execution>
-                        <id>checkstyle-verify</id>
-                        <phase>verify</phase>
-                        <goals>
-                            <goal>checkstyle</goal>
-                        </goals>
-                    </execution>
-                </executions>
-            </plugin>
+<!--            <plugin>-->
+<!--                <groupId>org.apache.maven.plugins</groupId>-->
+<!--                <artifactId>maven-checkstyle-plugin</artifactId>-->
+<!--                <version>${checkstyle.version}</version>-->
+<!--                <configuration>-->
+<!--                    <configLocation>${checkstyle.config}</configLocation>-->
+<!--                    <propertyExpansion>checkstyle.suppressions.file=${checkstyle.suppressions}</propertyExpansion>-->
+<!--                    <consoleOutput>true</consoleOutput>-->
+<!--                    <failsOnError>false</failsOnError>-->
+<!--                    <failOnViolation>false</failOnViolation>-->
+<!--                    <includeTestSourceDirectory>false</includeTestSourceDirectory>-->
+<!--                    <outputFileFormat>xml</outputFileFormat>-->
+<!--                </configuration>-->
+<!--                <executions>-->
+<!--                    <execution>-->
+<!--                        <id>checkstyle-verify</id>-->
+<!--                        <phase>verify</phase>-->
+<!--                        <goals>-->
+<!--                            <goal>checkstyle</goal>-->
+<!--                        </goals>-->
+<!--                    </execution>-->
+<!--                </executions>-->
+<!--            </plugin>-->
 
             <!-- PMD -->
             <plugin>
