@@ -27,6 +27,13 @@ jobs:
           java-version: '17'
           cache: maven
 
+      - name: Set NVD API Key
+        env:
+          NVD_API_KEY: "0574a531-3097-4bd4-8777-e72d99aa6bed"  # 直接在这里设置环境变量
+        run: |
+          echo "NVD_API_KEY is set"
+          # 这里可以使用 $NVD_API_KEY 作为环境变量
+
       - name: Run Maven build and static analysis
         run: |
           mvn clean verify -DskipTests
@@ -35,6 +42,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: analysis-reports
-          path: target/*-report.xml  # 确保你的报告路径正确
+          path: target/*-report.xml
           retention-days: 7
           if-no-files-found: warn
