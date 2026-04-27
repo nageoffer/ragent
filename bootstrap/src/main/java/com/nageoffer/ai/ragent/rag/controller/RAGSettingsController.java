@@ -30,6 +30,7 @@ import com.nageoffer.ai.ragent.rag.controller.vo.SystemSettingsVO.DefaultSetting
 import com.nageoffer.ai.ragent.rag.controller.vo.SystemSettingsVO.MemorySettings;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.util.StringUtils;
 import org.springframework.util.unit.DataSize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -111,7 +112,7 @@ public class RAGSettingsController {
         if (props.getProviders() != null) {
             props.getProviders().forEach((k, v) -> providers.put(k, AISettings.ProviderConfig.builder()
                     .url(v.getUrl())
-                    .apiKey(v.getApiKey())
+                    .apiKey(maskApiKey(v.getApiKey()))
                     .endpoints(v.getEndpoints())
                     .build()));
         }
@@ -151,5 +152,16 @@ public class RAGSettingsController {
                                 .build())
                         .collect(Collectors.toList()))
                 .build();
+    }
+
+    private String maskApiKey(String apiKey) {
+        if (!StringUtils.hasText(apiKey)) {
+            return null;
+        }
+        String trimmed = apiKey.trim();
+        if (trimmed.length() <= 10) {
+            return "******";
+        }
+        return trimmed.substring(0, 6) + "***" + trimmed.substring(trimmed.length() - 4);
     }
 }

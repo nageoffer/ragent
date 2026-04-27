@@ -22,6 +22,12 @@ function InfoItem({ label, value }: { label: string; value: ReactNode }) {
   );
 }
 
+function maskApiKey(apiKey?: string | null): string {
+  if (!apiKey) return "-";
+  if (apiKey.length <= 10) return "******";
+  return `${apiKey.slice(0, 6)}***${apiKey.slice(-4)}`;
+}
+
 export function SystemSettingsPage() {
   const [settings, setSettings] = useState<SystemSettings | null>(null);
   const [loading, setLoading] = useState(true);
@@ -141,7 +147,7 @@ export function SystemSettingsPage() {
                 <TableRow key={name}>
                   <TableCell className="font-medium">{name}</TableCell>
                   <TableCell>{provider.url}</TableCell>
-                  <TableCell>{provider.apiKey ? provider.apiKey : "-"}</TableCell>
+                  <TableCell>{maskApiKey(provider.apiKey)}</TableCell>
                   <TableCell>
                     <div className="space-y-1 text-xs text-muted-foreground">
                       {Object.entries(provider.endpoints).map(([key, value]) => (
