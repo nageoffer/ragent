@@ -27,6 +27,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 
@@ -84,15 +86,28 @@ public class JdbcSemanticMemoryStore implements SemanticMemoryStore {
 
     @Override
     public List<MemoryItem> search(String userId, String query, int topK) {
-        return semanticMemoryMapper.selectList(
-                        Wrappers.lambdaQuery(SemanticMemoryDO.class)
-                                .eq(SemanticMemoryDO::getUserId, userId)
-                                .eq(SemanticMemoryDO::getDeleted, 0)
-                                .orderByDesc(SemanticMemoryDO::getConfidenceLevel)
-                                .last("limit " + Math.max(topK * 3, 10)))
-                .stream()
-                .filter(item -> match(item, query))
+        List<SemanticMemoryDO> candidates = semanticMemoryMapper.selectList(
+                Wrappers.lambdaQuery(SemanticMemoryDO.class)
+                        .eq(SemanticMemoryDO::getUserId, userId)
+                        .eq(SemanticMemoryDO::getDeleted, 0)
+                        .orderByDesc(SemanticMemoryDO::getConfidenceLevel)
+                        .last("limit " + Math.max(topK * 5, 20)));
+        if (query == null || query.isBlank()) {
+            return candidates.stream()
+                    .limit(topK)
+                    .map(this::toMemoryItem)
+                    .toList();
+        }
+        String category = SemanticMemorySupport.querySemanticCategory(query);
+        List<String> tokens = tokenize(query);
+        return candidates.stream()
+                .map(item -> new ScoredSemanticItem(item, score(item, query, tokens, category)))
+                .filter(item -> item.score > 0D)
+                .sorted(Comparator
+                        .comparingDouble(ScoredSemanticItem::score).reversed()
+                        .thenComparingDouble(ScoredSemanticItem::confidence).reversed())
                 .limit(topK)
+                .map(ScoredSemanticItem::item)
                 .map(this::toMemoryItem)
                 .toList();
     }
@@ -124,17 +139,76 @@ public class JdbcSemanticMemoryStore implements SemanticMemoryStore {
                 .build();
     }
 
-    private boolean match(SemanticMemoryDO item, String query) {
-        if (query == null || query.isBlank()) {
-            return true;
-        }
-        String lower = query.toLowerCase(Locale.ROOT);
-        String rendered = SemanticMemorySupport.renderContent(
+    private double score(SemanticMemoryDO item, String query, List<String> tokens, String category) {
+        String lowerQuery = query.toLowerCase(Locale.ROOT);
+        String semanticKey = lower(item.getSemanticKey());
+        String valueJson = lower(item.getValueJson());
+        String rendered = lower(SemanticMemorySupport.renderContent(
                 item.getSemanticKey(), item.getSemanticType(), item.getValueJson()
-        ).toLowerCase(Locale.ROOT);
-        return (item.getSemanticKey() != null && item.getSemanticKey().toLowerCase(Locale.ROOT).contains(lower))
-                || (item.getValueJson() != null && item.getValueJson().toLowerCase(Locale.ROOT).contains(lower))
-                || rendered.contains(lower);
+        ));
+        double score = 0D;
+        if (semanticKey.contains(lowerQuery)) {
+            score += 4D;
+        }
+        if (rendered.contains(lowerQuery)) {
+            score += 3D;
+        }
+        if (valueJson.contains(lowerQuery)) {
+            score += 2D;
+        }
+        for (String token : tokens) {
+            if (token.length() < 2) {
+                continue;
+            }
+            if (semanticKey.contains(token)) {
+                score += 1.8D;
+            }
+            if (rendered.contains(token)) {
+                score += 1.2D;
+            }
+            if (valueJson.contains(token)) {
+                score += 0.8D;
+            }
+        }
+        score += categoryBoost(item, category, lowerQuery, tokens);
+        return score + defaultDouble(item.getConfidenceLevel()) * 0.1D;
+    }
+
+    private double categoryBoost(SemanticMemoryDO item, String category, String lowerQuery, List<String> tokens) {
+        if (category == null || category.isBlank()) {
+            return 0D;
+        }
+        if ("preference".equals(category) && "PREFERENCE".equalsIgnoreCase(item.getSemanticType())) {
+            String subject = lower(SemanticMemorySupport.extractPreferenceSubject(item.getValueJson()));
+            double score = 4D;
+            for (String token : tokens) {
+                if (subject.contains(token)) {
+                    score += 1.5D;
+                }
+            }
+            return score;
+        }
+        if (!"PROFILE".equalsIgnoreCase(item.getSemanticType())) {
+            return 0D;
+        }
+        String attribute = lower(SemanticMemorySupport.extractProfileAttribute(item.getValueJson()));
+        String value = lower(SemanticMemorySupport.extractProfileValue(item.getValueJson()));
+        double score = 0D;
+        if (attribute.equals(category)) {
+            score += 4.5D;
+        }
+        if (lowerQuery.contains(attribute) || lowerQuery.contains(value)) {
+            score += 2D;
+        }
+        for (String token : tokens) {
+            if (value.contains(token)) {
+                score += 1.6D;
+            }
+            if (attribute.contains(token)) {
+                score += 1D;
+            }
+        }
+        return score;
     }
 
     private boolean shouldReplace(SemanticMemoryDO existing, String incomingValueJson, MemoryItem incoming) {
@@ -169,11 +243,35 @@ public class JdbcSemanticMemoryStore implements SemanticMemoryStore {
         );
     }
 
+    private List<String> tokenize(String query) {
+        List<String> tokens = new ArrayList<>();
+        if (query == null || query.isBlank()) {
+            return tokens;
+        }
+        for (String token : query.toLowerCase(Locale.ROOT).split("[\\s,，。！？；:：]+")) {
+            if (token.length() >= 2 && !tokens.contains(token)) {
+                tokens.add(token);
+            }
+        }
+        return tokens;
+    }
+
+    private String lower(String value) {
+        return value == null ? "" : value.toLowerCase(Locale.ROOT);
+    }
+
     private double defaultDouble(Double value) {
         return value == null ? 0D : value;
     }
 
     private String defaultJsonArray(String value) {
         return value == null || value.isBlank() ? "[]" : value;
+    }
+
+    private record ScoredSemanticItem(SemanticMemoryDO item, double score) {
+
+        double confidence() {
+            return item.getConfidenceLevel() == null ? 0D : item.getConfidenceLevel();
+        }
     }
 }

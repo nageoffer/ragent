@@ -20,6 +20,7 @@ package com.nageoffer.ai.ragent.rag.core.memory;
 import com.nageoffer.ai.ragent.framework.convention.ChatMessage;
 import com.nageoffer.ai.ragent.rag.core.memory.model.MemoryContext;
 import com.nageoffer.ai.ragent.rag.core.memory.model.OptimizedQuery;
+import com.nageoffer.ai.ragent.rag.core.memory.support.SemanticMemorySupport;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -41,18 +42,23 @@ public class DefaultQueryOptimizer implements QueryOptimizer {
         if (containsCoreference(query) && context != null && context.getWorkingMemory() != null) {
             String referent = lastUserMessage(context.getWorkingMemory());
             if (referent != null && !referent.isBlank()) {
-                query = query + " 最近话题: " + referent;
+                query = query + " 最近话题 " + referent;
                 terms.add(referent);
             }
         }
         if (context != null && context.getWorkingMemory() != null) {
             String preferenceHint = recentPreferenceHint(context.getWorkingMemory());
             if (preferenceHint != null && !preferenceHint.isBlank()) {
-                query = query + " 用户偏好: " + preferenceHint;
+                query = query + " 用户偏好 " + preferenceHint;
                 terms.add(preferenceHint);
             }
+            String profileHint = recentProfileHint(context.getWorkingMemory());
+            if (profileHint != null && !profileHint.isBlank()) {
+                query = query + " 用户画像 " + profileHint;
+                terms.add(profileHint);
+            }
         }
-        for (String token : query.split("[\\s,，。！？;；]+")) {
+        for (String token : query.split("[\\s,，。！？；:：]+")) {
             if (token.length() >= 2 && !terms.contains(token)) {
                 terms.add(token);
             }
@@ -90,7 +96,21 @@ public class DefaultQueryOptimizer implements QueryOptimizer {
                 continue;
             }
             String content = message.getContent();
-            if (content.contains("喜欢") || content.contains("偏好") || content.contains("不喜欢")) {
+            if (SemanticMemorySupport.looksLikePreference(content)) {
+                return content;
+            }
+        }
+        return null;
+    }
+
+    private String recentProfileHint(List<ChatMessage> workingMemory) {
+        for (int i = workingMemory.size() - 1; i >= 0; i--) {
+            ChatMessage message = workingMemory.get(i);
+            if (message.getRole() != ChatMessage.Role.USER || message.getContent() == null) {
+                continue;
+            }
+            String content = message.getContent();
+            if (SemanticMemorySupport.looksLikeProfile(content)) {
                 return content;
             }
         }

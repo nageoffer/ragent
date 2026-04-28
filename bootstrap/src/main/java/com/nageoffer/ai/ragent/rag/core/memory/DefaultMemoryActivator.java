@@ -27,11 +27,14 @@ import com.nageoffer.ai.ragent.rag.core.memory.store.LongTermMemoryStore;
 import com.nageoffer.ai.ragent.rag.core.memory.store.SemanticMemoryStore;
 import com.nageoffer.ai.ragent.rag.core.memory.store.ShortTermMemoryStore;
 import com.nageoffer.ai.ragent.rag.core.memory.store.WorkingMemoryStore;
+import com.nageoffer.ai.ragent.rag.core.memory.support.SemanticMemorySupport;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 默认记忆激活器。
@@ -80,9 +83,9 @@ public class DefaultMemoryActivator implements MemoryActivator {
         if (summary != null) {
             promptMessages.add(summaryService.decorateIfNeeded(summary));
         }
-        appendMemoryPrompt(promptMessages, "短期记忆", shortTermMemories, budget(memoryProperties.getShortTermTokenRatio()));
-        appendMemoryPrompt(promptMessages, "长期记忆", longTermMemories, budget(memoryProperties.getLongTermTokenRatio()));
-        appendMemoryPrompt(promptMessages, "语义记忆", semanticMemories, budget(memoryProperties.getSemanticTokenRatio()));
+        appendTypedMemoryPrompt(promptMessages, "短期记忆", shortTermMemories, budget(memoryProperties.getShortTermTokenRatio()));
+        appendTypedMemoryPrompt(promptMessages, "长期记忆", longTermMemories, budget(memoryProperties.getLongTermTokenRatio()));
+        appendSemanticMemoryPrompt(promptMessages, semanticMemories, budget(memoryProperties.getSemanticTokenRatio()));
         promptMessages.addAll(trimMessages(workingMemory, budget(memoryProperties.getWorkingMemoryTokenRatio())));
 
         return MemoryContext.builder()
@@ -97,22 +100,59 @@ public class DefaultMemoryActivator implements MemoryActivator {
                 .build();
     }
 
-    private void appendMemoryPrompt(List<ChatMessage> messages, String title, List<MemoryItem> items, int tokenBudget) {
-        if (items == null || items.isEmpty()) {
+    private void appendTypedMemoryPrompt(List<ChatMessage> messages, String title, List<MemoryItem> items, int tokenBudget) {
+        if (items == null || items.isEmpty() || tokenBudget <= 0) {
             return;
         }
-        if (tokenBudget <= 0) {
-            return;
+        Map<String, List<MemoryItem>> grouped = new LinkedHashMap<>();
+        for (MemoryItem item : items) {
+            grouped.computeIfAbsent(memoryGroupTitle(item), key -> new ArrayList<>()).add(item);
         }
         StringBuilder builder = new StringBuilder(title).append(":\n");
-        for (MemoryItem item : items) {
-            String line = "- [" + item.getType() + "] " + item.getContent() + '\n';
-            if (estimateTokens(builder.length() + line.length()) > tokenBudget) {
+        for (Map.Entry<String, List<MemoryItem>> entry : grouped.entrySet()) {
+            String header = entry.getKey() + ":\n";
+            if (estimateTokens(builder.length() + header.length()) > tokenBudget) {
                 break;
             }
-            builder.append(line);
+            builder.append(header);
+            for (MemoryItem item : entry.getValue()) {
+                String line = "- " + item.getContent() + '\n';
+                if (estimateTokens(builder.length() + line.length()) > tokenBudget) {
+                    break;
+                }
+                builder.append(line);
+            }
         }
         if (builder.length() <= title.length() + 2) {
+            return;
+        }
+        messages.add(ChatMessage.system(builder.toString().trim()));
+    }
+
+    private void appendSemanticMemoryPrompt(List<ChatMessage> messages, List<MemoryItem> items, int tokenBudget) {
+        if (items == null || items.isEmpty() || tokenBudget <= 0) {
+            return;
+        }
+        Map<String, List<MemoryItem>> grouped = new LinkedHashMap<>();
+        for (MemoryItem item : items) {
+            grouped.computeIfAbsent(semanticGroupTitle(item), key -> new ArrayList<>()).add(item);
+        }
+        StringBuilder builder = new StringBuilder("语义记忆:\n");
+        for (Map.Entry<String, List<MemoryItem>> entry : grouped.entrySet()) {
+            String header = entry.getKey() + ":\n";
+            if (estimateTokens(builder.length() + header.length()) > tokenBudget) {
+                break;
+            }
+            builder.append(header);
+            for (MemoryItem item : entry.getValue()) {
+                String line = "- " + item.getContent() + '\n';
+                if (estimateTokens(builder.length() + line.length()) > tokenBudget) {
+                    break;
+                }
+                builder.append(line);
+            }
+        }
+        if (builder.length() <= "语义记忆:\n".length()) {
             return;
         }
         messages.add(ChatMessage.system(builder.toString().trim()));
@@ -152,5 +192,42 @@ public class DefaultMemoryActivator implements MemoryActivator {
                 .map(MemoryItem::getId)
                 .filter(id -> id != null && !id.isBlank())
                 .toList();
+    }
+
+    private String semanticGroupTitle(MemoryItem item) {
+        if (item == null) {
+            return "其他语义";
+        }
+        if ("PREFERENCE".equalsIgnoreCase(item.getType())) {
+            return "偏好";
+        }
+        if ("PROFILE".equalsIgnoreCase(item.getType())) {
+            String attribute = SemanticMemorySupport.extractProfileAttribute(item.getMetadataJson());
+            return switch (attribute) {
+                case "identity", "role" -> "身份";
+                case "organization" -> "组织";
+                case "tool" -> "工具";
+                case "stack" -> "技术栈";
+                case "location" -> "地点";
+                case "language" -> "语言";
+                default -> "画像";
+            };
+        }
+        return "其他语义";
+    }
+
+    private String memoryGroupTitle(MemoryItem item) {
+        if (item == null || item.getType() == null) {
+            return "其他记忆";
+        }
+        return switch (item.getType().toUpperCase()) {
+            case "SUMMARY" -> "摘要";
+            case "FACT" -> "事实";
+            case "ISSUE" -> "问题";
+            case "TODO" -> "待办";
+            case "PREFERENCE" -> "偏好";
+            case "PROFILE" -> "画像";
+            default -> "其他记忆";
+        };
     }
 }

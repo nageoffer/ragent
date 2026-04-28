@@ -105,8 +105,7 @@ public class DefaultMemoryEngine implements MemoryEngine {
         if (content == null || content.isBlank()) {
             return;
         }
-        if (content.contains("喜欢") || content.contains("偏好")
-                || content.contains("不喜欢") || content.contains("讨厌")) {
+        if (SemanticMemorySupport.looksLikePreference(content)) {
             MemoryItem item = buildShortTermItem(request, "PREFERENCE", content, "user", 0.8D, 0.95D);
             shortTermMemoryStore.save(item);
             semanticMemoryStore.upsert(item, SemanticMemorySupport.resolveSemanticKey(
@@ -114,8 +113,7 @@ public class DefaultMemoryEngine implements MemoryEngine {
             ));
             return;
         }
-        if (content.contains("我是") || content.contains("我在") || content.contains("我用")
-                || content.contains("常用") || content.contains("主要用")) {
+        if (SemanticMemorySupport.looksLikeProfile(content)) {
             MemoryItem item = buildShortTermItem(request, "PROFILE", content, "user", 0.85D, 0.95D);
             shortTermMemoryStore.save(item);
             semanticMemoryStore.upsert(item, SemanticMemorySupport.resolveSemanticKey(
