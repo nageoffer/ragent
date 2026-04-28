@@ -25,6 +25,7 @@ import com.nageoffer.ai.ragent.rag.dao.mapper.SemanticMemoryMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDateTime;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
@@ -63,7 +64,7 @@ public class JdbcSemanticMemoryStore implements SemanticMemoryStore {
                         .valueJson(valueJson(memoryItem))
                         .confidenceLevel(memoryItem.getConfidenceLevel())
                         .sourceMemoryIds(defaultJsonArray(memoryItem.getSourceIdsJson()))
-                        .updateTime(new Date())
+                        .updateTime(LocalDateTime.now())
                         .build(),
                 Wrappers.lambdaUpdate(SemanticMemoryDO.class).eq(SemanticMemoryDO::getId, existing.getId())
         );

@@ -20,6 +20,7 @@ package com.nageoffer.ai.ragent.rag.core.memory.model;
 import lombok.Builder;
 import lombok.Value;
 
+import java.time.LocalDateTime;
 import java.util.Date;
 
 @Value
@@ -48,5 +49,5 @@ public class MemoryItem {
 
     Double relevanceScore;
 
-    Date createTime;
+    LocalDateTime createTime;
 }

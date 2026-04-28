@@ -23,11 +23,16 @@ import com.nageoffer.ai.ragent.framework.mq.outbox.OutboxEventPublisher;
 import com.nageoffer.ai.ragent.framework.mq.producer.MessageQueueProducer;
 import com.nageoffer.ai.ragent.framework.mq.producer.PulsarProducerAdapter;
 import org.apache.pulsar.client.admin.PulsarAdmin;
+import org.apache.pulsar.client.api.Authentication;
+import org.apache.pulsar.client.api.AuthenticationFactory;
 import org.apache.pulsar.client.api.PulsarClient;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.util.StringUtils;
+
+import java.util.concurrent.TimeUnit;
 
 /**
  * Pulsar 自动装配。
@@ -39,19 +44,39 @@ public class PulsarAutoConfiguration {
 
     @Bean(destroyMethod = "close")
     public PulsarClient pulsarClient(PulsarProperties pulsarProperties) throws Exception {
-        return PulsarClient.builder()
+        var clientBuilder = PulsarClient.builder()
                 .serviceUrl(pulsarProperties.getServiceUrl())
                 .ioThreads(pulsarProperties.getIoThreads())
                 .listenerThreads(pulsarProperties.getListenerThreads())
-                .operationTimeout(pulsarProperties.getOperationTimeoutMs(), java.util.concurrent.TimeUnit.MILLISECONDS)
-                .build();
+                .operationTimeout(pulsarProperties.getOperationTimeoutMs(), TimeUnit.MILLISECONDS);
+
+        // 配置认证信息（如果提供了认证参数）
+        if (StringUtils.hasText(pulsarProperties.getAuthPluginClassName()) 
+                && StringUtils.hasText(pulsarProperties.getAuthParams())) {
+            Authentication authentication = AuthenticationFactory.create(
+                    pulsarProperties.getAuthPluginClassName(), 
+                    pulsarProperties.getAuthParams());
+            clientBuilder.authentication(authentication);
+        }
+
+        return clientBuilder.build();
     }
 
     @Bean(destroyMethod = "close")
     public PulsarAdmin pulsarAdmin(PulsarProperties pulsarProperties) throws Exception {
-        return PulsarAdmin.builder()
-                .serviceHttpUrl(pulsarProperties.getAdminUrl())
-                .build();
+        var adminBuilder = PulsarAdmin.builder()
+                .serviceHttpUrl(pulsarProperties.getAdminUrl());
+
+        // 配置认证信息（如果提供了认证参数）
+        if (StringUtils.hasText(pulsarProperties.getAuthPluginClassName()) 
+                && StringUtils.hasText(pulsarProperties.getAuthParams())) {
+            Authentication authentication = AuthenticationFactory.create(
+                    pulsarProperties.getAuthPluginClassName(), 
+                    pulsarProperties.getAuthParams());
+            adminBuilder.authentication(authentication);
+        }
+
+        return adminBuilder.build();
     }
 
     @Bean

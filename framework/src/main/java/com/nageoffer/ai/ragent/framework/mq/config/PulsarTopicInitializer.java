@@ -22,6 +22,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.pulsar.client.admin.PulsarAdmin;
 import org.apache.pulsar.client.admin.PulsarAdminException;
+import org.apache.pulsar.common.policies.data.TenantInfo;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.stereotype.Component;
 
@@ -57,7 +58,7 @@ public class PulsarTopicInitializer {
             return;
         }
         pulsarAdmin.tenants().createTenant(tenant,
-                org.apache.pulsar.common.policies.data.TenantInfo.builder()
+                TenantInfo.builder()
                         .allowedClusters(Set.of("standalone"))
                         .adminRoles(Set.of())
                         .build());

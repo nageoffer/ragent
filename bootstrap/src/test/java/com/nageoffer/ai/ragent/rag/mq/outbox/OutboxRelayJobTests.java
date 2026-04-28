@@ -30,7 +30,7 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
-import java.util.Date;
+import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -78,7 +78,7 @@ class OutboxRelayJobTests {
                 .payloadJson(new ObjectMapper().writeValueAsString(envelope))
                 .status(OutboxEventStatus.NEW)
                 .retryCount(0)
-                .nextRetryTime(new Date(System.currentTimeMillis() - 1000))
+                .nextRetryTime(LocalDateTime.now().plusSeconds(-1))
                 .deleted(0)
                 .build();
 
@@ -135,7 +135,7 @@ class OutboxRelayJobTests {
                 .payloadJson(new ObjectMapper().writeValueAsString(envelope))
                 .status(OutboxEventStatus.NEW)
                 .retryCount(1)
-                .nextRetryTime(new Date(System.currentTimeMillis() - 1000))
+                .nextRetryTime(LocalDateTime.now().plusSeconds(-1))
                 .deleted(0)
                 .build();
 

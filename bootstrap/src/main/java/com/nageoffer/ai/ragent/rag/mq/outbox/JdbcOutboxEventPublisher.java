@@ -26,7 +26,7 @@ import com.nageoffer.ai.ragent.rag.dao.mapper.OutboxEventMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
-import java.util.Date;
+import java.time.LocalDateTime;
 
 /**
  * 基于 JDBC 的 Outbox 发布器。
@@ -47,7 +47,7 @@ public class JdbcOutboxEventPublisher implements OutboxEventPublisher {
                 .payloadJson(toJson(envelope))
                 .status(OutboxEventStatus.NEW)
                 .retryCount(0)
-                .nextRetryTime(new Date())
+                .nextRetryTime(LocalDateTime.now())
                 .build();
         outboxEventMapper.insert(eventDO);
     }

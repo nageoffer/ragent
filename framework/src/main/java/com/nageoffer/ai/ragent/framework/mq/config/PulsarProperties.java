@@ -37,6 +37,10 @@ public class PulsarProperties {
 
     private String namespace = "ai";
 
+    private String authPluginClassName;
+
+    private String authParams;
+
     private int ioThreads = 4;
 
     private int listenerThreads = 4;

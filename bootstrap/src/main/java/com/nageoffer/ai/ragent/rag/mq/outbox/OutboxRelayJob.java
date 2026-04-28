@@ -32,6 +32,7 @@ import org.apache.pulsar.client.api.Schema;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDateTime;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
@@ -58,7 +59,7 @@ public class OutboxRelayJob {
                 Wrappers.lambdaQuery(OutboxEventDO.class)
                         .eq(OutboxEventDO::getDeleted, 0)
                         .in(OutboxEventDO::getStatus, OutboxEventStatus.NEW, OutboxEventStatus.FAILED)
-                        .le(OutboxEventDO::getNextRetryTime, new Date())
+                        .le(OutboxEventDO::getNextRetryTime, LocalDateTime.now())
                         .orderByAsc(OutboxEventDO::getCreateTime)
                         .last("limit 50"));
         for (OutboxEventDO event : events) {
@@ -86,7 +87,8 @@ public class OutboxRelayJob {
                             .eq(OutboxEventDO::getId, event.getId()));
         } catch (Exception ex) {
             int nextRetryCount = (event.getRetryCount() == null ? 0 : event.getRetryCount()) + 1;
-            Date nextRetryTime = new Date(System.currentTimeMillis() + Math.min(300_000L, nextRetryCount * 30_000L));
+            long min = Math.min(300L, nextRetryCount * 30L);
+            LocalDateTime nextRetryTime = LocalDateTime.now().plusSeconds(min);
             outboxEventMapper.update(OutboxEventDO.builder()
                             .status(OutboxEventStatus.FAILED)
                             .retryCount(nextRetryCount)
