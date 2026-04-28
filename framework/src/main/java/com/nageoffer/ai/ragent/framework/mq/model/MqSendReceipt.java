@@ -15,33 +15,23 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.framework.mq.producer;
+package com.nageoffer.ai.ragent.framework.mq.model;
 
-import com.nageoffer.ai.ragent.framework.mq.model.MqSendReceipt;
+import lombok.Builder;
+import lombok.Value;
 
 /**
- * 消息队列生产者接口。
+ * MQ 发送回执。
  */
-public interface MessageQueueProducer {
+@Value
+@Builder
+public class MqSendReceipt {
 
-    /**
-     * 直接发送消息到 MQ。
-     *
-     * @param topic   目标 topic
-     * @param keys    业务 key
-     * @param bizDesc 业务描述
-     * @param body    业务载荷
-     * @return 发送回执
-     */
-    MqSendReceipt send(String topic, String keys, String bizDesc, Object body);
+    String messageId;
 
-    /**
-     * 通过 Outbox 可靠发布消息。
-     *
-     * @param topic   目标 topic
-     * @param keys    业务 key
-     * @param bizDesc 业务描述
-     * @param body    业务载荷
-     */
-    void publishReliable(String topic, String keys, String bizDesc, Object body);
+    String topic;
+
+    String key;
+
+    Long publishTime;
 }

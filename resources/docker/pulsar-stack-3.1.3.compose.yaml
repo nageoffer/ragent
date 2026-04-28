@@ -1,0 +1,64 @@
+name: pulsar-stack
+
+services:
+  zookeeper:
+    image: apachepulsar/pulsar:3.1.3
+    container_name: pulsar-zookeeper
+    command: bin/pulsar zookeeper
+    environment:
+      PULSAR_MEM: "-Xms256m -Xmx256m -XX:MaxDirectMemorySize=256m"
+    ports:
+      - "2181:2181"
+
+  bookie:
+    image: apachepulsar/pulsar:3.1.3
+    container_name: pulsar-bookie
+    depends_on:
+      - zookeeper
+    command: >
+      bash -c "bin/apply-config-from-env.py conf/bookkeeper.conf &&
+      bin/pulsar bookie"
+    environment:
+      PULSAR_MEM: "-Xms512m -Xmx512m -XX:MaxDirectMemorySize=512m"
+      clusterName: standalone
+      zkServers: zookeeper:2181
+      metadataServiceUri: metadata-store:zk:zookeeper:2181
+      advertisedAddress: bookie
+    ports:
+      - "3181:3181"
+
+  broker:
+    image: apachepulsar/pulsar:3.1.3
+    container_name: pulsar-broker
+    depends_on:
+      - zookeeper
+      - bookie
+    command: >
+      bash -c "bin/apply-config-from-env.py conf/broker.conf &&
+      bin/pulsar broker"
+    environment:
+      PULSAR_MEM: "-Xms512m -Xmx512m -XX:MaxDirectMemorySize=512m"
+      clusterName: standalone
+      zookeeperServers: zookeeper:2181
+      configurationMetadataStoreUrl: zk:zookeeper:2181
+      managedLedgerDefaultEnsembleSize: 1
+      managedLedgerDefaultWriteQuorum: 1
+      managedLedgerDefaultAckQuorum: 1
+      advertisedAddress: broker
+    ports:
+      - "6650:6650"
+      - "8080:8080"
+
+  pulsar-init:
+    image: apachepulsar/pulsar:3.1.3
+    container_name: pulsar-init
+    depends_on:
+      - broker
+    entrypoint: >
+      bash -c "
+      bin/pulsar-admin clusters create standalone --url http://broker:8080 --broker-url pulsar://broker:6650 || true &&
+      bin/pulsar-admin tenants create ragent || true &&
+      bin/pulsar-admin namespaces create ragent/ai || true &&
+      bin/pulsar-admin topics create-partitioned-topic persistent://ragent/ai/knowledge-document-chunk -p 4 || true &&
+      bin/pulsar-admin topics create-partitioned-topic persistent://ragent/ai/message-feedback -p 2 || true
+      "

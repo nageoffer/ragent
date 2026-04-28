@@ -26,9 +26,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.validation.annotation.Validated;
 
 /**
- * 记忆配置属性类
- * 用于配置 RAG 系统中的对话记忆管理相关参数
- * 包括历史轮数保留、缓存时间、摘要压缩等功能的配置
+ * 记忆配置属性。
  */
 @Data
 @Configuration
@@ -37,34 +35,85 @@ import org.springframework.validation.annotation.Validated;
 @ValidMemoryConfig
 public class MemoryProperties {
 
-    /**
-     * 保留原文的最近轮数（user+assistant 视为一轮）
-     */
     @Min(1)
     @Max(100)
     private Integer historyKeepTurns = 8;
 
-    /**
-     * 是否启用对话记忆压缩
-     */
+    @Min(1)
+    @Max(100)
+    private Integer workingKeepTurns = 8;
+
+    @Min(1)
+    @Max(1440)
+    private Integer workingCacheTtlMinutes = 30;
+
     private Boolean summaryEnabled = false;
 
-    /**
-     * 开始摘要的轮数阈值
-     */
+    @Min(1)
+    @Max(200)
     private Integer summaryStartTurns = 9;
 
-    /**
-     * 摘要最大字数
-     */
-    @Min(200)
+    @Min(50)
     @Max(1000)
     private Integer summaryMaxChars = 200;
 
-    /**
-     * 会话标题最大长度（用于提示词约束）
-     */
     @Min(10)
     @Max(100)
     private Integer titleMaxLength = 30;
+
+    @Min(1)
+    @Max(365)
+    private Integer shortTermRetentionDays = 30;
+
+    @Min(0)
+    @Max(1)
+    private Double shortTermDecayFactor = 0.03D;
+
+    private Boolean longTermEnabled = true;
+
+    private String longTermEmbeddingModel;
+
+    @Min(0)
+    @Max(1)
+    private Double longTermImportanceThreshold = 0.6D;
+
+    private Boolean semanticEnabled = true;
+
+    private Boolean qualityAssessmentEnabled = true;
+
+    @Min(100)
+    @Max(20000)
+    private Integer maxMemoryTokenBudget = 1800;
+
+    @Min(0)
+    @Max(1)
+    private Double workingMemoryTokenRatio = 0.4D;
+
+    @Min(0)
+    @Max(1)
+    private Double shortTermTokenRatio = 0.3D;
+
+    @Min(0)
+    @Max(1)
+    private Double longTermTokenRatio = 0.2D;
+
+    @Min(0)
+    @Max(1)
+    private Double semanticTokenRatio = 0.1D;
+
+    @Min(1)
+    @Max(100)
+    private Integer shortTermTopK = 5;
+
+    @Min(1)
+    @Max(50)
+    private Integer longTermTopK = 3;
+
+    @Min(1)
+    @Max(50)
+    private Integer semanticTopK = 2;
+
+    @Min(0)
+    @Max(1)
+    private Double cleanupDecayThreshold = 0.15D;
 }

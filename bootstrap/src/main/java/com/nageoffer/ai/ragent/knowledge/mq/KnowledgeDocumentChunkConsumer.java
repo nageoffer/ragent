@@ -17,38 +17,65 @@
 
 package com.nageoffer.ai.ragent.knowledge.mq;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nageoffer.ai.ragent.framework.context.LoginUser;
 import com.nageoffer.ai.ragent.framework.context.UserContext;
-import com.nageoffer.ai.ragent.framework.mq.MessageWrapper;
+import com.nageoffer.ai.ragent.framework.mq.config.PulsarProperties;
+import com.nageoffer.ai.ragent.framework.mq.consumer.PulsarMessageHandler;
+import com.nageoffer.ai.ragent.framework.mq.model.MessageEnvelope;
 import com.nageoffer.ai.ragent.knowledge.mq.event.KnowledgeDocumentChunkEvent;
 import com.nageoffer.ai.ragent.knowledge.service.KnowledgeDocumentService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
-import org.apache.rocketmq.spring.core.RocketMQListener;
+import org.apache.pulsar.client.api.Message;
+import org.apache.pulsar.client.api.Schema;
+import org.apache.pulsar.client.api.SubscriptionType;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 /**
- * 文档分块任务 MQ 消费者
- * 负责异步执行耗时的文本提取、分块、向量嵌入及写库操作
+ * 文档分块任务 Pulsar 消费者。
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
-@RocketMQMessageListener(
-        topic = "knowledge-document-chunk_topic${unique-name:}",
-        consumerGroup = "knowledge-document-chunk_cg${unique-name:}"
-)
-public class KnowledgeDocumentChunkConsumer implements RocketMQListener<MessageWrapper<KnowledgeDocumentChunkEvent>> {
+public class KnowledgeDocumentChunkConsumer implements PulsarMessageHandler<MessageEnvelope> {
 
     private final KnowledgeDocumentService documentService;
+    private final ObjectMapper objectMapper;
+    private final PulsarProperties pulsarProperties;
+
+    @Value("${unique-name:}")
+    private String uniqueName;
 
     @Override
-    public void onMessage(MessageWrapper<KnowledgeDocumentChunkEvent> message) {
-        KnowledgeDocumentChunkEvent event = message.getBody();
+    public String topic() {
+        return pulsarProperties.getTopics().getKnowledgeDocumentChunk();
+    }
 
-        log.info("[消费者] 开始消费文档分块任务，docId={}, keys={}", event.getDocId(), message.getKeys());
+    @Override
+    public String subscriptionName() {
+        return "knowledge-document-chunk-sub" + uniqueName;
+    }
 
+    @Override
+    public SubscriptionType subscriptionType() {
+        return SubscriptionType.Key_Shared;
+    }
+
+    @Override
+    public Schema<MessageEnvelope> schema() {
+        return Schema.JSON(MessageEnvelope.class);
+    }
+
+    @Override
+    public void onMessage(Message<MessageEnvelope> message) throws Exception {
+        MessageEnvelope envelope = message.getValue();
+        KnowledgeDocumentChunkEvent event = objectMapper.readValue(
+                envelope.getPayloadJson(),
+                KnowledgeDocumentChunkEvent.class
+        );
+        log.info("[Pulsar 消费者] 开始消费文档分块任务, docId={}, key={}", event.getDocId(), envelope.getKey());
         UserContext.set(LoginUser.builder().username(event.getOperator()).build());
         try {
             documentService.executeChunk(event.getDocId());

@@ -32,11 +32,31 @@ spring:
       port: 6379
       password: 123456
 
-rocketmq:
-  name-server: 127.0.0.1:9876
-  producer:
-    group: ragent-producer${unique-name:}_pg
-    send-message-timeout: 2000
+messaging:
+  pulsar:
+    enabled: true
+    service-url: pulsar://127.0.0.1:6650
+    admin-url: http://127.0.0.1:8080
+    tenant: ragent
+    namespace: ai
+    io-threads: 4
+    listener-threads: 4
+    operation-timeout-ms: 30000
+    producer:
+      send-timeout-ms: 30000
+      block-if-queue-full: true
+      batching-enabled: true
+      batching-max-messages: 200
+      batching-max-publish-delay-ms: 5
+      compression-type: LZ4
+    consumer:
+      ack-timeout-seconds: 60
+      negative-ack-delay-seconds: 30
+      receiver-queue-size: 500
+      max-redeliver-count: 8
+    topics:
+      knowledge-document-chunk: persistent://ragent/ai/knowledge-document-chunk
+      message-feedback: persistent://ragent/ai/message-feedback
 
 milvus:
   uri: http://localhost:19530
@@ -64,10 +84,27 @@ rag:
 
   memory:
     history-keep-turns: 4
+    working-keep-turns: 4
+    working-cache-ttl-minutes: 30
     summary-start-turns: 5
     summary-enabled: true
     summary-max-chars: 200
     title-max-length: 30
+    short-term-retention-days: 30
+    short-term-decay-factor: 0.03
+    long-term-enabled: true
+    long-term-importance-threshold: 0.6
+    semantic-enabled: true
+    quality-assessment-enabled: true
+    max-memory-token-budget: 1800
+    working-memory-token-ratio: 0.4
+    short-term-token-ratio: 0.3
+    long-term-token-ratio: 0.2
+    semantic-token-ratio: 0.1
+    short-term-top-k: 5
+    long-term-top-k: 3
+    semantic-top-k: 2
+    cleanup-decay-threshold: 0.15
 
   semaphore:
     document-upload:

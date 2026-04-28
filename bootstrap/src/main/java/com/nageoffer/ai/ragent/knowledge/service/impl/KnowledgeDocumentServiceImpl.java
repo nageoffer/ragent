@@ -115,7 +115,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
     private final KnowledgeScheduleProperties scheduleProperties;
     private final RemoteFileFetcher remoteFileFetcher;
 
-    @Value("knowledge-document-chunk_topic${unique-name:}")
+    @Value("${messaging.pulsar.topics.knowledge-document-chunk:persistent://ragent/ai/knowledge-document-chunk}")
     private String chunkTopic;
 
     @Override
@@ -159,30 +159,29 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
                 .docId(docId)
                 .operator(UserContext.getUsername())
                 .build();
-
-        messageQueueProducer.sendInTransaction(
-                chunkTopic,
-                docId,
-                "文档分块",
-                event,
-                arg -> {
-                    int updated = documentMapper.update(
-                            new LambdaUpdateWrapper<KnowledgeDocumentDO>()
-                                    .set(KnowledgeDocumentDO::getStatus, DocumentStatus.RUNNING.getCode())
-                                    .set(KnowledgeDocumentDO::getUpdatedBy, event.getOperator())
-                                    .eq(KnowledgeDocumentDO::getId, docId)
-                                    .ne(KnowledgeDocumentDO::getStatus, DocumentStatus.RUNNING.getCode())
-                    );
-                    if (updated == 0) {
-                        KnowledgeDocumentDO documentDO = documentMapper.selectById(docId);
-                        Assert.notNull(documentDO, () -> new ClientException("文档不存在"));
-                        throw new ClientException("文档分块操作正在进行中，请稍后再试");
-                    }
-                    KnowledgeDocumentDO documentDO = documentMapper.selectById(docId);
-                    event.setKbId(documentDO.getKbId());
-                    scheduleService.upsertSchedule(documentDO);
-                }
-        );
+        transactionOperations.executeWithoutResult(status -> {
+            int updated = documentMapper.update(
+                    new LambdaUpdateWrapper<KnowledgeDocumentDO>()
+                            .set(KnowledgeDocumentDO::getStatus, DocumentStatus.RUNNING.getCode())
+                            .set(KnowledgeDocumentDO::getUpdatedBy, event.getOperator())
+                            .eq(KnowledgeDocumentDO::getId, docId)
+                            .ne(KnowledgeDocumentDO::getStatus, DocumentStatus.RUNNING.getCode())
+            );
+            if (updated == 0) {
+                KnowledgeDocumentDO documentDO = documentMapper.selectById(docId);
+                Assert.notNull(documentDO, () -> new ClientException("文档不存在"));
+                throw new ClientException("文档分块操作正在进行中，请稍后再试");
+            }
+            KnowledgeDocumentDO documentDO = documentMapper.selectById(docId);
+            event.setKbId(documentDO.getKbId());
+            scheduleService.upsertSchedule(documentDO);
+            messageQueueProducer.publishReliable(
+                    chunkTopic,
+                    docId,
+                    "文档分块",
+                    event
+            );
+        });
     }
 
     @Override

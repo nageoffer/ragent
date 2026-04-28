@@ -17,35 +17,64 @@
 
 package com.nageoffer.ai.ragent.rag.mq;
 
-import com.nageoffer.ai.ragent.framework.mq.MessageWrapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nageoffer.ai.ragent.framework.mq.config.PulsarProperties;
+import com.nageoffer.ai.ragent.framework.mq.consumer.PulsarMessageHandler;
+import com.nageoffer.ai.ragent.framework.mq.model.MessageEnvelope;
 import com.nageoffer.ai.ragent.rag.mq.event.MessageFeedbackEvent;
 import com.nageoffer.ai.ragent.rag.service.MessageFeedbackService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
-import org.apache.rocketmq.spring.core.RocketMQListener;
+import org.apache.pulsar.client.api.Message;
+import org.apache.pulsar.client.api.Schema;
+import org.apache.pulsar.client.api.SubscriptionType;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 /**
- * 消息反馈 MQ 消费者，负责将点赞/点踩事件异步持久化到数据库
+ * 消息反馈 Pulsar 消费者。
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
-@RocketMQMessageListener(
-        topic = "message-feedback_topic${unique-name:}",
-        consumerGroup = "message-feedback_cg${unique-name:}"
-)
-public class MessageFeedbackConsumer implements RocketMQListener<MessageWrapper<MessageFeedbackEvent>> {
+public class MessageFeedbackConsumer implements PulsarMessageHandler<MessageEnvelope> {
 
     private final MessageFeedbackService feedbackService;
+    private final ObjectMapper objectMapper;
+    private final PulsarProperties pulsarProperties;
+
+    @Value("${unique-name:}")
+    private String uniqueName;
 
     @Override
-    public void onMessage(MessageWrapper<MessageFeedbackEvent> message) {
-        MessageFeedbackEvent event = message.getBody();
+    public String topic() {
+        return pulsarProperties.getTopics().getMessageFeedback();
+    }
 
-        log.info("[消费者] 开始处理点赞/点踩事件，messageId: {}, userId: {}, vote: {}, keys: {}",
-                event.getMessageId(), event.getUserId(), event.getVote(), message.getKeys());
+    @Override
+    public String subscriptionName() {
+        return "message-feedback-sub" + uniqueName;
+    }
+
+    @Override
+    public SubscriptionType subscriptionType() {
+        return SubscriptionType.Key_Shared;
+    }
+
+    @Override
+    public Schema<MessageEnvelope> schema() {
+        return Schema.JSON(MessageEnvelope.class);
+    }
+
+    @Override
+    public void onMessage(Message<MessageEnvelope> message) throws Exception {
+        MessageEnvelope envelope = message.getValue();
+        MessageFeedbackEvent event = objectMapper.readValue(
+                envelope.getPayloadJson(),
+                MessageFeedbackEvent.class
+        );
+        log.info("[Pulsar 消费者] 开始处理消息反馈, messageId={}, userId={}, vote={}, key={}",
+                event.getMessageId(), event.getUserId(), event.getVote(), envelope.getKey());
         feedbackService.submitFeedbackByEvent(event);
     }
 }

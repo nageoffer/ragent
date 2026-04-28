@@ -49,7 +49,7 @@ public class MessageFeedbackServiceImpl implements MessageFeedbackService {
     private final ConversationMessageMapper conversationMessageMapper;
     private final MessageQueueProducer messageQueueProducer;
 
-    @Value("message-feedback_topic${unique-name:}")
+    @Value("${messaging.pulsar.topics.message-feedback:persistent://ragent/ai/message-feedback}")
     private String feedbackTopic;
 
     @Override

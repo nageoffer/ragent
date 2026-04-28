@@ -13,6 +13,7 @@
     </description>
 
     <properties>
+        <argLine/>
         <java.version>17</java.version>
         <spring-boot.version>3.5.7</spring-boot.version>
         <milvus-sdk.version>2.6.6</milvus-sdk.version>
@@ -24,7 +25,7 @@
         <sa-token.version>1.43.0</sa-token.version>
         <transmittable-thread-local.version>2.14.5</transmittable-thread-local.version>
         <redisson.version>4.0.0</redisson.version>
-        <rocketmq-spring-boot-starter.version>2.3.5</rocketmq-spring-boot-starter.version>
+        <pulsar.version>3.1.3</pulsar.version>
         <okhttp.version>4.12.0</okhttp.version>
         <spotless-maven-plugin.version>2.22.1</spotless-maven-plugin.version>
     </properties>
@@ -116,9 +117,15 @@
             </dependency>
 
             <dependency>
-                <groupId>org.apache.rocketmq</groupId>
-                <artifactId>rocketmq-spring-boot-starter</artifactId>
-                <version>${rocketmq-spring-boot-starter.version}</version>
+                <groupId>org.apache.pulsar</groupId>
+                <artifactId>pulsar-client</artifactId>
+                <version>${pulsar.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.apache.pulsar</groupId>
+                <artifactId>pulsar-client-admin</artifactId>
+                <version>${pulsar.version}</version>
             </dependency>
 
             <dependency>

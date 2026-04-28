@@ -22,8 +22,7 @@ import jakarta.validation.ConstraintValidator;
 import jakarta.validation.ConstraintValidatorContext;
 
 /**
- * 记忆配置校验器
- * 校验摘要相关配置的合理性
+ * 记忆配置校验器。
  */
 public class MemoryConfigValidator implements ConstraintValidator<ValidMemoryConfig, MemoryProperties> {
 
@@ -32,26 +31,34 @@ public class MemoryConfigValidator implements ConstraintValidator<ValidMemoryCon
         if (config == null) {
             return true;
         }
-
-        // 如果启用了摘要功能，需要校验配置的合理性
         if (Boolean.TRUE.equals(config.getSummaryEnabled())) {
             Integer summaryStartTurns = config.getSummaryStartTurns();
             Integer historyKeepTurns = config.getHistoryKeepTurns();
-
-            // 摘要触发轮数必须大于保留轮数
-            if (summaryStartTurns <= historyKeepTurns) {
+            if (summaryStartTurns != null
+                    && historyKeepTurns != null
+                    && summaryStartTurns <= historyKeepTurns) {
                 context.disableDefaultConstraintViolation();
                 context.buildConstraintViolationWithTemplate(
-                        String.format(
-                                "当启用摘要功能时，summaryStartTurns (%d) 必须大于 historyKeepTurns (%d)，" +
-                                        "否则永远不会触发摘要。建议配置至少：summaryStartTurns = historyKeepTurns + 1",
-                                summaryStartTurns, historyKeepTurns
-                        )
+                        "当启用摘要时，summaryStartTurns 必须大于 historyKeepTurns"
                 ).addConstraintViolation();
                 return false;
             }
         }
-
+        double ratioSum = defaultDouble(config.getWorkingMemoryTokenRatio())
+                + defaultDouble(config.getShortTermTokenRatio())
+                + defaultDouble(config.getLongTermTokenRatio())
+                + defaultDouble(config.getSemanticTokenRatio());
+        if (Math.abs(ratioSum - 1.0D) > 0.0001D) {
+            context.disableDefaultConstraintViolation();
+            context.buildConstraintViolationWithTemplate(
+                    "记忆 Token 配额占比之和必须等于 1"
+            ).addConstraintViolation();
+            return false;
+        }
         return true;
+    }
+
+    private double defaultDouble(Double value) {
+        return value == null ? 0D : value;
     }
 }
