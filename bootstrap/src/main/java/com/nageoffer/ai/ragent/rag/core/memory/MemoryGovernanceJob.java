@@ -22,6 +22,7 @@ import com.nageoffer.ai.ragent.rag.core.memory.model.MemoryItem;
 import com.nageoffer.ai.ragent.rag.core.memory.store.LongTermMemoryStore;
 import com.nageoffer.ai.ragent.rag.core.memory.store.SemanticMemoryStore;
 import com.nageoffer.ai.ragent.rag.core.memory.store.ShortTermMemoryStore;
+import com.nageoffer.ai.ragent.rag.core.memory.support.SemanticMemorySupport;
 import lombok.RequiredArgsConstructor;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -82,10 +83,8 @@ public class MemoryGovernanceJob {
     }
 
     private String normalizeSemanticKey(MemoryItem item) {
-        String content = item.getContent() == null ? "" : item.getContent().trim();
-        if (content.isBlank()) {
-            return item.getType() == null ? "memory" : item.getType().toLowerCase();
-        }
-        return content.length() > 64 ? content.substring(0, 64) : content;
+        return SemanticMemorySupport.resolveSemanticKey(
+                item.getType(), item.getContent(), item.getMetadataJson()
+        );
     }
 }

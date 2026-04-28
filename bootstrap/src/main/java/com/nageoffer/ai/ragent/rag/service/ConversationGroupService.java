@@ -21,6 +21,8 @@ import com.nageoffer.ai.ragent.rag.dao.entity.ConversationDO;
 import com.nageoffer.ai.ragent.rag.dao.entity.ConversationMessageDO;
 import com.nageoffer.ai.ragent.rag.dao.entity.ConversationSummaryDO;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.Date;
 import java.util.List;
 
@@ -59,7 +61,7 @@ public interface ConversationGroupService {
      * @param at             指定的时间点
      * @return 最大消息ID，如果不存在则返回null
      */
-    String findMaxMessageIdAtOrBefore(String conversationId, String userId, Date at);
+    String findMaxMessageIdAtOrBefore(String conversationId, String userId, LocalDateTime at);
 
     /**
      * 统计用户在指定对话中的消息数量

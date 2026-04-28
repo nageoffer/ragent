@@ -30,4 +30,6 @@ public interface LongTermMemoryStore {
     List<MemoryItem> listByUser(String userId);
 
     void markAccessed(List<String> ids);
+
+    void decayDormantMemories(int dormantDays, double decayStep, double minImportance);
 }

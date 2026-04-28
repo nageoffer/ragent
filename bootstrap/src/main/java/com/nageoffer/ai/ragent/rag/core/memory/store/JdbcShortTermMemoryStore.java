@@ -26,6 +26,10 @@ import com.nageoffer.ai.ragent.rag.dao.mapper.ShortTermMemoryMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
@@ -51,10 +55,9 @@ public class JdbcShortTermMemoryStore implements ShortTermMemoryStore {
                 .sourceMessageIds(defaultJsonArray(memoryItem.getSourceIdsJson()))
                 .importanceScore(defaultDouble(memoryItem.getImportanceScore()))
                 .accessCount(0)
-                .lastAccessTime(new Date())
                 .decayScore(1D)
-                .expiresTime(new Date(System.currentTimeMillis()
-                        + memoryProperties.getShortTermRetentionDays() * 24L * 3600 * 1000))
+                .expiresTime(Instant.ofEpochMilli(System.currentTimeMillis() + memoryProperties.getShortTermRetentionDays() * 24L * 3600 * 1000)
+                                .atZone(ZoneId.systemDefault()).toLocalDateTime())
                 .build();
         shortTermMemoryMapper.insert(record);
     }
@@ -100,7 +103,7 @@ public class JdbcShortTermMemoryStore implements ShortTermMemoryStore {
         for (String id : ids) {
             shortTermMemoryMapper.update(
                     ShortTermMemoryDO.builder()
-                            .lastAccessTime(new Date())
+                            .lastAccessTime(LocalDateTime.now())
                             .build(),
                     Wrappers.lambdaUpdate(ShortTermMemoryDO.class)
                             .eq(ShortTermMemoryDO::getId, id)
@@ -115,14 +118,16 @@ public class JdbcShortTermMemoryStore implements ShortTermMemoryStore {
                 Wrappers.lambdaQuery(ShortTermMemoryDO.class)
                         .eq(ShortTermMemoryDO::getDeleted, 0)
                         .last("limit 500"));
-        Date now = new Date();
+
         for (ShortTermMemoryDO record : records) {
-            double ageDays = Math.max(0D, (now.getTime() - record.getCreateTime().getTime()) / 86400000D);
+            double ageDays = Math.max(0D, Instant.now().toEpochMilli() - record.getCreateTime().atZone(ZoneId.of("Asia/Shanghai"))
+                    .toInstant()
+                    .toEpochMilli()) / 86400000D;
             double accessBoost = Math.log1p(record.getAccessCount() == null ? 0 : record.getAccessCount());
             double decayScore = Math.max(0D, defaultDouble(record.getImportanceScore())
                     - ageDays * memoryProperties.getShortTermDecayFactor()
                     + accessBoost * 0.05D);
-            if (record.getExpiresTime() != null && record.getExpiresTime().before(now)) {
+            if (record.getExpiresTime() != null && record.getExpiresTime().isBefore(LocalDateTime.now())) {
                 shortTermMemoryMapper.deleteById(record.getId());
                 continue;
             }

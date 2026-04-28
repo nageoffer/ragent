@@ -36,8 +36,8 @@ import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -250,7 +250,7 @@ public class JdbcConversationMemorySummaryService implements ConversationMemoryS
             return summary.getLastMessageId();
         }
 
-        Date after = summary.getUpdateTime();
+        LocalDateTime after = summary.getUpdateTime();
         if (after == null) {
             after = summary.getCreateTime();
         }

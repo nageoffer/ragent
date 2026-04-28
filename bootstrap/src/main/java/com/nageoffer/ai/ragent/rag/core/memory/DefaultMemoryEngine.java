@@ -28,6 +28,7 @@ import com.nageoffer.ai.ragent.rag.core.memory.store.LongTermMemoryStore;
 import com.nageoffer.ai.ragent.rag.core.memory.store.SemanticMemoryStore;
 import com.nageoffer.ai.ragent.rag.core.memory.store.ShortTermMemoryStore;
 import com.nageoffer.ai.ragent.rag.core.memory.store.WorkingMemoryStore;
+import com.nageoffer.ai.ragent.rag.core.memory.support.SemanticMemorySupport;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -104,34 +105,34 @@ public class DefaultMemoryEngine implements MemoryEngine {
         if (content == null || content.isBlank()) {
             return;
         }
-        if (content.contains("喜欢") || content.contains("偏好") || content.contains("不喜欢")) {
-            MemoryItem item = MemoryItem.builder()
-                    .userId(request.getUserId())
-                    .conversationId(request.getConversationId())
-                    .layer(MemoryLayer.SHORT_TERM)
-                    .type("PREFERENCE")
-                    .content(content)
-                    .metadataJson(toValueJson(content, "user"))
-                    .sourceIdsJson(sourceIdsJson(request))
-                    .importanceScore(0.8D)
-                    .confidenceLevel(0.95D)
-                    .build();
+        if (content.contains("喜欢") || content.contains("偏好")
+                || content.contains("不喜欢") || content.contains("讨厌")) {
+            MemoryItem item = buildShortTermItem(request, "PREFERENCE", content, "user", 0.8D, 0.95D);
             shortTermMemoryStore.save(item);
-            semanticMemoryStore.upsert(item, extractSemanticKey(content, "preference"));
-        } else if (content.contains("我是") || content.contains("我在") || content.contains("我用")) {
-            MemoryItem item = MemoryItem.builder()
-                    .userId(request.getUserId())
-                    .conversationId(request.getConversationId())
-                    .layer(MemoryLayer.SHORT_TERM)
-                    .type("PROFILE")
-                    .content(content)
-                    .metadataJson(toValueJson(content, "user"))
-                    .sourceIdsJson(sourceIdsJson(request))
-                    .importanceScore(0.85D)
-                    .confidenceLevel(0.95D)
-                    .build();
+            semanticMemoryStore.upsert(item, SemanticMemorySupport.resolveSemanticKey(
+                    item.getType(), item.getContent(), item.getMetadataJson()
+            ));
+            return;
+        }
+        if (content.contains("我是") || content.contains("我在") || content.contains("我用")
+                || content.contains("常用") || content.contains("主要用")) {
+            MemoryItem item = buildShortTermItem(request, "PROFILE", content, "user", 0.85D, 0.95D);
             shortTermMemoryStore.save(item);
-            semanticMemoryStore.upsert(item, extractSemanticKey(content, "profile"));
+            semanticMemoryStore.upsert(item, SemanticMemorySupport.resolveSemanticKey(
+                    item.getType(), item.getContent(), item.getMetadataJson()
+            ));
+            return;
+        }
+        if (isIssue(content)) {
+            shortTermMemoryStore.save(buildShortTermItem(
+                    request, "ISSUE", content, "user", 0.82D, 0.9D
+            ));
+            return;
+        }
+        if (isTodo(content)) {
+            shortTermMemoryStore.save(buildShortTermItem(
+                    request, "TODO", content, "user", 0.76D, 0.88D
+            ));
         }
     }
 
@@ -144,36 +145,56 @@ public class DefaultMemoryEngine implements MemoryEngine {
                     .layer(MemoryLayer.SHORT_TERM)
                     .type("SUMMARY")
                     .content(summary.getContent())
-                    .metadataJson(toValueJson(summary.getContent(), "summary"))
+                    .metadataJson(SemanticMemorySupport.normalizeValueJson(
+                            "SUMMARY", summary.getContent(), "summary", null
+                    ))
                     .sourceIdsJson(sourceIdsJson(request))
                     .importanceScore(0.7D)
                     .confidenceLevel(0.8D)
                     .build());
         } else if (message.getContent() != null && !message.getContent().isBlank()) {
-            shortTermMemoryStore.save(MemoryItem.builder()
-                    .userId(request.getUserId())
-                    .conversationId(request.getConversationId())
-                    .layer(MemoryLayer.SHORT_TERM)
-                    .type("FACT")
-                    .content(truncate(message.getContent(), 240))
-                    .metadataJson(toValueJson(message.getContent(), "assistant"))
-                    .sourceIdsJson(sourceIdsJson(request))
-                    .importanceScore(0.55D)
-                    .confidenceLevel(0.7D)
-                    .build());
+            shortTermMemoryStore.save(buildShortTermItem(
+                    request, "FACT", truncate(message.getContent(), 240), "assistant", 0.55D, 0.7D
+            ));
         }
     }
 
-    private String extractSemanticKey(String content, String fallback) {
-        String normalized = content.replace("我", "").replace("是", "").replace("喜欢", "").trim();
-        if (normalized.isBlank()) {
-            return fallback;
-        }
-        return normalized.length() > 24 ? normalized.substring(0, 24) : normalized;
+    private MemoryItem buildShortTermItem(MemoryWriteRequest request,
+                                          String type,
+                                          String content,
+                                          String source,
+                                          double importance,
+                                          double confidence) {
+        return MemoryItem.builder()
+                .userId(request.getUserId())
+                .conversationId(request.getConversationId())
+                .layer(MemoryLayer.SHORT_TERM)
+                .type(type)
+                .content(content)
+                .metadataJson(SemanticMemorySupport.normalizeValueJson(type, content, source, null))
+                .sourceIdsJson(sourceIdsJson(request))
+                .importanceScore(importance)
+                .confidenceLevel(confidence)
+                .build();
     }
 
     private String truncate(String content, int maxLength) {
         return content.length() <= maxLength ? content : content.substring(0, maxLength);
+    }
+
+    private boolean isIssue(String content) {
+        return content.contains("报错")
+                || content.contains("异常")
+                || content.contains("失败")
+                || content.contains("问题")
+                || content.toLowerCase().contains("error");
+    }
+
+    private boolean isTodo(String content) {
+        return content.contains("待办")
+                || content.contains("帮我")
+                || content.contains("需要")
+                || content.toLowerCase().contains("todo");
     }
 
     private String sourceIdsJson(MemoryWriteRequest request) {
@@ -181,10 +202,6 @@ public class DefaultMemoryEngine implements MemoryEngine {
             return "[]";
         }
         return "[\"" + jsonEscape(request.getMessageId()) + "\"]";
-    }
-
-    private String toValueJson(String content, String source) {
-        return "{\"source\":\"" + jsonEscape(source) + "\",\"content\":\"" + jsonEscape(content) + "\"}";
     }
 
     private String jsonEscape(String value) {

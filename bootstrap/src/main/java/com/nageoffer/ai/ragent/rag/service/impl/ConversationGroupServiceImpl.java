@@ -29,6 +29,7 @@ import com.nageoffer.ai.ragent.rag.service.ConversationGroupService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
@@ -77,7 +78,7 @@ public class ConversationGroupServiceImpl implements ConversationGroupService {
     }
 
     @Override
-    public String findMaxMessageIdAtOrBefore(String conversationId, String userId, java.util.Date at) {
+    public String findMaxMessageIdAtOrBefore(String conversationId, String userId, LocalDateTime at) {
         if (StrUtil.isBlank(conversationId) || StrUtil.isBlank(userId) || at == null) {
             return null;
         }

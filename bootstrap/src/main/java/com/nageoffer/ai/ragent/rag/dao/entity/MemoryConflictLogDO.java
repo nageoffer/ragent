@@ -28,7 +28,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.Date;
+import java.time.LocalDateTime;
 
 /**
  * 记忆冲突日志实体。
@@ -59,13 +59,13 @@ public class MemoryConflictLogDO {
 
     private String resolvedBy;
 
-    private Date resolvedAt;
+    private LocalDateTime resolvedAt;
 
     @TableField(fill = FieldFill.INSERT)
-    private Date createTime;
+    private LocalDateTime createTime;
 
     @TableField(fill = FieldFill.INSERT_UPDATE)
-    private Date updateTime;
+    private LocalDateTime updateTime;
 
     @TableLogic
     private Integer deleted;

@@ -20,13 +20,13 @@ package com.nageoffer.ai.ragent.rag.core.memory.store;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.nageoffer.ai.ragent.rag.core.memory.model.MemoryItem;
 import com.nageoffer.ai.ragent.rag.core.memory.model.MemoryLayer;
+import com.nageoffer.ai.ragent.rag.core.memory.support.SemanticMemorySupport;
 import com.nageoffer.ai.ragent.rag.dao.entity.SemanticMemoryDO;
 import com.nageoffer.ai.ragent.rag.dao.mapper.SemanticMemoryMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
-import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 
@@ -41,6 +41,7 @@ public class JdbcSemanticMemoryStore implements SemanticMemoryStore {
 
     @Override
     public void upsert(MemoryItem memoryItem, String semanticKey) {
+        String normalizedValueJson = valueJson(memoryItem);
         SemanticMemoryDO existing = semanticMemoryMapper.selectOne(
                 Wrappers.lambdaQuery(SemanticMemoryDO.class)
                         .eq(SemanticMemoryDO::getUserId, memoryItem.getUserId())
@@ -53,15 +54,26 @@ public class JdbcSemanticMemoryStore implements SemanticMemoryStore {
                     .userId(memoryItem.getUserId())
                     .semanticKey(semanticKey)
                     .semanticType(memoryItem.getType())
-                    .valueJson(valueJson(memoryItem))
+                    .valueJson(normalizedValueJson)
                     .confidenceLevel(memoryItem.getConfidenceLevel())
                     .sourceMemoryIds(defaultJsonArray(memoryItem.getSourceIdsJson()))
                     .build());
             return;
         }
+        if (!shouldReplace(existing, normalizedValueJson, memoryItem)) {
+            semanticMemoryMapper.update(
+                    SemanticMemoryDO.builder()
+                            .confidenceLevel(Math.max(defaultDouble(existing.getConfidenceLevel()), defaultDouble(memoryItem.getConfidenceLevel())))
+                            .sourceMemoryIds(defaultJsonArray(memoryItem.getSourceIdsJson()))
+                            .updateTime(LocalDateTime.now())
+                            .build(),
+                    Wrappers.lambdaUpdate(SemanticMemoryDO.class).eq(SemanticMemoryDO::getId, existing.getId())
+            );
+            return;
+        }
         semanticMemoryMapper.update(
                 SemanticMemoryDO.builder()
-                        .valueJson(valueJson(memoryItem))
+                        .valueJson(normalizedValueJson)
                         .confidenceLevel(memoryItem.getConfidenceLevel())
                         .sourceMemoryIds(defaultJsonArray(memoryItem.getSourceIdsJson()))
                         .updateTime(LocalDateTime.now())
@@ -102,7 +114,9 @@ public class JdbcSemanticMemoryStore implements SemanticMemoryStore {
                 .userId(item.getUserId())
                 .layer(MemoryLayer.SEMANTIC)
                 .type(item.getSemanticType())
-                .content(item.getSemanticKey())
+                .content(SemanticMemorySupport.renderContent(
+                        item.getSemanticKey(), item.getSemanticType(), item.getValueJson()
+                ))
                 .metadataJson(item.getValueJson())
                 .sourceIdsJson(item.getSourceMemoryIds())
                 .confidenceLevel(item.getConfidenceLevel())
@@ -115,25 +129,51 @@ public class JdbcSemanticMemoryStore implements SemanticMemoryStore {
             return true;
         }
         String lower = query.toLowerCase(Locale.ROOT);
+        String rendered = SemanticMemorySupport.renderContent(
+                item.getSemanticKey(), item.getSemanticType(), item.getValueJson()
+        ).toLowerCase(Locale.ROOT);
         return (item.getSemanticKey() != null && item.getSemanticKey().toLowerCase(Locale.ROOT).contains(lower))
-                || (item.getValueJson() != null && item.getValueJson().toLowerCase(Locale.ROOT).contains(lower));
+                || (item.getValueJson() != null && item.getValueJson().toLowerCase(Locale.ROOT).contains(lower))
+                || rendered.contains(lower);
+    }
+
+    private boolean shouldReplace(SemanticMemoryDO existing, String incomingValueJson, MemoryItem incoming) {
+        int existingPriority = sourcePriority(existing.getValueJson());
+        int incomingPriority = sourcePriority(incomingValueJson);
+        if (incomingPriority != existingPriority) {
+            return incomingPriority > existingPriority;
+        }
+        return defaultDouble(incoming.getConfidenceLevel()) >= defaultDouble(existing.getConfidenceLevel());
+    }
+
+    private int sourcePriority(String valueJson) {
+        String source = SemanticMemorySupport.extractSource(valueJson);
+        if ("user".equalsIgnoreCase(source)) {
+            return 3;
+        }
+        if ("idle-summary".equalsIgnoreCase(source) || "summary".equalsIgnoreCase(source)) {
+            return 2;
+        }
+        if ("assistant".equalsIgnoreCase(source)) {
+            return 1;
+        }
+        return 0;
     }
 
     private String valueJson(MemoryItem memoryItem) {
-        if (memoryItem.getMetadataJson() != null && !memoryItem.getMetadataJson().isBlank()) {
-            return memoryItem.getMetadataJson();
-        }
-        return "{\"value\":\"" + jsonEscape(memoryItem.getContent()) + "\"}";
+        return SemanticMemorySupport.normalizeValueJson(
+                memoryItem.getType(),
+                memoryItem.getContent(),
+                SemanticMemorySupport.extractSource(memoryItem.getMetadataJson()),
+                memoryItem.getMetadataJson()
+        );
+    }
+
+    private double defaultDouble(Double value) {
+        return value == null ? 0D : value;
     }
 
     private String defaultJsonArray(String value) {
         return value == null || value.isBlank() ? "[]" : value;
-    }
-
-    private String jsonEscape(String value) {
-        if (value == null) {
-            return "";
-        }
-        return value.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 }

@@ -26,6 +26,7 @@ import com.nageoffer.ai.ragent.rag.dao.mapper.LongTermMemoryMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -126,6 +127,30 @@ public class JdbcLongTermMemoryStore implements LongTermMemoryStore {
                         .in(LongTermMemoryDO::getId, ids)
                         .setSql("update_time = CURRENT_TIMESTAMP")
         );
+    }
+
+    @Override
+    public void decayDormantMemories(int dormantDays, double decayStep, double minImportance) {
+        LocalDateTime cutoff = LocalDateTime.now().minusDays(Math.max(1, dormantDays));
+        List<LongTermMemoryDO> dormantRecords = longTermMemoryMapper.selectList(
+                Wrappers.lambdaQuery(LongTermMemoryDO.class)
+                        .eq(LongTermMemoryDO::getDeleted, 0)
+                        .le(LongTermMemoryDO::getUpdateTime, cutoff)
+                        .last("limit 200"));
+        for (LongTermMemoryDO record : dormantRecords) {
+            double current = record.getImportanceScore() == null ? 0D : record.getImportanceScore();
+            double next = Math.max(minImportance, current - Math.max(0D, decayStep));
+            if (Double.compare(current, next) == 0) {
+                continue;
+            }
+            longTermMemoryMapper.update(
+                    LongTermMemoryDO.builder()
+                            .importanceScore(next)
+                            .build(),
+                    Wrappers.lambdaUpdate(LongTermMemoryDO.class)
+                            .eq(LongTermMemoryDO::getId, record.getId())
+            );
+        }
     }
 
     private MemoryItem toMemoryItem(LongTermMemoryDO item) {

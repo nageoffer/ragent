@@ -77,6 +77,18 @@ public class MemoryProperties {
     @Max(1)
     private Double longTermImportanceThreshold = 0.6D;
 
+    @Min(1)
+    @Max(3650)
+    private Integer longTermDormantDays = 30;
+
+    @Min(0)
+    @Max(1)
+    private Double longTermDecayStep = 0.05D;
+
+    @Min(0)
+    @Max(1)
+    private Double longTermMinImportance = 0.1D;
+
     private Boolean semanticEnabled = true;
 
     private Boolean qualityAssessmentEnabled = true;

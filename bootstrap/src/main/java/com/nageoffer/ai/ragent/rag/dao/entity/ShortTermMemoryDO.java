@@ -29,6 +29,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDateTime;
 import java.util.Date;
 
 /**
@@ -62,17 +63,17 @@ public class ShortTermMemoryDO {
 
     private Integer accessCount;
 
-    private Date lastAccessTime;
+    private LocalDateTime lastAccessTime;
 
     private Double decayScore;
 
-    private Date expiresTime;
+    private LocalDateTime expiresTime;
 
     @TableField(fill = FieldFill.INSERT)
-    private Date createTime;
+    private LocalDateTime createTime;
 
     @TableField(fill = FieldFill.INSERT_UPDATE)
-    private Date updateTime;
+    private LocalDateTime updateTime;
 
     @TableLogic
     private Integer deleted;

@@ -21,6 +21,7 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.nageoffer.ai.ragent.rag.core.memory.model.MemoryQualityReport;
 import com.nageoffer.ai.ragent.rag.core.memory.store.LongTermMemoryStore;
 import com.nageoffer.ai.ragent.rag.core.memory.store.SemanticMemoryStore;
+import com.nageoffer.ai.ragent.rag.core.memory.support.SemanticMemorySupport;
 import com.nageoffer.ai.ragent.rag.dao.entity.MemoryConflictLogDO;
 import com.nageoffer.ai.ragent.rag.dao.entity.SemanticMemoryDO;
 import com.nageoffer.ai.ragent.rag.dao.mapper.MemoryConflictLogMapper;
@@ -29,7 +30,7 @@ import com.nageoffer.ai.ragent.rag.dao.mapper.ShortTermMemoryMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
-import java.util.Date;
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -85,16 +86,7 @@ public class DefaultMemoryQualityAssessor implements MemoryQualityAssessor {
             if (previous.getValueJson() != null && previous.getValueJson().equals(record.getValueJson())) {
                 continue;
             }
-            MemoryConflictLogDO conflict = MemoryConflictLogDO.builder()
-                    .userId(userId)
-                    .memoryId1(previous.getId())
-                    .memoryId2(record.getId())
-                    .conflictType("CONTRADICTION")
-                    .severity("MEDIUM")
-                    .resolutionStatus("PENDING")
-                    .resolvedAt(new Date())
-                    .build();
-            memoryConflictLogMapper.insert(conflict);
+            insertConflict(userId, previous, record, "CONTRADICTION");
         }
     }
 
@@ -102,16 +94,19 @@ public class DefaultMemoryQualityAssessor implements MemoryQualityAssessor {
         Map<String, SemanticMemoryDO> positive = new HashMap<>();
         Map<String, SemanticMemoryDO> negative = new HashMap<>();
         for (SemanticMemoryDO record : records) {
-            if (!"PREFERENCE".equalsIgnoreCase(record.getSemanticType())) {
-                continue;
-            }
-            String key = normalizePreferenceKey(record.getSemanticKey());
+            String key = SemanticMemorySupport.normalizePreferenceSubject(
+                    record.getSemanticKey(), record.getValueJson()
+            );
             if (key.isBlank()) {
                 continue;
             }
-            if (isNegativePreference(record.getSemanticKey())) {
+            if (SemanticMemorySupport.isNegativePreference(
+                    record.getSemanticType(), record.getSemanticKey(), record.getValueJson()
+            )) {
                 negative.putIfAbsent(key, record);
-            } else if (isPositivePreference(record.getSemanticKey())) {
+            } else if (SemanticMemorySupport.isPositivePreference(
+                    record.getSemanticType(), record.getSemanticKey(), record.getValueJson()
+            )) {
                 positive.putIfAbsent(key, record);
             }
         }
@@ -125,6 +120,9 @@ public class DefaultMemoryQualityAssessor implements MemoryQualityAssessor {
     }
 
     private void insertConflict(String userId, SemanticMemoryDO first, SemanticMemoryDO second, String conflictType) {
+        if (conflictExists(userId, first.getId(), second.getId(), conflictType)) {
+            return;
+        }
         MemoryConflictLogDO conflict = MemoryConflictLogDO.builder()
                 .userId(userId)
                 .memoryId1(first.getId())
@@ -132,27 +130,24 @@ public class DefaultMemoryQualityAssessor implements MemoryQualityAssessor {
                 .conflictType(conflictType)
                 .severity("MEDIUM")
                 .resolutionStatus("PENDING")
-                .resolvedAt(new Date())
+                .resolvedAt(LocalDateTime.now())
                 .build();
         memoryConflictLogMapper.insert(conflict);
     }
 
-    private boolean isPositivePreference(String value) {
-        return value != null && (value.contains("喜欢") || value.contains("偏好"));
-    }
-
-    private boolean isNegativePreference(String value) {
-        return value != null && value.contains("不喜欢");
-    }
-
-    private String normalizePreferenceKey(String value) {
-        if (value == null) {
-            return "";
-        }
-        return value.replace("不喜欢", "")
-                .replace("喜欢", "")
-                .replace("偏好", "")
-                .replace("我", "")
-                .trim();
+    private boolean conflictExists(String userId, String firstId, String secondId, String conflictType) {
+        Long count = memoryConflictLogMapper.selectCount(
+                Wrappers.lambdaQuery(MemoryConflictLogDO.class)
+                        .eq(MemoryConflictLogDO::getUserId, userId)
+                        .eq(MemoryConflictLogDO::getConflictType, conflictType)
+                        .and(wrapper -> wrapper
+                                .and(inner -> inner.eq(MemoryConflictLogDO::getMemoryId1, firstId)
+                                        .eq(MemoryConflictLogDO::getMemoryId2, secondId))
+                                .or()
+                                .and(inner -> inner.eq(MemoryConflictLogDO::getMemoryId1, secondId)
+                                        .eq(MemoryConflictLogDO::getMemoryId2, firstId)))
+                        .eq(MemoryConflictLogDO::getDeleted, 0)
+        );
+        return count != null && count > 0;
     }
 }

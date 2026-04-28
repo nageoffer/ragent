@@ -18,6 +18,7 @@
 package com.nageoffer.ai.ragent.rag.core.memory;
 
 import com.nageoffer.ai.ragent.rag.config.MemoryProperties;
+import com.nageoffer.ai.ragent.rag.core.memory.store.LongTermMemoryStore;
 import com.nageoffer.ai.ragent.rag.core.memory.store.ShortTermMemoryStore;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -30,10 +31,16 @@ import org.springframework.stereotype.Component;
 public class DefaultForgettingController implements ForgettingController {
 
     private final ShortTermMemoryStore shortTermMemoryStore;
+    private final LongTermMemoryStore longTermMemoryStore;
     private final MemoryProperties memoryProperties;
 
     @Override
     public void execute() {
         shortTermMemoryStore.updateDecayScores(memoryProperties.getCleanupDecayThreshold());
+        longTermMemoryStore.decayDormantMemories(
+                memoryProperties.getLongTermDormantDays(),
+                memoryProperties.getLongTermDecayStep(),
+                memoryProperties.getLongTermMinImportance()
+        );
     }
 }
