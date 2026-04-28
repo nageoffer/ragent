@@ -29,8 +29,8 @@ import org.springframework.stereotype.Component;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.time.ZoneOffset;
-import java.util.Date;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 
@@ -57,7 +57,7 @@ public class JdbcShortTermMemoryStore implements ShortTermMemoryStore {
                 .accessCount(0)
                 .decayScore(1D)
                 .expiresTime(Instant.ofEpochMilli(System.currentTimeMillis() + memoryProperties.getShortTermRetentionDays() * 24L * 3600 * 1000)
-                                .atZone(ZoneId.systemDefault()).toLocalDateTime())
+                        .atZone(ZoneId.systemDefault()).toLocalDateTime())
                 .build();
         shortTermMemoryMapper.insert(record);
     }
@@ -70,13 +70,27 @@ public class JdbcShortTermMemoryStore implements ShortTermMemoryStore {
                         .eq(ShortTermMemoryDO::getDeleted, 0)
                         .and(wrapper -> wrapper.isNull(ShortTermMemoryDO::getExpiresTime)
                                 .or()
-                                .gt(ShortTermMemoryDO::getExpiresTime, new Date()))
+                                .gt(ShortTermMemoryDO::getExpiresTime, LocalDateTime.now()))
                         .orderByDesc(ShortTermMemoryDO::getImportanceScore)
                         .orderByDesc(ShortTermMemoryDO::getCreateTime)
                         .last("limit " + Math.max(topK * 5, 20)));
+        if (query == null || query.isBlank()) {
+            return candidates.stream()
+                    .limit(topK)
+                    .map(this::toMemoryItem)
+                    .toList();
+        }
+        String category = queryMemoryCategory(query);
+        List<String> tokens = tokenize(query);
         return candidates.stream()
-                .filter(item -> match(item.getContent(), query))
+                .map(item -> new ScoredShortTermItem(item, score(item, query, tokens, category)))
+                .filter(item -> item.score > 0D)
+                .sorted(Comparator
+                        .comparingDouble(ScoredShortTermItem::score).reversed()
+                        .thenComparingDouble(ScoredShortTermItem::importance).reversed()
+                        .thenComparing(ScoredShortTermItem::createTime, Comparator.nullsLast(Comparator.reverseOrder())))
                 .limit(topK)
+                .map(ScoredShortTermItem::item)
                 .map(this::toMemoryItem)
                 .toList();
     }
@@ -158,17 +172,82 @@ public class JdbcShortTermMemoryStore implements ShortTermMemoryStore {
                 .build();
     }
 
-    private boolean match(String content, String query) {
-        if (query == null || query.isBlank()) {
-            return true;
+    private double score(ShortTermMemoryDO item, String query, List<String> tokens, String category) {
+        String lowerQuery = lower(query);
+        String content = lower(item.getContent());
+        String type = lower(item.getMemoryType());
+        double score = 0D;
+        if (content.contains(lowerQuery)) {
+            score += 3.5D;
         }
-        String lower = content == null ? "" : content.toLowerCase(Locale.ROOT);
-        for (String token : query.toLowerCase(Locale.ROOT).split("[\\s,，。！？;；]+")) {
-            if (token.length() >= 2 && lower.contains(token)) {
+        for (String token : tokens) {
+            if (token.length() < 2) {
+                continue;
+            }
+            if (content.contains(token)) {
+                score += 1.2D;
+            }
+        }
+        if (!category.isBlank() && category.equalsIgnoreCase(type)) {
+            score += 4D;
+        }
+        score += defaultDouble(item.getImportanceScore()) * 0.2D;
+        score += defaultDouble(item.getDecayScore()) * 0.1D;
+        return score;
+    }
+
+    private String queryMemoryCategory(String query) {
+        if (query == null || query.isBlank()) {
+            return "";
+        }
+        if (containsAny(query, "待办", "todo", "还要做", "要做", "需要做", "后续")) {
+            return "TODO";
+        }
+        if (containsAny(query, "问题", "报错", "异常", "失败", "error", "bug")) {
+            return "ISSUE";
+        }
+        if (containsAny(query, "总结", "摘要", "概括", "回顾")) {
+            return "SUMMARY";
+        }
+        if (containsAny(query, "事实", "信息", "情况", "记录")) {
+            return "FACT";
+        }
+        if (containsAny(query, "偏好", "喜欢", "不喜欢", "讨厌")) {
+            return "PREFERENCE";
+        }
+        if (containsAny(query, "画像", "身份", "职业", "公司", "工具", "技术栈")) {
+            return "PROFILE";
+        }
+        return "";
+    }
+
+    private List<String> tokenize(String query) {
+        List<String> tokens = new ArrayList<>();
+        if (query == null || query.isBlank()) {
+            return tokens;
+        }
+        for (String token : lower(query).split("[\\s,，。！？；:：]+")) {
+            if (token.length() >= 2 && !tokens.contains(token)) {
+                tokens.add(token);
+            }
+        }
+        return tokens;
+    }
+
+    private boolean containsAny(String value, String... keywords) {
+        if (value == null) {
+            return false;
+        }
+        for (String keyword : keywords) {
+            if (value.toLowerCase(Locale.ROOT).contains(keyword.toLowerCase(Locale.ROOT))) {
                 return true;
             }
         }
-        return lower.contains(query.toLowerCase(Locale.ROOT));
+        return false;
+    }
+
+    private String lower(String value) {
+        return value == null ? "" : value.toLowerCase(Locale.ROOT);
     }
 
     private double defaultDouble(Double value) {
@@ -177,5 +256,16 @@ public class JdbcShortTermMemoryStore implements ShortTermMemoryStore {
 
     private String defaultJsonArray(String value) {
         return value == null || value.isBlank() ? "[]" : value;
+    }
+
+    private record ScoredShortTermItem(ShortTermMemoryDO item, double score) {
+
+        double importance() {
+            return item.getImportanceScore() == null ? 0D : item.getImportanceScore();
+        }
+
+        LocalDateTime createTime() {
+            return item.getCreateTime();
+        }
     }
 }
