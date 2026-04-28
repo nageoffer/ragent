@@ -21,6 +21,7 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.nageoffer.ai.ragent.rag.config.MemoryProperties;
 import com.nageoffer.ai.ragent.rag.core.memory.model.MemoryItem;
 import com.nageoffer.ai.ragent.rag.core.memory.model.MemoryLayer;
+import com.nageoffer.ai.ragent.rag.core.memory.support.SemanticMemorySupport;
 import com.nageoffer.ai.ragent.rag.dao.entity.ShortTermMemoryDO;
 import com.nageoffer.ai.ragent.rag.dao.mapper.ShortTermMemoryMapper;
 import lombok.RequiredArgsConstructor;
@@ -80,7 +81,7 @@ public class JdbcShortTermMemoryStore implements ShortTermMemoryStore {
                     .map(this::toMemoryItem)
                     .toList();
         }
-        String category = queryMemoryCategory(query);
+        String category = SemanticMemorySupport.queryMemoryType(query);
         List<String> tokens = tokenize(query);
         return candidates.stream()
                 .map(item -> new ScoredShortTermItem(item, score(item, query, tokens, category)))
@@ -196,31 +197,6 @@ public class JdbcShortTermMemoryStore implements ShortTermMemoryStore {
         return score;
     }
 
-    private String queryMemoryCategory(String query) {
-        if (query == null || query.isBlank()) {
-            return "";
-        }
-        if (containsAny(query, "待办", "todo", "还要做", "要做", "需要做", "后续")) {
-            return "TODO";
-        }
-        if (containsAny(query, "问题", "报错", "异常", "失败", "error", "bug")) {
-            return "ISSUE";
-        }
-        if (containsAny(query, "总结", "摘要", "概括", "回顾")) {
-            return "SUMMARY";
-        }
-        if (containsAny(query, "事实", "信息", "情况", "记录")) {
-            return "FACT";
-        }
-        if (containsAny(query, "偏好", "喜欢", "不喜欢", "讨厌")) {
-            return "PREFERENCE";
-        }
-        if (containsAny(query, "画像", "身份", "职业", "公司", "工具", "技术栈")) {
-            return "PROFILE";
-        }
-        return "";
-    }
-
     private List<String> tokenize(String query) {
         List<String> tokens = new ArrayList<>();
         if (query == null || query.isBlank()) {
@@ -232,18 +208,6 @@ public class JdbcShortTermMemoryStore implements ShortTermMemoryStore {
             }
         }
         return tokens;
-    }
-
-    private boolean containsAny(String value, String... keywords) {
-        if (value == null) {
-            return false;
-        }
-        for (String keyword : keywords) {
-            if (value.toLowerCase(Locale.ROOT).contains(keyword.toLowerCase(Locale.ROOT))) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private String lower(String value) {

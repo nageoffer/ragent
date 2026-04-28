@@ -25,7 +25,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.Locale;
 
 /**
- * 统一处理语义记忆的 key、value_json 和可读渲染。
+ * 统一处理语义记忆、记忆类型分类和可读渲染。
  */
 public final class SemanticMemorySupport {
 
@@ -113,35 +113,56 @@ public final class SemanticMemorySupport {
     }
 
     public static String querySemanticCategory(String query) {
+        String memoryType = queryMemoryType(query);
+        if ("PREFERENCE".equals(memoryType)) {
+            return "preference";
+        }
+        if (!"PROFILE".equals(memoryType)) {
+            return "";
+        }
+        if (containsAny(query, "技术栈", "后端", "前端", "框架", "语言栈")) {
+            return "stack";
+        }
+        if (containsAny(query, "工具", "IDE", "编辑器", "终端", "软件")) {
+            return "tool";
+        }
+        if (containsAny(query, "公司", "团队", "组织", "就职", "供职")) {
+            return "organization";
+        }
+        if (containsAny(query, "身份", "职业", "岗位", "角色", "是谁")) {
+            return "identity";
+        }
+        if (containsAny(query, "哪里", "在哪", "来自", "住在", "城市")) {
+            return "location";
+        }
+        if (containsAny(query, "语言", "中文", "英文", "英语", "日语")) {
+            return "language";
+        }
+        return "";
+    }
+
+    public static String queryMemoryType(String query) {
         if (query == null || query.isBlank()) {
             return "";
         }
-        if (query.contains("喜欢") || query.contains("偏好") || query.contains("讨厌")) {
-            return "preference";
+        if (containsAny(query, "待办", "todo", "还要做", "要做", "需要做", "后续")) {
+            return "TODO";
         }
-        if (query.contains("技术栈") || query.contains("后端") || query.contains("前端")
-                || query.contains("框架") || query.contains("语言栈")) {
-            return "stack";
+        if (containsAny(query, "问题", "报错", "异常", "失败", "bug", "error")) {
+            return "ISSUE";
         }
-        if (query.contains("工具") || query.contains("IDE") || query.contains("编辑器")
-                || query.contains("终端") || query.contains("软件")) {
-            return "tool";
+        if (containsAny(query, "总结", "摘要", "概括", "回顾")) {
+            return "SUMMARY";
         }
-        if (query.contains("公司") || query.contains("团队") || query.contains("组织")
-                || query.contains("就职") || query.contains("供职")) {
-            return "organization";
+        if (containsAny(query, "事实", "信息", "记录", "情况")) {
+            return "FACT";
         }
-        if (query.contains("身份") || query.contains("职业") || query.contains("岗位")
-                || query.contains("角色") || query.contains("是谁")) {
-            return "identity";
+        if (containsAny(query, "偏好", "喜欢", "不喜欢", "讨厌")) {
+            return "PREFERENCE";
         }
-        if (query.contains("哪里") || query.contains("在哪") || query.contains("来自")
-                || query.contains("住在") || query.contains("城市")) {
-            return "location";
-        }
-        if (query.contains("语言") || query.contains("中文") || query.contains("英文")
-                || query.contains("英语") || query.contains("日语")) {
-            return "language";
+        if (containsAny(query, "画像", "身份", "职业", "岗位", "角色",
+                "组织", "公司", "团队", "工具", "技术栈", "地点", "语言", "哪里", "来自", "住在")) {
+            return "PROFILE";
         }
         return "";
     }
@@ -174,29 +195,12 @@ public final class SemanticMemorySupport {
     }
 
     public static boolean looksLikePreference(String content) {
-        if (content == null || content.isBlank()) {
-            return false;
-        }
-        return content.contains("喜欢") || content.contains("偏好")
-                || content.contains("不喜欢") || content.contains("讨厌");
+        return containsAny(content, "喜欢", "偏好", "不喜欢", "讨厌");
     }
 
     public static boolean looksLikeProfile(String content) {
-        if (content == null || content.isBlank()) {
-            return false;
-        }
-        return content.contains("我是")
-                || content.contains("我在")
-                || content.contains("我用")
-                || content.contains("常用")
-                || content.contains("主要用")
-                || content.contains("技术栈")
-                || content.contains("后端")
-                || content.contains("前端")
-                || content.contains("来自")
-                || content.contains("住在")
-                || content.contains("中文")
-                || content.contains("英文");
+        return containsAny(content, "我是", "我在", "我用", "常用", "主要用",
+                "技术栈", "后端", "前端", "来自", "住在", "中文", "英文");
     }
 
     private static String resolveSource(JsonNode existing, String fallback) {
@@ -254,29 +258,22 @@ public final class SemanticMemorySupport {
         if (content == null || content.isBlank()) {
             return "general";
         }
-        if (content.contains("技术栈") || content.contains("后端") || content.contains("前端")
-                || content.contains("框架") || content.contains("主要写")) {
+        if (containsAny(content, "技术栈", "后端", "前端", "框架", "主要写")) {
             return "stack";
         }
-        if (content.contains("我是") || content.contains("身份") || content.contains("职业")
-                || content.contains("担任") || content.contains("负责")) {
+        if (containsAny(content, "我是", "身份", "职业", "担任", "负责")) {
             return "identity";
         }
-        if (content.contains("我在") || content.contains("就职于") || content.contains("供职于")
-                || content.contains("公司") || content.contains("团队")) {
+        if (containsAny(content, "我在", "就职于", "供职于", "公司", "团队")) {
             return "organization";
         }
-        if (content.contains("我用") || content.contains("常用") || content.contains("主要用")
-                || content.contains("习惯用") || content.contains("使用")) {
+        if (containsAny(content, "我用", "常用", "主要用", "习惯用", "使用")) {
             return "tool";
         }
-        if (content.contains("住在") || content.contains("来自") || content.contains("在北京")
-                || content.contains("在上海") || content.contains("在深圳") || content.contains("在广州")
-                || content.contains("在杭州")) {
+        if (containsAny(content, "住在", "来自", "在北京", "在上海", "在深圳", "在广州", "在杭州")) {
             return "location";
         }
-        if (content.contains("中文") || content.contains("英文") || content.contains("日语")
-                || content.contains("英语")) {
+        if (containsAny(content, "中文", "英文", "日语", "英语")) {
             return "language";
         }
         return "general";
@@ -385,6 +382,19 @@ public final class SemanticMemorySupport {
             return "";
         }
         return value.startsWith(prefix) ? value.substring(prefix.length()) : value;
+    }
+
+    private static boolean containsAny(String value, String... keywords) {
+        if (value == null || value.isBlank()) {
+            return false;
+        }
+        String lowerValue = value.toLowerCase(Locale.ROOT);
+        for (String keyword : keywords) {
+            if (lowerValue.contains(keyword.toLowerCase(Locale.ROOT))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static JsonNode readTree(String json) {

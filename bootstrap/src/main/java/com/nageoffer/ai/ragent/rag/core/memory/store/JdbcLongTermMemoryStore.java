@@ -21,6 +21,7 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.nageoffer.ai.ragent.rag.config.MemoryProperties;
 import com.nageoffer.ai.ragent.rag.core.memory.model.MemoryItem;
 import com.nageoffer.ai.ragent.rag.core.memory.model.MemoryLayer;
+import com.nageoffer.ai.ragent.rag.core.memory.support.SemanticMemorySupport;
 import com.nageoffer.ai.ragent.rag.dao.entity.LongTermMemoryDO;
 import com.nageoffer.ai.ragent.rag.dao.mapper.LongTermMemoryMapper;
 import lombok.RequiredArgsConstructor;
@@ -100,7 +101,7 @@ public class JdbcLongTermMemoryStore implements LongTermMemoryStore {
         for (LongTermMemoryDO record : records) {
             byId.put(record.getId(), record);
         }
-        String category = queryMemoryCategory(query);
+        String category = SemanticMemorySupport.queryMemoryType(query);
         return ids.stream()
                 .map(byId::get)
                 .filter(java.util.Objects::nonNull)
@@ -192,43 +193,6 @@ public class JdbcLongTermMemoryStore implements LongTermMemoryStore {
         score += defaultDouble(item.getImportanceScore()) * 0.25D;
         score += defaultDouble(item.getConfidenceLevel()) * 0.15D;
         return score;
-    }
-
-    private String queryMemoryCategory(String query) {
-        if (query == null || query.isBlank()) {
-            return "";
-        }
-        if (containsAny(query, "待办", "todo", "后续")) {
-            return "TODO";
-        }
-        if (containsAny(query, "问题", "报错", "异常", "失败", "bug", "error")) {
-            return "ISSUE";
-        }
-        if (containsAny(query, "总结", "摘要", "概括")) {
-            return "SUMMARY";
-        }
-        if (containsAny(query, "偏好", "喜欢", "不喜欢", "讨厌")) {
-            return "PREFERENCE";
-        }
-        if (containsAny(query, "画像", "身份", "职业", "组织", "公司", "工具", "技术栈", "地点", "语言")) {
-            return "PROFILE";
-        }
-        if (containsAny(query, "事实", "信息", "记录", "情况")) {
-            return "FACT";
-        }
-        return "";
-    }
-
-    private boolean containsAny(String value, String... keywords) {
-        if (value == null) {
-            return false;
-        }
-        for (String keyword : keywords) {
-            if (value.toLowerCase(Locale.ROOT).contains(keyword.toLowerCase(Locale.ROOT))) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private String lower(String value) {
