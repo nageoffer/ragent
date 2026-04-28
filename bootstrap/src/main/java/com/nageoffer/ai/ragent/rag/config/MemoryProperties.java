@@ -81,6 +81,16 @@ public class MemoryProperties {
 
     private Boolean qualityAssessmentEnabled = true;
 
+    private String cleanupCron = "0 0/30 * * * ?";
+
+    @Min(5)
+    @Max(10080)
+    private Integer idleConsolidationMinutes = 30;
+
+    @Min(1)
+    @Max(500)
+    private Integer idleConsolidationBatchSize = 50;
+
     @Min(100)
     @Max(20000)
     private Integer maxMemoryTokenBudget = 1800;

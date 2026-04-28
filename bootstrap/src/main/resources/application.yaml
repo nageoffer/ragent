@@ -96,6 +96,9 @@ rag:
     long-term-importance-threshold: 0.6
     semantic-enabled: true
     quality-assessment-enabled: true
+    cleanup-cron: "0 0/30 * * * ?"
+    idle-consolidation-minutes: 30
+    idle-consolidation-batch-size: 50
     max-memory-token-budget: 1800
     working-memory-token-ratio: 0.4
     short-term-token-ratio: 0.3
