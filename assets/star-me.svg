@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 80" width="480" height="80">
+
+  <defs>
+    <!-- Shimmer gradient for golden text -->
+    <linearGradient id="shimmer" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#FFD700">
+        <animate attributeName="stop-color"
+          values="#FFD700;#FFF5B0;#FFD700" dur="2.5s" repeatCount="indefinite"/>
+      </stop>
+      <stop offset="45%" stop-color="#FFECB3">
+        <animate attributeName="stop-color"
+          values="#FFECB3;#FFD700;#FFECB3" dur="2.5s" repeatCount="indefinite"/>
+      </stop>
+      <stop offset="100%" stop-color="#FFD700">
+        <animate attributeName="stop-color"
+          values="#FFD700;#FFF5B0;#FFD700" dur="2.5s" begin="0.4s" repeatCount="indefinite"/>
+      </stop>
+    </linearGradient>
+
+    <!-- Subtle glow filter -->
+    <filter id="glow">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="1.2" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="480" height="80" rx="14" fill="#161b22"/>
+  <rect width="480" height="80" rx="14" fill="none" stroke="#30363d" stroke-width="1"/>
+
+  <!-- Star character -->
+  <g transform="translate(55, 40)">
+    <!-- Bounce -->
+    <g>
+      <animateTransform attributeName="transform" type="translate"
+        values="0,0; 0,-7; 0,0" dur="0.9s" repeatCount="indefinite"
+        calcMode="spline" keySplines="0.33,0,0.67,1; 0.33,0,0.67,1"/>
+      <!-- Wobble -->
+      <g>
+        <animateTransform attributeName="transform" type="rotate"
+          values="-6; 6; -6" dur="1.2s" repeatCount="indefinite"/>
+
+        <!-- Star body -->
+        <polygon
+          points="0,-22 6.5,-7.5 22,-7.5 10,3.5 14.5,20 0,11 -14.5,20 -10,3.5 -22,-7.5 -6.5,-7.5"
+          fill="#FFD700" stroke="#d4a800" stroke-width="0.5"/>
+
+        <!-- Left eye -->
+        <ellipse cx="-6" cy="-3" rx="4" ry="4.5" fill="white"/>
+        <circle cx="-6" cy="-3" r="2.2" fill="#1a1a1a">
+          <animate attributeName="cx" values="-7;-5;-7;-8;-5.5;-7" dur="2.5s" repeatCount="indefinite"/>
+          <animate attributeName="cy" values="-3;-4.5;-2;-3.5;-4;-3" dur="3s" repeatCount="indefinite"/>
+        </circle>
+
+        <!-- Right eye -->
+        <ellipse cx="6" cy="-3" rx="4" ry="4.5" fill="white"/>
+        <circle cx="6" cy="-3" r="2.2" fill="#1a1a1a">
+          <animate attributeName="cx" values="5;7;5;4;6.5;5" dur="2.5s" repeatCount="indefinite"/>
+          <animate attributeName="cy" values="-3;-4.5;-2;-3.5;-4;-3" dur="3s" repeatCount="indefinite"/>
+        </circle>
+
+        <!-- Smile -->
+        <path d="M-5,3 Q0,9 5,3" stroke="#b8860b" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+
+        <!-- Blush -->
+        <circle cx="-10" cy="1" r="2.5" fill="#ff9999" opacity="0.3"/>
+        <circle cx="10" cy="1" r="2.5" fill="#ff9999" opacity="0.3"/>
+      </g>
+    </g>
+  </g>
+
+  <!-- Sparkles around star -->
+  <circle cx="30" cy="15" r="2" fill="#FFD700">
+    <animate attributeName="opacity" values="0;1;0" dur="1.5s" repeatCount="indefinite"/>
+    <animate attributeName="r" values="1;2.5;1" dur="1.5s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="82" cy="22" r="1.5" fill="#FFC107">
+    <animate attributeName="opacity" values="0;0.8;0" dur="2s" begin="0.6s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="38" cy="66" r="1.5" fill="#FFE082">
+    <animate attributeName="opacity" values="0;0.9;0" dur="1.8s" begin="0.3s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="75" cy="62" r="1" fill="#fff">
+    <animate attributeName="opacity" values="0;0.7;0" dur="2.2s" begin="1s" repeatCount="indefinite"/>
+  </circle>
+
+  <!-- Decorative sparkle shapes near text -->
+  <path d="M460,18 L462,12 L464,18 L470,20 L464,22 L462,28 L460,22 L454,20 Z" fill="#FFD700" opacity="0.25">
+    <animate attributeName="opacity" values="0.1;0.5;0.1" dur="2s" begin="0.8s" repeatCount="indefinite"/>
+  </path>
+  <path d="M440,58 L441,54 L442,58 L446,59 L442,60 L441,64 L440,60 L436,59 Z" fill="#FFECB3" opacity="0.2">
+    <animate attributeName="opacity" values="0.1;0.45;0.1" dur="2.4s" begin="0.2s" repeatCount="indefinite"/>
+  </path>
+
+  <!-- Subtle separator line -->
+  <line x1="108" y1="42" x2="455" y2="42" stroke="#30363d" stroke-width="0.5" stroke-dasharray="2,5"/>
+
+  <!-- Text line 1 -->
+  <text x="108" y="33"
+    font-family="'SF Pro Text','PingFang SC','Helvetica Neue','Microsoft YaHei UI','Noto Sans SC',system-ui,sans-serif"
+    font-size="13" fill="#8b949e" letter-spacing="0.8" font-weight="400">
+    觉得有帮助的话
+  </text>
+
+  <!-- Text line 2 - shimmer gold with glow -->
+  <text x="108" y="60" filter="url(#glow)"
+    font-family="'SF Pro Display','PingFang SC','Helvetica Neue','Microsoft YaHei UI','Noto Sans SC',system-ui,sans-serif"
+    font-size="17" fill="url(#shimmer)" font-weight="700" letter-spacing="0.8">
+    顺手点个 Star 支持一下呗~
+  </text>
+
+</svg>
