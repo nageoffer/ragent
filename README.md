@@ -16,8 +16,7 @@
   <a href="https://github.com/nageoffer/ragent/network/members"><img alt="GitHub forks" src="https://img.shields.io/github/forks/nageoffer/ragent?style=flat-square&logo=github&color=2d6a8a" /></a>&nbsp;
   <a href="https://github.com/nageoffer/ragent/graphs/contributors"><img alt="Contributors" src="https://img.shields.io/github/contributors/nageoffer/ragent?style=flat-square&color=b56e7a" /></a>&nbsp;
   <a href="./LICENSE"><img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-4a9b8f?style=flat-square" /></a>
-  <img src="https://img.shields.io/badge/Java-17-ED8B00?style=flat-square&logo=openjdk&logoColor=white" />
-  <img src="https://img.shields.io/badge/Spring%20Boot-3.5-6DB33F?style=flat-square&logo=springboot&logoColor=white" />
+  <img src="https://img.shields.io/badge/Spring%20AI-2.0-6DB33F?style=flat-square&logo=springboot&logoColor=white" />
 </p>
 
 ## 什么是 Ragent AI？
@@ -25,9 +24,9 @@
 Ragent 是一个企业级 Agentic RAG 平台，覆盖从文档入库到智能问答的完整链路。
 
 - **多路检索**：多渠道并行检索，去重重排兼顾精准与召回。
-- **意图识别**：树形多级分类，置信度不足主动引导澄清而非硬猜，同时扩展模型、topK 等核心参数。
-- **模型引擎**：多模型调度、首包探测、健康检查、自动降级，模型故障不影响服务。
-- **MCP 工具集成**：非知识类意图自动提参调用业务工具，检索与工具无缝融合。
+- **意图识别**：树形多级分类，置信度不足主动引导澄清，扩展模型、提示词、topK 等核心参数。
+- **模型引擎**：模型调度、首包探测、健康检查、自动降级，模型故障不影响服务。
+- **MCP 集成**：非知识类意图自动提参调用业务工具，检索与工具无缝融合。
 - ……
 
 生产落地智能体会踩的坑，这里都有对应方案，一套经过真实场景锤炼的工程实践，系统补全 RAG / Agent / MCP 等知识，面试写进简历聊得起来。
