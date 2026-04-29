@@ -122,13 +122,17 @@ public class RAGSettingsController {
                 .chat(toModelGroup(props.getChat()))
                 .embedding(toModelGroup(props.getEmbedding()))
                 .rerank(toModelGroup(props.getRerank()))
-                .selection(props.getSelection() == null ? null : AISettings.Selection.builder()
-                        .failureThreshold(props.getSelection().getFailureThreshold())
-                        .openDurationMs(props.getSelection().getOpenDurationMs())
-                        .build())
-                .stream(props.getStream() == null ? null : AISettings.Stream.builder()
-                        .messageChunkSize(props.getStream().getMessageChunkSize())
-                        .build())
+                .selection(props.getSelection() == null
+                        ? null
+                        : AISettings.Selection.builder()
+                          .failureThreshold(props.getSelection().getFailureThreshold())
+                          .openDurationMs(props.getSelection().getOpenDurationMs())
+                          .build())
+                .stream(props.getStream() == null
+                        ? null
+                        : AISettings.Stream.builder()
+                          .messageChunkSize(props.getStream().getMessageChunkSize())
+                          .build())
                 .build();
     }
 
@@ -139,18 +143,20 @@ public class RAGSettingsController {
         return AISettings.ModelGroup.builder()
                 .defaultModel(group.getDefaultModel())
                 .deepThinkingModel(group.getDeepThinkingModel())
-                .candidates(group.getCandidates() == null ? null : group.getCandidates().stream()
-                        .map(c -> AISettings.ModelCandidate.builder()
-                                .id(c.getId())
-                                .provider(c.getProvider())
-                                .model(c.getModel())
-                                .url(c.getUrl())
-                                .dimension(c.getDimension())
-                                .priority(c.getPriority())
-                                .enabled(c.getEnabled())
-                                .supportsThinking(c.getSupportsThinking())
-                                .build())
-                        .collect(Collectors.toList()))
+                .candidates(group.getCandidates() == null
+                        ? null
+                        : group.getCandidates().stream()
+                          .map(c -> AISettings.ModelCandidate.builder()
+                                    .id(c.getId())
+                                    .provider(c.getProvider())
+                                    .model(c.getModel())
+                                    .url(c.getUrl())
+                                    .dimension(c.getDimension())
+                                    .priority(c.getPriority())
+                                    .enabled(c.getEnabled())
+                                    .supportsThinking(c.getSupportsThinking())
+                                    .build())
+                          .collect(Collectors.toList()))
                 .build();
     }
 

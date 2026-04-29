@@ -4,7 +4,14 @@ import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
+} from "@/components/ui/table";
 import type { SystemSettings } from "@/services/settingsService";
 import { getSystemSettings } from "@/services/settingsService";
 import { getErrorMessage } from "@/utils/error";
@@ -20,12 +27,6 @@ function InfoItem({ label, value }: { label: string; value: ReactNode }) {
       <div className="text-sm font-medium text-slate-800">{value}</div>
     </div>
   );
-}
-
-function maskApiKey(apiKey?: string | null): string {
-  if (!apiKey) return "-";
-  if (apiKey.length <= 10) return "******";
-  return `${apiKey.slice(0, 6)}***${apiKey.slice(-4)}`;
 }
 
 export function SystemSettingsPage() {
@@ -121,7 +122,10 @@ export function SystemSettingsPage() {
         <CardContent className="grid gap-4 md:grid-cols-3">
           <InfoItem label="History Keep Turns" value={rag.memory.historyKeepTurns} />
           <InfoItem label="Summary Start Turns" value={rag.memory.summaryStartTurns} />
-          <InfoItem label="Summary Enabled" value={<BoolBadge value={rag.memory.summaryEnabled} />} />
+          <InfoItem
+            label="Summary Enabled"
+            value={<BoolBadge value={rag.memory.summaryEnabled} />}
+          />
           <InfoItem label="Summary Max Chars" value={rag.memory.summaryMaxChars} />
           <InfoItem label="Title Max Length" value={rag.memory.titleMaxLength} />
         </CardContent>
@@ -147,7 +151,7 @@ export function SystemSettingsPage() {
                 <TableRow key={name}>
                   <TableCell className="font-medium">{name}</TableCell>
                   <TableCell>{provider.url}</TableCell>
-                  <TableCell>{maskApiKey(provider.apiKey)}</TableCell>
+                  <TableCell>{provider.apiKey ? provider.apiKey : "-"}</TableCell>
                   <TableCell>
                     <div className="space-y-1 text-xs text-muted-foreground">
                       {Object.entries(provider.endpoints).map(([key, value]) => (
