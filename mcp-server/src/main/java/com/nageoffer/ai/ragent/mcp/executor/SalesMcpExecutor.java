@@ -17,17 +17,19 @@
 
 package com.nageoffer.ai.ragent.mcp.executor;
 
-import com.nageoffer.ai.ragent.mcp.core.MCPToolDefinition;
-import com.nageoffer.ai.ragent.mcp.core.MCPToolExecutor;
-import com.nageoffer.ai.ragent.mcp.core.MCPToolRequest;
-import com.nageoffer.ai.ragent.mcp.core.MCPToolResponse;
+import io.modelcontextprotocol.server.McpServerFeatures;
+import io.modelcontextprotocol.spec.McpSchema.Tool;
+import io.modelcontextprotocol.spec.McpSchema.JsonSchema;
+import io.modelcontextprotocol.spec.McpSchema.TextContent;
+import io.modelcontextprotocol.spec.McpSchema.CallToolRequest;
+import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Bean;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -36,7 +38,9 @@ import java.util.stream.Collectors;
 
 @Slf4j
 @Component
-public class SalesMCPExecutor implements MCPToolExecutor {
+public class SalesMcpExecutor {
+
+    private static final String TOOL_ID = "sales_query";
 
     private static final List<String> REGIONS = List.of("华东", "华南", "华北", "西南", "西北");
     private static final List<String> PRODUCTS = List.of("企业版", "专业版", "基础版");
@@ -57,70 +61,72 @@ public class SalesMCPExecutor implements MCPToolExecutor {
     private List<SalesRecord> cachedData;
     private String cacheKey;
 
-    @Override
-    public MCPToolDefinition getToolDefinition() {
-        Map<String, MCPToolDefinition.ParameterDef> parameters = new LinkedHashMap<>();
+    @Bean
+    public McpServerFeatures.SyncToolSpecification salesToolSpecification() {
+        return new McpServerFeatures.SyncToolSpecification(buildTool(),
+                (exchange, request) -> handleCall(request));
+    }
 
-        parameters.put("region", MCPToolDefinition.ParameterDef.builder()
-                .description("地区筛选：华东、华南、华北、西南、西北，不填则查询全国")
-                .type("string")
-                .required(false)
-                .enumValues(List.of("华东", "华南", "华北", "西南", "西北"))
-                .build());
+    private Tool buildTool() {
+        Map<String, Object> properties = new LinkedHashMap<>();
 
-        parameters.put("period", MCPToolDefinition.ParameterDef.builder()
-                .description("时间段：本月、上月、本季度、上季度、本年，默认本月")
-                .type("string")
-                .required(false)
-                .defaultValue("本月")
-                .enumValues(List.of("本月", "上月", "本季度", "上季度", "本年"))
-                .build());
+        properties.put("region", Map.of(
+                "type", "string",
+                "description", "地区筛选：华东、华南、华北、西南、西北，不填则查询全国",
+                "enum", List.of("华东", "华南", "华北", "西南", "西北")
+        ));
 
-        parameters.put("product", MCPToolDefinition.ParameterDef.builder()
-                .description("产品筛选：企业版、专业版、基础版，不填则查询全部产品")
-                .type("string")
-                .required(false)
-                .enumValues(List.of("企业版", "专业版", "基础版"))
-                .build());
+        properties.put("period", Map.of(
+                "type", "string",
+                "description", "时间段：本月、上月、本季度、上季度、本年，默认本月",
+                "enum", List.of("本月", "上月", "本季度", "上季度", "本年"),
+                "default", "本月"
+        ));
 
-        parameters.put("salesPerson", MCPToolDefinition.ParameterDef.builder()
-                .description("销售人员姓名，不填则查询全部销售")
-                .type("string")
-                .required(false)
-                .build());
+        properties.put("product", Map.of(
+                "type", "string",
+                "description", "产品筛选：企业版、专业版、基础版，不填则查询全部产品",
+                "enum", List.of("企业版", "专业版", "基础版")
+        ));
 
-        parameters.put("queryType", MCPToolDefinition.ParameterDef.builder()
-                .description("查询类型：summary(汇总)、ranking(排名)、detail(明细)、trend(趋势)")
-                .type("string")
-                .required(false)
-                .defaultValue("summary")
-                .enumValues(List.of("summary", "ranking", "detail", "trend"))
-                .build());
+        properties.put("salesPerson", Map.of(
+                "type", "string",
+                "description", "销售人员姓名，不填则查询全部销售"
+        ));
 
-        parameters.put("limit", MCPToolDefinition.ParameterDef.builder()
-                .description("返回记录数限制，默认10")
-                .type("integer")
-                .required(false)
-                .defaultValue(10)
-                .build());
+        properties.put("queryType", Map.of(
+                "type", "string",
+                "description", "查询类型：summary(汇总)、ranking(排名)、detail(明细)、trend(趋势)",
+                "enum", List.of("summary", "ranking", "detail", "trend"),
+                "default", "summary"
+        ));
 
-        return MCPToolDefinition.builder()
-                .toolId("sales_query")
+        properties.put("limit", Map.of(
+                "type", "integer",
+                "description", "返回记录数限制，默认10",
+                "default", 10
+        ));
+
+        JsonSchema inputSchema = new JsonSchema(
+                "object", properties, List.of(), null, null, null);
+
+        return Tool.builder()
+                .name(TOOL_ID)
                 .description("查询软件销售数据，支持按地区、时间、产品、销售人员等维度筛选，支持汇总统计、排名、明细列表等多种查询")
-                .parameters(parameters)
-                .requireUserId(true)
+                .inputSchema(inputSchema)
                 .build();
     }
 
-    @Override
-    public MCPToolResponse execute(MCPToolRequest request) {
+    private CallToolResult handleCall(CallToolRequest request) {
+        long startMs = System.currentTimeMillis();
         try {
-            String region = request.getStringParameter("region");
-            String period = request.getStringParameter("period");
-            String product = request.getStringParameter("product");
-            String salesPerson = request.getStringParameter("salesPerson");
-            String queryType = request.getStringParameter("queryType");
-            Integer limit = request.getParameter("limit");
+            Map<String, Object> args = request.arguments() != null ? request.arguments() : Map.of();
+            String region = stringArg(args, "region");
+            String period = stringArg(args, "period");
+            String product = stringArg(args, "product");
+            String salesPerson = stringArg(args, "salesPerson");
+            String queryType = stringArg(args, "queryType");
+            Integer limit = intArg(args, "limit");
 
             if (period == null || period.isBlank()) period = "本月";
             if (queryType == null || queryType.isBlank()) queryType = "summary";
@@ -136,10 +142,13 @@ public class SalesMCPExecutor implements MCPToolExecutor {
                 default -> buildSummaryResult(filtered, region, period, product, salesPerson);
             };
 
-            return MCPToolResponse.success("sales_query", result);
+            log.info("MCP 工具调用完成, toolId={}, queryType={}, region={}, period={}, elapsed={}ms",
+                    TOOL_ID, queryType, region, period, System.currentTimeMillis() - startMs);
+            return successResult(result);
         } catch (Exception e) {
-            log.error("销售数据查询失败", e);
-            return MCPToolResponse.error("sales_query", "EXECUTION_ERROR", "查询失败: " + e.getMessage());
+            log.error("MCP 工具调用失败, toolId={}, elapsed={}ms",
+                    TOOL_ID, System.currentTimeMillis() - startMs, e);
+            return errorResult("查询失败: " + e.getMessage());
         }
     }
 
@@ -185,8 +194,9 @@ public class SalesMCPExecutor implements MCPToolExecutor {
         sb.append("【").append(period);
         if (region != null) sb.append(" ").append(region);
         sb.append(" 销售排名】\n\n");
-        if (ranking.isEmpty()) { sb.append("暂无销售数据"); }
-        else {
+        if (ranking.isEmpty()) {
+            sb.append("暂无销售数据");
+        } else {
             for (int i = 0; i < ranking.size(); i++) {
                 Map.Entry<String, Double> entry = ranking.get(i);
                 sb.append(String.format("第%d名: %s - ¥%.2f 万\n", i + 1, entry.getKey(), entry.getValue()));
@@ -219,13 +229,11 @@ public class SalesMCPExecutor implements MCPToolExecutor {
         sb.append("【").append(period);
         if (region != null) sb.append(" ").append(region);
         sb.append(" 销售趋势】\n\n");
-        if (byWeek.isEmpty()) { sb.append("暂无数据"); }
-        else {
-            double total = byWeek.values().stream().mapToDouble(d -> d).sum();
-            byWeek.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(e -> {
-                int bars = (int) (e.getValue() / total * 20);
-                sb.append(String.format("%s: ¥%.2f 万\n", e.getKey(), e.getValue()));
-            });
+        if (byWeek.isEmpty()) {
+            sb.append("暂无数据");
+        } else {
+            byWeek.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(e ->
+                    sb.append(String.format("%s: ¥%.2f 万\n", e.getKey(), e.getValue())));
         }
         return sb.toString().trim();
     }
@@ -293,6 +301,31 @@ public class SalesMCPExecutor implements MCPToolExecutor {
         return records;
     }
 
+    private static String stringArg(Map<String, Object> args, String key) {
+        Object val = args.get(key);
+        return val != null ? val.toString() : null;
+    }
+
+    private static Integer intArg(Map<String, Object> args, String key) {
+        Object val = args.get(key);
+        if (val instanceof Number n) return n.intValue();
+        return null;
+    }
+
+    private static CallToolResult successResult(String text) {
+        return CallToolResult.builder()
+                .content(List.of(new TextContent(text)))
+                .isError(false)
+                .build();
+    }
+
+    private static CallToolResult errorResult(String message) {
+        return CallToolResult.builder()
+                .content(List.of(new TextContent(message)))
+                .isError(true)
+                .build();
+    }
+
     private static class SalesRecord {
         String region;
         String salesPerson;
@@ -300,15 +333,5 @@ public class SalesMCPExecutor implements MCPToolExecutor {
         String customer;
         double amount;
         String date;
-        Map<String, Object> toMap() {
-            Map<String, Object> map = new HashMap<>();
-            map.put("region", region);
-            map.put("salesPerson", salesPerson);
-            map.put("product", product);
-            map.put("customer", customer);
-            map.put("amount", amount);
-            map.put("date", date);
-            return map;
-        }
     }
 }

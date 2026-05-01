@@ -17,11 +17,14 @@
 
 package com.nageoffer.ai.ragent.mcp.executor;
 
-import com.nageoffer.ai.ragent.mcp.core.MCPToolDefinition;
-import com.nageoffer.ai.ragent.mcp.core.MCPToolExecutor;
-import com.nageoffer.ai.ragent.mcp.core.MCPToolRequest;
-import com.nageoffer.ai.ragent.mcp.core.MCPToolResponse;
+import io.modelcontextprotocol.server.McpServerFeatures;
+import io.modelcontextprotocol.spec.McpSchema.Tool;
+import io.modelcontextprotocol.spec.McpSchema.JsonSchema;
+import io.modelcontextprotocol.spec.McpSchema.TextContent;
+import io.modelcontextprotocol.spec.McpSchema.CallToolRequest;
+import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Bean;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
@@ -33,7 +36,7 @@ import java.util.Random;
 
 @Slf4j
 @Component
-public class WeatherMCPExecutor implements MCPToolExecutor {
+public class WeatherMcpExecutor {
 
     private static final String TOOL_ID = "weather_query";
 
@@ -67,56 +70,60 @@ public class WeatherMCPExecutor implements MCPToolExecutor {
     private static final List<String> WEATHER_TYPES_AUTUMN = List.of("晴", "多云", "阴", "小雨", "晴转多云", "多云转晴");
     private static final List<String> WEATHER_TYPES_WINTER = List.of("晴", "多云", "阴", "小雪", "中雪", "晴转多云", "雾");
 
-    @Override
-    public MCPToolDefinition getToolDefinition() {
-        Map<String, MCPToolDefinition.ParameterDef> parameters = new LinkedHashMap<>();
+    @Bean
+    public McpServerFeatures.SyncToolSpecification weatherToolSpecification() {
+        return new McpServerFeatures.SyncToolSpecification(buildTool(),
+                (exchange, request) -> handleCall(request));
+    }
 
-        parameters.put("city", MCPToolDefinition.ParameterDef.builder()
-                .description("城市名称，如北京、上海、广州等")
-                .type("string")
-                .required(true)
-                .build());
+    private Tool buildTool() {
+        Map<String, Object> properties = new LinkedHashMap<>();
 
-        parameters.put("queryType", MCPToolDefinition.ParameterDef.builder()
-                .description("查询类型：current(当前天气)、forecast(未来预报)")
-                .type("string")
-                .required(false)
-                .defaultValue("current")
-                .enumValues(List.of("current", "forecast"))
-                .build());
+        properties.put("city", Map.of(
+                "type", "string",
+                "description", "城市名称，如北京、上海、广州等"
+        ));
 
-        parameters.put("days", MCPToolDefinition.ParameterDef.builder()
-                .description("预报天数，仅forecast模式有效，默认3天，最多7天")
-                .type("integer")
-                .required(false)
-                .defaultValue(3)
-                .build());
+        properties.put("queryType", Map.of(
+                "type", "string",
+                "description", "查询类型：current(当前天气)、forecast(未来预报)",
+                "enum", List.of("current", "forecast"),
+                "default", "current"
+        ));
 
-        return MCPToolDefinition.builder()
-                .toolId(TOOL_ID)
+        properties.put("days", Map.of(
+                "type", "integer",
+                "description", "预报天数，仅forecast模式有效，默认3天，最多7天",
+                "default", 3
+        ));
+
+        JsonSchema inputSchema = new JsonSchema(
+                "object", properties, List.of("city"), null, null, null);
+
+        return Tool.builder()
+                .name(TOOL_ID)
                 .description("查询城市天气信息，支持查看当前实时天气和未来多天天气预报，包含温度、湿度、风力、天气状况等信息")
-                .parameters(parameters)
-                .requireUserId(false)
+                .inputSchema(inputSchema)
                 .build();
     }
 
-    @Override
-    public MCPToolResponse execute(MCPToolRequest request) {
+    private CallToolResult handleCall(CallToolRequest request) {
+        long startMs = System.currentTimeMillis();
         try {
-            String city = request.getStringParameter("city");
-            String queryType = request.getStringParameter("queryType");
-            Integer days = request.getParameter("days");
+            Map<String, Object> args = request.arguments() != null ? request.arguments() : Map.of();
+            String city = stringArg(args, "city");
+            String queryType = stringArg(args, "queryType");
+            Integer days = intArg(args, "days");
 
             if (city == null || city.isBlank()) {
-                return MCPToolResponse.error(TOOL_ID, "INVALID_PARAMS", "请提供城市名称");
+                return errorResult("请提供城市名称");
             }
             if (queryType == null || queryType.isBlank()) queryType = "current";
             if (days == null || days <= 0) days = 3;
             if (days > 7) days = 7;
 
             if (!CITY_COORDINATES.containsKey(city)) {
-                return MCPToolResponse.error(TOOL_ID, "CITY_NOT_FOUND",
-                        "暂不支持查询该城市，当前支持：" + String.join("、", CITY_COORDINATES.keySet()));
+                return errorResult("暂不支持查询该城市，当前支持：" + String.join("、", CITY_COORDINATES.keySet()));
             }
 
             String result = switch (queryType) {
@@ -124,10 +131,13 @@ public class WeatherMCPExecutor implements MCPToolExecutor {
                 default -> buildCurrentResult(city);
             };
 
-            return MCPToolResponse.success(TOOL_ID, result);
+            log.info("MCP 工具调用完成, toolId={}, city={}, queryType={}, elapsed={}ms",
+                    TOOL_ID, city, queryType, System.currentTimeMillis() - startMs);
+            return successResult(result);
         } catch (Exception e) {
-            log.error("天气数据查询失败", e);
-            return MCPToolResponse.error(TOOL_ID, "EXECUTION_ERROR", "查询失败: " + e.getMessage());
+            log.error("MCP 工具调用失败, toolId={}, elapsed={}ms",
+                    TOOL_ID, System.currentTimeMillis() - startMs, e);
+            return errorResult("查询失败: " + e.getMessage());
         }
     }
 
@@ -246,6 +256,31 @@ public class WeatherMCPExecutor implements MCPToolExecutor {
         data.windLevel = windLevel;
         data.airQuality = airQuality;
         return data;
+    }
+
+    private static String stringArg(Map<String, Object> args, String key) {
+        Object val = args.get(key);
+        return val != null ? val.toString() : null;
+    }
+
+    private static Integer intArg(Map<String, Object> args, String key) {
+        Object val = args.get(key);
+        if (val instanceof Number n) return n.intValue();
+        return null;
+    }
+
+    private static CallToolResult successResult(String text) {
+        return CallToolResult.builder()
+                .content(List.of(new TextContent(text)))
+                .isError(false)
+                .build();
+    }
+
+    private static CallToolResult errorResult(String message) {
+        return CallToolResult.builder()
+                .content(List.of(new TextContent(message)))
+                .isError(true)
+                .build();
     }
 
     private static class WeatherData {

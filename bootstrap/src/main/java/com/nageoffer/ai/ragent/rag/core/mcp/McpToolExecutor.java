@@ -15,18 +15,37 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.mcp;
+package com.nageoffer.ai.ragent.rag.core.mcp;
 
-import org.springframework.boot.SpringApplication;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
+import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
+import io.modelcontextprotocol.spec.McpSchema.Tool;
+
+import java.util.Map;
 
 /**
- * MCP Server 启动类
+ * MCP 工具执行器接口
  */
-@SpringBootApplication
-public class MCPServerApplication {
+public interface McpToolExecutor {
 
-    public static void main(String[] args) {
-        SpringApplication.run(MCPServerApplication.class, args);
+    /**
+     * 获取工具定义
+     *
+     * @return 工具元信息（使用官方 SDK 的 Tool）
+     */
+    Tool getToolDefinition();
+
+    /**
+     * 执行工具调用
+     *
+     * @param parameters 调用参数
+     * @return 工具调用结果（使用官方 SDK 的 CallToolResult）
+     */
+    CallToolResult execute(Map<String, Object> parameters);
+
+    /**
+     * 工具 ID（快捷方法）
+     */
+    default String getToolId() {
+        return getToolDefinition().name();
     }
 }

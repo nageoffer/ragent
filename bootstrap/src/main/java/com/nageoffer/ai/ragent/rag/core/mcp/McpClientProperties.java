@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.rag.core.mcp.client;
+package com.nageoffer.ai.ragent.rag.core.mcp;
 
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -28,7 +28,7 @@ import java.util.List;
  */
 @Data
 @ConfigurationProperties(prefix = "rag.mcp")
-public class MCPClientProperties {
+public class McpClientProperties {
 
     /**
      * MCP Server 列表

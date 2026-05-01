@@ -53,31 +53,6 @@ public class RAGConstant {
     public static final int MAX_INTENT_COUNT = 3;
 
     /**
-     * Rerank 分数过滤的边际比率（相对于最高分）
-     */
-    public static final double SCORE_MARGIN_RATIO = 0.75;
-
-    /**
-     * 默认返回的 TopK
-     */
-    public static final int DEFAULT_TOP_K = 10;
-
-    /**
-     * 检索时的 TopK 扩展倍数
-     */
-    public static final int SEARCH_TOP_K_MULTIPLIER = 3;
-
-    /**
-     * 检索时的最小 TopK
-     */
-    public static final int MIN_SEARCH_TOP_K = 20;
-
-    /**
-     * Rerank 限制倍数
-     */
-    public static final int RERANK_LIMIT_MULTIPLIER = 2;
-
-    /**
      * 多通道检索占位符键
      * <p>
      * 当没有意图识别结果时，使用此键作为 intentChunks Map 的占位符
@@ -139,6 +114,12 @@ public class RAGConstant {
      * 用于从用户问题中提取工具调用参数
      */
     public static final String MCP_PARAMETER_EXTRACT_PROMPT_PATH = "prompt/mcp-parameter-extract.st";
+
+    /**
+     * MCP 工具参数提取用户消息提示词模板路径
+     * 用于构建包含工具定义和用户问题的用户消息，通过 {@code {tool_definition}} 和 {@code {user_question}} 占位符注入内容
+     */
+    public static final String MCP_PARAMETER_EXTRACT_USER_PROMPT_PATH = "prompt/mcp-parameter-extract-user.st";
 
     /**
      * MCP-only 场景提示词模板路径

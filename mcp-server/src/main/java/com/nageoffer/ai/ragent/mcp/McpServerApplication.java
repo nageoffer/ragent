@@ -15,42 +15,18 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.mcp.protocol;
+package com.nageoffer.ai.ragent.mcp;
 
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 /**
- * JSON-RPC 2.0 错误对象
+ * MCP Server 启动类
  */
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-public class JsonRpcError {
+@SpringBootApplication
+public class McpServerApplication {
 
-    /**
-     * 方法不存在
-     */
-    public static final int METHOD_NOT_FOUND = -32601;
-
-    /**
-     * 参数非法
-     */
-    public static final int INVALID_PARAMS = -32602;
-
-    /**
-     * 服务器内部错误
-     */
-    public static final int INTERNAL_ERROR = -32603;
-
-    /**
-     * 错误码
-     */
-    private Integer code;
-
-    /**
-     * 错误消息
-     */
-    private String message;
+    public static void main(String[] args) {
+        SpringApplication.run(McpServerApplication.class, args);
+    }
 }

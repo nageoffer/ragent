@@ -17,11 +17,14 @@
 
 package com.nageoffer.ai.ragent.mcp.executor;
 
-import com.nageoffer.ai.ragent.mcp.core.MCPToolDefinition;
-import com.nageoffer.ai.ragent.mcp.core.MCPToolExecutor;
-import com.nageoffer.ai.ragent.mcp.core.MCPToolRequest;
-import com.nageoffer.ai.ragent.mcp.core.MCPToolResponse;
+import io.modelcontextprotocol.server.McpServerFeatures;
+import io.modelcontextprotocol.spec.McpSchema.Tool;
+import io.modelcontextprotocol.spec.McpSchema.JsonSchema;
+import io.modelcontextprotocol.spec.McpSchema.TextContent;
+import io.modelcontextprotocol.spec.McpSchema.CallToolRequest;
+import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Bean;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
@@ -35,13 +38,17 @@ import java.util.stream.Collectors;
 
 @Slf4j
 @Component
-public class TicketMCPExecutor implements MCPToolExecutor {
+public class TicketMcpExecutor {
 
     private static final String TOOL_ID = "ticket_query";
 
     private static final List<String> REGIONS = List.of("华东", "华南", "华北", "西南", "西北");
     private static final List<String> PRODUCTS = List.of("企业版", "专业版", "基础版");
-    private static final List<String> STATUSES = List.of("待处理", "处理中", "已解决", "已关闭");
+    private static final String STATUS_PENDING = "待处理";
+    private static final String STATUS_IN_PROGRESS = "处理中";
+    private static final String STATUS_RESOLVED = "已解决";
+    private static final String STATUS_CLOSED = "已关闭";
+    private static final List<String> STATUSES = List.of(STATUS_PENDING, STATUS_IN_PROGRESS, STATUS_RESOLVED, STATUS_CLOSED);
     private static final List<String> PRIORITIES = List.of("紧急", "高", "中", "低");
     private static final List<String> CATEGORIES = List.of("功能异常", "性能问题", "安装部署", "使用咨询", "数据问题", "权限问题");
 
@@ -82,77 +89,78 @@ public class TicketMCPExecutor implements MCPToolExecutor {
     private List<TicketRecord> cachedData;
     private String cacheKey;
 
-    @Override
-    public MCPToolDefinition getToolDefinition() {
-        Map<String, MCPToolDefinition.ParameterDef> parameters = new LinkedHashMap<>();
+    @Bean
+    public McpServerFeatures.SyncToolSpecification ticketToolSpecification() {
+        return new McpServerFeatures.SyncToolSpecification(buildTool(),
+                (exchange, request) -> handleCall(request));
+    }
 
-        parameters.put("region", MCPToolDefinition.ParameterDef.builder()
-                .description("地区筛选：华东、华南、华北、西南、西北，不填则查询全国")
-                .type("string")
-                .required(false)
-                .enumValues(List.of("华东", "华南", "华北", "西南", "西北"))
-                .build());
+    private Tool buildTool() {
+        Map<String, Object> properties = new LinkedHashMap<>();
 
-        parameters.put("status", MCPToolDefinition.ParameterDef.builder()
-                .description("工单状态筛选：待处理、处理中、已解决、已关闭，不填则查询全部状态")
-                .type("string")
-                .required(false)
-                .enumValues(List.of("待处理", "处理中", "已解决", "已关闭"))
-                .build());
+        properties.put("region", Map.of(
+                "type", "string",
+                "description", "地区筛选：华东、华南、华北、西南、西北，不填则查询全国",
+                "enum", List.of("华东", "华南", "华北", "西南", "西北")
+        ));
 
-        parameters.put("priority", MCPToolDefinition.ParameterDef.builder()
-                .description("优先级筛选：紧急、高、中、低，不填则查询全部优先级")
-                .type("string")
-                .required(false)
-                .enumValues(List.of("紧急", "高", "中", "低"))
-                .build());
+        properties.put("status", Map.of(
+                "type", "string",
+                "description", "工单状态筛选：待处理、处理中、已解决、已关闭，不填则查询全部状态",
+                "enum", STATUSES
+        ));
 
-        parameters.put("product", MCPToolDefinition.ParameterDef.builder()
-                .description("产品筛选：企业版、专业版、基础版，不填则查询全部产品")
-                .type("string")
-                .required(false)
-                .enumValues(List.of("企业版", "专业版", "基础版"))
-                .build());
+        properties.put("priority", Map.of(
+                "type", "string",
+                "description", "优先级筛选：紧急、高、中、低，不填则查询全部优先级",
+                "enum", List.of("紧急", "高", "中", "低")
+        ));
 
-        parameters.put("customerName", MCPToolDefinition.ParameterDef.builder()
-                .description("客户名称关键字，支持模糊匹配")
-                .type("string")
-                .required(false)
-                .build());
+        properties.put("product", Map.of(
+                "type", "string",
+                "description", "产品筛选：企业版、专业版、基础版，不填则查询全部产品",
+                "enum", List.of("企业版", "专业版", "基础版")
+        ));
 
-        parameters.put("queryType", MCPToolDefinition.ParameterDef.builder()
-                .description("查询类型：summary(汇总概览)、list(工单列表)、stats(统计分析)")
-                .type("string")
-                .required(false)
-                .defaultValue("summary")
-                .enumValues(List.of("summary", "list", "stats"))
-                .build());
+        properties.put("customerName", Map.of(
+                "type", "string",
+                "description", "客户名称关键字，支持模糊匹配"
+        ));
 
-        parameters.put("limit", MCPToolDefinition.ParameterDef.builder()
-                .description("返回记录数限制，默认10")
-                .type("integer")
-                .required(false)
-                .defaultValue(10)
-                .build());
+        properties.put("queryType", Map.of(
+                "type", "string",
+                "description", "查询类型：summary(汇总概览)、list(工单列表)、stats(统计分析)",
+                "enum", List.of("summary", "list", "stats"),
+                "default", "summary"
+        ));
 
-        return MCPToolDefinition.builder()
-                .toolId(TOOL_ID)
+        properties.put("limit", Map.of(
+                "type", "integer",
+                "description", "返回记录数限制，默认10",
+                "default", 10
+        ));
+
+        JsonSchema inputSchema = new JsonSchema(
+                "object", properties, List.of(), null, null, null);
+
+        return Tool.builder()
+                .name(TOOL_ID)
                 .description("查询客户技术支持工单数据，支持按地区、状态、优先级、产品、客户等维度筛选，支持汇总概览、工单列表、统计分析等多种查询")
-                .parameters(parameters)
-                .requireUserId(true)
+                .inputSchema(inputSchema)
                 .build();
     }
 
-    @Override
-    public MCPToolResponse execute(MCPToolRequest request) {
+    private CallToolResult handleCall(CallToolRequest request) {
+        long startMs = System.currentTimeMillis();
         try {
-            String region = request.getStringParameter("region");
-            String status = request.getStringParameter("status");
-            String priority = request.getStringParameter("priority");
-            String product = request.getStringParameter("product");
-            String customerName = request.getStringParameter("customerName");
-            String queryType = request.getStringParameter("queryType");
-            Integer limit = request.getParameter("limit");
+            Map<String, Object> args = request.arguments() != null ? request.arguments() : Map.of();
+            String region = stringArg(args, "region");
+            String status = stringArg(args, "status");
+            String priority = stringArg(args, "priority");
+            String product = stringArg(args, "product");
+            String customerName = stringArg(args, "customerName");
+            String queryType = stringArg(args, "queryType");
+            Integer limit = intArg(args, "limit");
 
             if (queryType == null || queryType.isBlank()) queryType = "summary";
             if (limit == null || limit <= 0) limit = 10;
@@ -166,20 +174,23 @@ public class TicketMCPExecutor implements MCPToolExecutor {
                 default -> buildSummaryResult(filtered, region, status, priority, product);
             };
 
-            return MCPToolResponse.success(TOOL_ID, result);
+            log.info("MCP 工具调用完成, toolId={}, queryType={}, region={}, status={}, elapsed={}ms",
+                    TOOL_ID, queryType, region, status, System.currentTimeMillis() - startMs);
+            return successResult(result);
         } catch (Exception e) {
-            log.error("工单数据查询失败", e);
-            return MCPToolResponse.error(TOOL_ID, "EXECUTION_ERROR", "查询失败: " + e.getMessage());
+            log.error("MCP 工具调用失败, toolId={}, elapsed={}ms",
+                    TOOL_ID, System.currentTimeMillis() - startMs, e);
+            return errorResult("查询失败: " + e.getMessage());
         }
     }
 
     private String buildSummaryResult(List<TicketRecord> data, String region, String status,
-                                       String priority, String product) {
+                                      String priority, String product) {
         int total = data.size();
-        long pending = data.stream().filter(t -> "待处理".equals(t.status)).count();
-        long inProgress = data.stream().filter(t -> "处理中".equals(t.status)).count();
-        long resolved = data.stream().filter(t -> "已解决".equals(t.status)).count();
-        long closed = data.stream().filter(t -> "已关闭".equals(t.status)).count();
+        long pending = data.stream().filter(t -> STATUS_PENDING.equals(t.status)).count();
+        long inProgress = data.stream().filter(t -> STATUS_IN_PROGRESS.equals(t.status)).count();
+        long resolved = data.stream().filter(t -> STATUS_RESOLVED.equals(t.status)).count();
+        long closed = data.stream().filter(t -> STATUS_CLOSED.equals(t.status)).count();
         long urgent = data.stream().filter(t -> "紧急".equals(t.priority)).count();
         long high = data.stream().filter(t -> "高".equals(t.priority)).count();
 
@@ -277,14 +288,14 @@ public class TicketMCPExecutor implements MCPToolExecutor {
                 .collect(Collectors.groupingBy(t -> t.product));
         byProduct.forEach((product, tickets) -> {
             long resolvedCount = tickets.stream()
-                    .filter(t -> "已解决".equals(t.status) || "已关闭".equals(t.status)).count();
+                    .filter(t -> STATUS_RESOLVED.equals(t.status) || STATUS_CLOSED.equals(t.status)).count();
             sb.append(String.format("  %s: %.1f%% (%d/%d)\n",
                     product, resolvedCount * 100.0 / tickets.size(), resolvedCount, tickets.size()));
         });
 
         sb.append("\n【处理人工单量排名】\n");
         Map<String, Long> byEngineer = data.stream()
-                .filter(t -> "待处理".equals(t.status) || "处理中".equals(t.status))
+                .filter(t -> STATUS_PENDING.equals(t.status) || STATUS_IN_PROGRESS.equals(t.status))
                 .collect(Collectors.groupingBy(t -> t.engineer, Collectors.counting()));
         byEngineer.entrySet().stream()
                 .sorted((a, b) -> Long.compare(b.getValue(), a.getValue()))
@@ -295,7 +306,7 @@ public class TicketMCPExecutor implements MCPToolExecutor {
     }
 
     private List<TicketRecord> filterData(List<TicketRecord> data, String region, String status,
-                                           String priority, String product, String customerName) {
+                                          String priority, String product, String customerName) {
         return data.stream()
                 .filter(t -> region == null || region.equals(t.region))
                 .filter(t -> status == null || status.equals(t.status))
@@ -342,25 +353,50 @@ public class TicketMCPExecutor implements MCPToolExecutor {
                 else ticket.priority = "低";
 
                 if (d > 7) {
-                    ticket.status = random.nextInt(100) < 80 ? "已关闭" : "已解决";
+                    ticket.status = random.nextInt(100) < 80 ? STATUS_CLOSED : STATUS_RESOLVED;
                 } else if (d > 3) {
                     int statusWeight = random.nextInt(100);
-                    if (statusWeight < 30) ticket.status = "已解决";
-                    else if (statusWeight < 60) ticket.status = "已关闭";
-                    else if (statusWeight < 85) ticket.status = "处理中";
-                    else ticket.status = "待处理";
+                    if (statusWeight < 30) ticket.status = STATUS_RESOLVED;
+                    else if (statusWeight < 60) ticket.status = STATUS_CLOSED;
+                    else if (statusWeight < 85) ticket.status = STATUS_IN_PROGRESS;
+                    else ticket.status = STATUS_PENDING;
                 } else {
                     int statusWeight = random.nextInt(100);
-                    if (statusWeight < 35) ticket.status = "待处理";
-                    else if (statusWeight < 70) ticket.status = "处理中";
-                    else if (statusWeight < 90) ticket.status = "已解决";
-                    else ticket.status = "已关闭";
+                    if (statusWeight < 35) ticket.status = STATUS_PENDING;
+                    else if (statusWeight < 70) ticket.status = STATUS_IN_PROGRESS;
+                    else if (statusWeight < 90) ticket.status = STATUS_RESOLVED;
+                    else ticket.status = STATUS_CLOSED;
                 }
 
                 records.add(ticket);
             }
         }
         return records;
+    }
+
+    private static String stringArg(Map<String, Object> args, String key) {
+        Object val = args.get(key);
+        return val != null ? val.toString() : null;
+    }
+
+    private static Integer intArg(Map<String, Object> args, String key) {
+        Object val = args.get(key);
+        if (val instanceof Number n) return n.intValue();
+        return null;
+    }
+
+    private static CallToolResult successResult(String text) {
+        return CallToolResult.builder()
+                .content(List.of(new TextContent(text)))
+                .isError(false)
+                .build();
+    }
+
+    private static CallToolResult errorResult(String message) {
+        return CallToolResult.builder()
+                .content(List.of(new TextContent(message)))
+                .isError(true)
+                .build();
     }
 
     private static class TicketRecord {

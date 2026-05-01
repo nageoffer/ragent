@@ -15,79 +15,94 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.rag.core.mcp.client;
+package com.nageoffer.ai.ragent.rag.core.mcp;
 
-import com.nageoffer.ai.ragent.rag.core.mcp.MCPTool;
-import com.nageoffer.ai.ragent.rag.core.mcp.MCPToolRegistry;
+import cn.hutool.core.collection.CollUtil;
+import io.modelcontextprotocol.client.McpClient;
+import io.modelcontextprotocol.client.McpSyncClient;
+import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
+import io.modelcontextprotocol.spec.McpSchema.Tool;
+import io.modelcontextprotocol.spec.McpSchema.Implementation;
+import io.modelcontextprotocol.spec.McpSchema.ListToolsResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import okhttp3.OkHttpClient;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 
 import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
+
+import java.util.ArrayList;
 import java.util.List;
 
 /**
  * MCP 客户端自动配置
- * 根据配置的 MCP Server 列表，自动创建 MCPClient 并注册远程工具到 MCPToolRegistry
  */
 @Slf4j
 @Configuration
 @RequiredArgsConstructor
-@EnableConfigurationProperties(MCPClientProperties.class)
-public class MCPClientAutoConfiguration {
+@EnableConfigurationProperties(McpClientProperties.class)
+public class McpClientAutoConfiguration {
 
-    private final MCPClientProperties properties;
-    @Qualifier("syncHttpClient")
-    private final OkHttpClient okHttpClient;
-    private final MCPToolRegistry toolRegistry;
+    private final McpClientProperties properties;
+    private final McpToolRegistry toolRegistry;
+
+    private final List<McpSyncClient> clients = new ArrayList<>();
 
     @PostConstruct
     public void init() {
-        List<MCPClientProperties.ServerConfig> servers = properties.getServers();
+        List<McpClientProperties.ServerConfig> servers = properties.getServers();
         if (servers == null || servers.isEmpty()) {
             log.info("未配置 MCP Server，跳过远程工具注册");
             return;
         }
 
-        for (MCPClientProperties.ServerConfig server : servers) {
+        for (McpClientProperties.ServerConfig server : servers) {
             registerRemoteTools(server);
         }
     }
 
-    private void registerRemoteTools(MCPClientProperties.ServerConfig server) {
+    private void registerRemoteTools(McpClientProperties.ServerConfig server) {
         String serverName = server.getName();
         String serverUrl = server.getUrl();
         log.info("连接 MCP Server: name={}, url={}", serverName, serverUrl);
 
         try {
-            HttpMCPClient mcpClient = new HttpMCPClient(okHttpClient, serverUrl);
+            String mcpUrl = serverUrl.endsWith("/mcp") ? serverUrl : serverUrl + "/mcp";
+            HttpClientStreamableHttpTransport transport =
+                    HttpClientStreamableHttpTransport.builder(mcpUrl).build();
 
-            // 初始化连接
-            boolean initialized = mcpClient.initialize();
-            if (!initialized) {
-                log.error("MCP Server [{}] 初始化失败，跳过工具注册", serverName);
-                return;
-            }
+            McpSyncClient client = McpClient.sync(transport)
+                    .clientInfo(new Implementation("ragent-bootstrap", "1.0.0"))
+                    .build();
+            client.initialize();
+            clients.add(client);
 
-            // 获取远程工具列表
-            List<MCPTool> tools = mcpClient.listTools();
-            if (tools.isEmpty()) {
+            ListToolsResult result = client.listTools();
+            List<Tool> tools = result.tools();
+            if (CollUtil.isEmpty(tools)) {
                 log.info("MCP Server [{}] 未发现可用工具，跳过工具注册", serverName);
                 return;
             }
             log.info("MCP Server [{}] 返回 {} 个工具", serverName, tools.size());
 
-            // 为每个远程工具创建 RemoteMCPToolExecutor 并注册
-            for (MCPTool tool : tools) {
-                RemoteMCPToolExecutor executor = new RemoteMCPToolExecutor(mcpClient, tool);
+            for (Tool tool : tools) {
+                McpClientToolExecutor executor = new McpClientToolExecutor(client, tool);
                 toolRegistry.register(executor);
-                log.info("注册远程 MCP 工具: toolId={}, server={}", tool.getToolId(), serverName);
             }
         } catch (Exception e) {
             log.error("连接 MCP Server [{}] 失败，跳过工具注册，reason={}", serverName, e.getMessage());
+        }
+    }
+
+    @PreDestroy
+    public void destroy() {
+        for (McpSyncClient client : clients) {
+            try {
+                client.close();
+            } catch (Exception e) {
+                log.warn("关闭 MCP 客户端失败", e);
+            }
         }
     }
 }

@@ -29,6 +29,8 @@ import com.nageoffer.ai.ragent.framework.convention.ChatRequest;
 import com.nageoffer.ai.ragent.infra.chat.LLMService;
 import com.nageoffer.ai.ragent.infra.util.LLMResponseCleaner;
 import com.nageoffer.ai.ragent.rag.core.prompt.PromptTemplateLoader;
+import io.modelcontextprotocol.spec.McpSchema.JsonSchema;
+import io.modelcontextprotocol.spec.McpSchema.Tool;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -39,8 +41,11 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.MCP_PARAMETER_EXTRACT_PROMPT_PATH;
+import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.MCP_PARAMETER_EXTRACT_USER_PROMPT_PATH;
 
 /**
  * 基于 LLM 的 MCP 参数提取器实现
@@ -48,32 +53,35 @@ import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.MCP_PARAMETER_EXT
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class LLMMCPParameterExtractor implements MCPParameterExtractor {
+public class LLMMcpParameterExtractor implements McpParameterExtractor {
 
     private final LLMService llmService;
     private final PromptTemplateLoader promptTemplateLoader;
     private final Gson gson = new Gson();
 
     @Override
-    public Map<String, Object> extractParameters(String userQuestion, MCPTool tool) {
+    public Map<String, Object> extractParameters(String userQuestion, Tool tool) {
         return extractParameters(userQuestion, tool, null);
     }
 
     @Override
-    public Map<String, Object> extractParameters(String userQuestion, MCPTool tool, String customPromptTemplate) {
-        if (tool == null || CollUtil.isEmpty(tool.getParameters())) {
+    public Map<String, Object> extractParameters(String userQuestion, Tool tool, String customPromptTemplate) {
+        if (tool == null || tool.inputSchema() == null || CollUtil.isEmpty(tool.inputSchema().properties())) {
             return Collections.emptyMap();
         }
 
         // 构建 Prompt：优先使用自定义提示词
-        List<ChatMessage> messages = new ArrayList<>(3);
+        List<ChatMessage> messages = new ArrayList<>(2);
         String systemPrompt = StrUtil.isNotBlank(customPromptTemplate)
                 ? customPromptTemplate
                 : promptTemplateLoader.load(MCP_PARAMETER_EXTRACT_PROMPT_PATH);
 
         messages.add(ChatMessage.system(systemPrompt));
-        messages.add(ChatMessage.user("工具定义如下：\n" + buildToolDefinition(tool)));
-        messages.add(ChatMessage.user("请根据以上工具定义，从下面的问题中提取参数：\n" + userQuestion));
+        String userPrompt = promptTemplateLoader.render(MCP_PARAMETER_EXTRACT_USER_PROMPT_PATH, Map.of(
+                "tool_definition", buildToolDefinition(tool),
+                "user_question", userQuestion
+        ));
+        messages.add(ChatMessage.user(userPrompt));
 
         String raw = null;
         try {
@@ -94,19 +102,19 @@ public class LLMMCPParameterExtractor implements MCPParameterExtractor {
             fillDefaults(extracted, tool);
 
             log.info("MCP 参数提取完成, toolId: {}, 使用自定义提示词: {}, 参数: {}",
-                    tool.getToolId(), StrUtil.isNotBlank(customPromptTemplate), extracted);
+                    tool.name(), StrUtil.isNotBlank(customPromptTemplate), extracted);
 
             return extracted;
         } catch (JsonSyntaxException e) {
-            log.warn("MCP 参数提取-JSON解析失败, toolId: {}, 响应: {}", tool.getToolId(), raw, e);
+            log.warn("MCP 参数提取-JSON解析失败, toolId: {}, 响应: {}", tool.name(), raw, e);
             return buildDefaultParameters(tool);
         } catch (Exception e) {
-            log.error("MCP 参数提取异常, toolId: {}", tool.getToolId(), e);
+            log.error("MCP 参数提取异常, toolId: {}", tool.name(), e);
             return buildDefaultParameters(tool);
         }
     }
 
-    private Map<String, Object> buildDefaultParameters(MCPTool tool) {
+    private Map<String, Object> buildDefaultParameters(Tool tool) {
         Map<String, Object> defaultParams = new HashMap<>();
         fillDefaults(defaultParams, tool);
         return defaultParams;
@@ -115,26 +123,41 @@ public class LLMMCPParameterExtractor implements MCPParameterExtractor {
     /**
      * 构建工具定义描述（供 LLM 理解）
      */
-    private String buildToolDefinition(MCPTool tool) {
+    @SuppressWarnings("unchecked")
+    private String buildToolDefinition(Tool tool) {
         StringBuilder sb = new StringBuilder();
-        sb.append("工具ID: ").append(tool.getToolId()).append("\n");
-        sb.append("功能描述: ").append(tool.getDescription()).append("\n");
+        sb.append("工具ID: ").append(tool.name()).append("\n");
+        sb.append("功能描述: ").append(tool.description()).append("\n");
         sb.append("参数列表:\n");
 
-        for (Map.Entry<String, MCPTool.ParameterDef> entry : tool.getParameters().entrySet()) {
+        JsonSchema schema = tool.inputSchema();
+        if (schema == null || schema.properties() == null) {
+            return sb.toString();
+        }
+
+        List<String> requiredList = schema.required() != null ? schema.required() : List.of();
+
+        for (Map.Entry<String, Object> entry : schema.properties().entrySet()) {
             String paramName = entry.getKey();
-            MCPTool.ParameterDef def = entry.getValue();
+            Map<String, Object> propDef = (Map<String, Object>) entry.getValue();
+
+            String type = propDef.getOrDefault("type", "string").toString();
+            boolean required = requiredList.contains(paramName);
+            String description = propDef.getOrDefault("description", "").toString();
+            Object defaultValue = propDef.get("default");
+            Object enumValues = propDef.get("enum");
 
             sb.append("  - ").append(paramName);
-            sb.append(" (类型: ").append(def.getType());
-            sb.append(def.isRequired() ? ", 必填" : ", 可选");
-            sb.append("): ").append(def.getDescription());
+            sb.append(" (类型: ").append(type);
+            sb.append(required ? ", 必填" : ", 可选");
+            sb.append("): ").append(description);
 
-            if (def.getDefaultValue() != null) {
-                sb.append(" [默认值: ").append(def.getDefaultValue()).append("]");
+            if (defaultValue != null) {
+                sb.append(" [默认值: ").append(defaultValue).append("]");
             }
-            if (CollUtil.isNotEmpty(def.getEnumValues())) {
-                sb.append(" [可选值: ").append(String.join(", ", def.getEnumValues())).append("]");
+            if (enumValues instanceof List<?> enumList && !enumList.isEmpty()) {
+                String enumStr = enumList.stream().map(Object::toString).collect(Collectors.joining(", "));
+                sb.append(" [可选值: ").append(enumStr).append("]");
             }
             sb.append("\n");
         }
@@ -145,7 +168,7 @@ public class LLMMCPParameterExtractor implements MCPParameterExtractor {
     /**
      * 解析 LLM 返回的 JSON 响应
      */
-    private Map<String, Object> parseJsonResponse(String raw, MCPTool tool) {
+    private Map<String, Object> parseJsonResponse(String raw, Tool tool) {
         if (StrUtil.isBlank(raw)) {
             return new HashMap<>();
         }
@@ -158,8 +181,13 @@ public class LLMMCPParameterExtractor implements MCPParameterExtractor {
         }
         JsonObject obj = element.getAsJsonObject();
         Map<String, Object> result = new HashMap<>();
+
+        Set<String> paramNames = tool.inputSchema() != null && tool.inputSchema().properties() != null
+                ? tool.inputSchema().properties().keySet()
+                : Set.of();
+
         // 只提取工具定义中声明的参数
-        for (String paramName : tool.getParameters().keySet()) {
+        for (String paramName : paramNames) {
             if (obj.has(paramName) && !obj.get(paramName).isJsonNull()) {
                 JsonElement value = obj.get(paramName);
                 result.put(paramName, convertJsonElement(value));
@@ -202,21 +230,22 @@ public class LLMMCPParameterExtractor implements MCPParameterExtractor {
         return null;
     }
 
-
     /**
      * 填充默认值
      */
-    private void fillDefaults(Map<String, Object> params, MCPTool tool) {
-        if (tool.getParameters() == null) {
+    @SuppressWarnings("unchecked")
+    private void fillDefaults(Map<String, Object> params, Tool tool) {
+        if (tool.inputSchema() == null || tool.inputSchema().properties() == null) {
             return;
         }
 
-        for (Map.Entry<String, MCPTool.ParameterDef> entry : tool.getParameters().entrySet()) {
+        for (Map.Entry<String, Object> entry : tool.inputSchema().properties().entrySet()) {
             String paramName = entry.getKey();
-            MCPTool.ParameterDef def = entry.getValue();
+            Map<String, Object> propDef = (Map<String, Object>) entry.getValue();
+            Object defaultValue = propDef.get("default");
 
-            if (!params.containsKey(paramName) && def.getDefaultValue() != null) {
-                params.put(paramName, def.getDefaultValue());
+            if (!params.containsKey(paramName) && defaultValue != null) {
+                params.put(paramName, defaultValue);
             }
         }
     }

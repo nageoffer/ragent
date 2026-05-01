@@ -17,69 +17,68 @@
 
 package com.nageoffer.ai.ragent.rag.core.mcp;
 
+import cn.hutool.core.collection.CollUtil;
+import cn.hutool.core.util.StrUtil;
+import io.modelcontextprotocol.spec.McpSchema.Tool;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections4.CollectionUtils;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * MCP 工具注册表默认实现
- * <p>
- * 使用 ConcurrentHashMap 存储工具执行器，支持运行时动态注册/注销
- * 启动时自动扫描并注册所有 MCPToolExecutor Bean
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class DefaultMCPToolRegistry implements MCPToolRegistry {
+public class DefaultMcpToolRegistry implements McpToolRegistry {
 
     /**
      * 工具执行器存储
      * key: toolId, value: executor
      */
-    private final Map<String, MCPToolExecutor> executorMap = new ConcurrentHashMap<>();
+    private final Map<String, McpToolExecutor> executorMap = new HashMap<>();
 
     /**
-     * Spring 容器中的所有 MCPToolExecutor Bean（自动注入）
+     * Spring 容器中的所有 McpToolExecutor Bean（自动注入）
      */
-    private final List<MCPToolExecutor> autoDiscoveredExecutors;
+    private final List<McpToolExecutor> autoDiscoveredExecutors;
 
     /**
      * 启动时自动注册所有发现的执行器
      */
     @PostConstruct
     public void init() {
-        if (CollectionUtils.isEmpty(autoDiscoveredExecutors)) {
+        if (CollUtil.isEmpty(autoDiscoveredExecutors)) {
             log.info("MCP 工具注册跳过, 未发现任何工具执行器");
         }
 
-        for (MCPToolExecutor executor : autoDiscoveredExecutors) {
+        for (McpToolExecutor executor : autoDiscoveredExecutors) {
             register(executor);
         }
         log.info("MCP 工具自动注册完成, 共注册 {} 个工具", autoDiscoveredExecutors.size());
     }
 
     @Override
-    public void register(MCPToolExecutor executor) {
+    public void register(McpToolExecutor executor) {
         if (executor == null || executor.getToolDefinition() == null) {
             log.warn("尝试注册空的执行器，已忽略");
             return;
         }
 
         String toolId = executor.getToolId();
-        if (toolId == null || toolId.isBlank()) {
+        if (StrUtil.isBlank(toolId)) {
             log.warn("工具 ID 为空，已忽略");
             return;
         }
 
-        MCPToolExecutor existing = executorMap.put(toolId, executor);
+        McpToolExecutor existing = executorMap.put(toolId, executor);
         if (existing != null) {
             log.warn("工具 {} 已存在，已覆盖", toolId);
         } else {
@@ -89,26 +88,26 @@ public class DefaultMCPToolRegistry implements MCPToolRegistry {
 
     @Override
     public void unregister(String toolId) {
-        MCPToolExecutor removed = executorMap.remove(toolId);
+        McpToolExecutor removed = executorMap.remove(toolId);
         if (removed != null) {
             log.info("MCP 工具注销成功, toolId: {}", toolId);
         }
     }
 
     @Override
-    public Optional<MCPToolExecutor> getExecutor(String toolId) {
+    public Optional<McpToolExecutor> getExecutor(String toolId) {
         return Optional.ofNullable(executorMap.get(toolId));
     }
 
     @Override
-    public List<MCPTool> listAllTools() {
+    public List<Tool> listAllTools() {
         return executorMap.values().stream()
-                .map(MCPToolExecutor::getToolDefinition)
+                .map(McpToolExecutor::getToolDefinition)
                 .toList();
     }
 
     @Override
-    public List<MCPToolExecutor> listAllExecutors() {
+    public List<McpToolExecutor> listAllExecutors() {
         return new ArrayList<>(executorMap.values());
     }
 

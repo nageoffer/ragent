@@ -22,7 +22,8 @@ import cn.hutool.core.util.StrUtil;
 import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentNode;
 import com.nageoffer.ai.ragent.rag.core.intent.NodeScore;
-import com.nageoffer.ai.ragent.rag.core.mcp.MCPResponse;
+import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
+import io.modelcontextprotocol.spec.McpSchema.TextContent;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -142,12 +143,13 @@ public class DefaultContextFormatter implements ContextFormatter {
     }
 
     @Override
-    public String formatMcpContext(List<MCPResponse> responses, List<NodeScore> mcpIntents) {
-        if (CollUtil.isEmpty(responses) || responses.stream().noneMatch(MCPResponse::isSuccess)) {
+    public String formatMcpContext(Map<String, List<CallToolResult>> toolResults,
+                                   List<NodeScore> mcpIntents) {
+        if (CollUtil.isEmpty(toolResults)) {
             return "";
         }
         if (CollUtil.isEmpty(mcpIntents)) {
-            return mergeResponsesToText(responses);
+            return mergeAllResultsToText(toolResults);
         }
 
         Map<String, IntentNode> toolToIntent = new LinkedHashMap<>();
@@ -159,20 +161,15 @@ public class DefaultContextFormatter implements ContextFormatter {
             toolToIntent.putIfAbsent(node.getMcpToolId(), node);
         }
 
-        Map<String, List<MCPResponse>> grouped = responses.stream()
-                .filter(MCPResponse::isSuccess)
-                .filter(r -> StrUtil.isNotBlank(r.getToolId()))
-                .collect(Collectors.groupingBy(MCPResponse::getToolId));
-
         return toolToIntent.entrySet().stream()
                 .map(entry -> {
-                    List<MCPResponse> toolResponses = grouped.get(entry.getKey());
-                    if (CollUtil.isEmpty(toolResponses)) {
+                    List<CallToolResult> results = toolResults.get(entry.getKey());
+                    if (CollUtil.isEmpty(results)) {
                         return "";
                     }
                     IntentNode node = entry.getValue();
                     String snippet = StrUtil.emptyIfNull(node.getPromptSnippet()).trim();
-                    String body = mergeResponsesToText(toolResponses);
+                    String body = mergeResultsToText(results);
                     if (StrUtil.isBlank(body)) {
                         return "";
                     }
@@ -187,41 +184,58 @@ public class DefaultContextFormatter implements ContextFormatter {
                 .collect(Collectors.joining("\n\n"));
     }
 
+    private String mergeAllResultsToText(Map<String, List<CallToolResult>> toolResults) {
+        List<CallToolResult> allResults = toolResults.values().stream()
+                .flatMap(List::stream)
+                .toList();
+        return mergeResultsToText(allResults);
+    }
+
     /**
-     * 将多个 MCP 响应合并为文本（用于拼接到 Prompt）
+     * 将多个 CallToolResult 合并为文本
      */
-    private String mergeResponsesToText(List<MCPResponse> responses) {
-        if (responses == null || responses.isEmpty()) {
+    private String mergeResultsToText(List<CallToolResult> results) {
+        if (CollUtil.isEmpty(results)) {
             return "";
         }
 
-        List<String> successResults = new ArrayList<>();
-        List<String> errorResults = new ArrayList<>();
+        List<String> successTexts = new ArrayList<>();
+        List<String> errorTexts = new ArrayList<>();
 
-        for (MCPResponse response : responses) {
-            if (response.isSuccess() && response.getTextResult() != null) {
-                successResults.add(response.getTextResult());
-            } else if (!response.isSuccess()) {
-                errorResults.add(String.format("工具 %s 调用失败: %s",
-                        response.getToolId(), response.getErrorMessage()));
+        for (CallToolResult result : results) {
+            boolean isError = result.isError() != null && result.isError();
+            String text = extractTextContent(result);
+            if (!isError && text != null) {
+                successTexts.add(text);
+            } else if (isError && text != null) {
+                errorTexts.add("工具调用失败: " + text);
             }
         }
 
         StringBuilder sb = new StringBuilder();
 
-        if (!successResults.isEmpty()) {
-            for (String result : successResults) {
-                sb.append(result).append("\n\n");
-            }
+        for (String text : successTexts) {
+            sb.append(text).append("\n\n");
         }
 
-        if (!errorResults.isEmpty()) {
+        if (CollUtil.isNotEmpty(errorTexts)) {
             sb.append("【部分查询失败】\n");
-            for (String error : errorResults) {
+            for (String error : errorTexts) {
                 sb.append("- ").append(error).append("\n");
             }
         }
 
         return sb.toString().trim();
+    }
+
+    private String extractTextContent(CallToolResult result) {
+        if (result == null || result.content() == null) {
+            return null;
+        }
+        List<String> texts = result.content().stream()
+                .filter(c -> c instanceof TextContent)
+                .map(c -> ((TextContent) c).text())
+                .toList();
+        return texts.isEmpty() ? null : String.join("\n", texts);
     }
 }
