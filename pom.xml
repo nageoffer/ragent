@@ -28,6 +28,21 @@
         <okhttp.version>4.12.0</okhttp.version>
         <mcp-sdk.version>1.1.2</mcp-sdk.version>
         <spotless-maven-plugin.version>2.22.1</spotless-maven-plugin.version>
+
+        <checkstyle.version>3.6.0</checkstyle.version>
+        <pmd.version>3.28.0</pmd.version>
+        <spotbugs.plugin.version>4.9.8.3</spotbugs.plugin.version>
+        <findsecbugs.version>1.14.0</findsecbugs.version>
+        <dependency.check.version>12.2.0</dependency.check.version>
+
+        <quality.root>${maven.multiModuleProjectDirectory}/resources/quality</quality.root>
+        <checkstyle.config>${quality.root}/checkstyle/checkstyle.xml</checkstyle.config>
+        <checkstyle.suppressions>${quality.root}/checkstyle/suppressions.xml</checkstyle.suppressions>
+        <pmd.ruleset>${quality.root}/pmd/pmd-ruleset.xml</pmd.ruleset>
+        <spotbugs.exclude>${quality.root}/spotbugs/exclude-filter.xml</spotbugs.exclude>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+        <dependency-check.data.dir>${user.home}/.dependency-check-data</dependency-check.data.dir>
     </properties>
 
     <modules>
@@ -205,9 +220,9 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
-                <configuration>
-                    <argLine>@{argLine} -javaagent:${org.mockito:mockito-core:jar}</argLine>
-                </configuration>
+<!--                <configuration>-->
+<!--                    <argLine>@{argLine} -javaagent:${org.mockito:mockito-core:jar}</argLine>-->
+<!--                </configuration>-->
             </plugin>
 
             <plugin>
@@ -231,6 +246,130 @@
                     </execution>
                 </executions>
             </plugin>
+
+            <!-- Checkstyle -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-checkstyle-plugin</artifactId>
+                <version>${checkstyle.version}</version>
+                <configuration>
+                    <configLocation>${checkstyle.config}</configLocation>
+                    <propertyExpansion>checkstyle.suppressions.file=${checkstyle.suppressions}</propertyExpansion>
+                    <consoleOutput>true</consoleOutput>
+                    <failsOnError>false</failsOnError>
+                    <failOnViolation>false</failOnViolation>
+                    <includeTestSourceDirectory>false</includeTestSourceDirectory>
+                    <outputFileFormat>xml</outputFileFormat>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>checkstyle-verify</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>checkstyle</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- PMD -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-pmd-plugin</artifactId>
+                <version>${pmd.version}</version>
+                <configuration>
+                    <rulesets>
+                        <ruleset>${pmd.ruleset}</ruleset>
+                    </rulesets>
+                    <targetJdk>17</targetJdk>
+                    <printFailingErrors>true</printFailingErrors>
+                    <failOnViolation>false</failOnViolation>
+                    <linkXRef>false</linkXRef>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>pmd-verify</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>pmd</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>com.github.spotbugs</groupId>
+                <artifactId>spotbugs-maven-plugin</artifactId>
+                <version>${spotbugs.plugin.version}</version>
+                <configuration>
+                    <!-- 分析尽量充分 -->
+                    <effort>Max</effort>
+
+                    <!-- 第一阶段建议先从 Medium 开始，避免噪音过大 -->
+                    <threshold>Medium</threshold>
+
+                    <!-- 多模块项目适当加一点堆，避免分析时内存不足 -->
+                    <maxHeap>1024</maxHeap>
+
+                    <!-- 第一阶段先不要让 SpotBugs 阻断构建 -->
+                    <failOnError>false</failOnError>
+
+                    <!-- 排除无意义路径 -->
+                    <excludeFilterFile>${spotbugs.exclude}</excludeFilterFile>
+
+                    <!-- 生成 Sonar 可导入的 XML -->
+                    <xmlOutput>true</xmlOutput>
+
+                    <!-- 同时生成 HTML，便于本地阅读 -->
+                    <htmlOutput>true</htmlOutput>
+                </configuration>
+
+                <dependencies>
+                    <dependency>
+                        <groupId>com.h3xstream.findsecbugs</groupId>
+                        <artifactId>findsecbugs-plugin</artifactId>
+                        <version>${findsecbugs.version}</version>
+                    </dependency>
+                </dependencies>
+
+                <executions>
+                    <execution>
+                        <id>spotbugs-verify</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>spotbugs</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- OWASP Dependency-Check -->
+<!--            <plugin>-->
+<!--                <groupId>org.owasp</groupId>-->
+<!--                <artifactId>dependency-check-maven</artifactId>-->
+<!--                <version>${dependency.check.version}</version>-->
+<!--                <configuration>-->
+<!--                    <format>HTML</format>-->
+<!--                    <failBuildOnCVSS>11</failBuildOnCVSS>-->
+<!--                    <skipTestScope>true</skipTestScope>-->
+<!--                    <dataDirectory>${dependency-check.data.dir}</dataDirectory>-->
+<!--                    <nvdApiKey>${env.NVD_API_KEY}</nvdApiKey>-->
+<!--                    &lt;!&ndash; 当前以 Java 后端为主，避免 RetireJS/Node 噪音和网络问题 &ndash;&gt;-->
+<!--                    <retireJsAnalyzerEnabled>false</retireJsAnalyzerEnabled>-->
+<!--                    <nodeAuditAnalyzerEnabled>false</nodeAuditAnalyzerEnabled>-->
+<!--                    <nodeAnalyzerEnabled>false</nodeAnalyzerEnabled>-->
+<!--                    <assemblyAnalyzerEnabled>false</assemblyAnalyzerEnabled>-->
+<!--                </configuration>-->
+<!--                <executions>-->
+<!--                    <execution>-->
+<!--                        <id>sca-aggregate</id>-->
+<!--                        <phase>verify</phase>-->
+<!--                        <goals>-->
+<!--                            <goal>aggregate</goal>-->
+<!--                        </goals>-->
+<!--                    </execution>-->
+<!--                </executions>-->
+<!--            </plugin>-->
         </plugins>
     </build>
 </project>
