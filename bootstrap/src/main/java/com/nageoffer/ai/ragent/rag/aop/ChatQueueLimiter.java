@@ -81,7 +81,6 @@ public class ChatQueueLimiter {
     private final ConversationMemoryService memoryService;
     private final ConversationGroupService conversationGroupService;
     private final MemoryProperties memoryProperties;
-    @Qualifier("chatEntryExecutor")
     private final Executor chatEntryExecutor;
     private final String claimLua = loadLuaScript();
     private final ScheduledExecutorService scheduler = new ScheduledThreadPoolExecutor(
