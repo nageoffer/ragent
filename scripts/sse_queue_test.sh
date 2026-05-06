@@ -18,7 +18,7 @@ RESET='\033[0m'
 BASE_URL="${BASE_URL:-http://localhost:9090/api/ragent}"
 QUESTION="${QUESTION:-你是谁？你是ChatGPT么？}"
 CONCURRENCY="${CONCURRENCY:-3}"
-TOKEN="${TOKEN:-214630a9cef34765a6df2076aa0c4610}"
+TOKEN="${TOKEN:-03c34afe1127412b9c7050f495966b28}"
 CONVERSATION_ID="${CONVERSATION_ID:-}"
 LOG_DIR="${LOG_DIR:-$(pwd)/logs}"
 
@@ -142,7 +142,7 @@ EOF
 
 echo -e "${RESET}"
 echo -e "${MAGENTA}╔══════════════════════════════════════════════════════════════╗${RESET}"
-echo -e "${MAGENTA}║${RESET}  ${BOLD}SSE Real-time Streaming Test Suite${RESET}                   ${MAGENTA}║${RESET}"
+echo -e "${MAGENTA}║${RESET}  ${BOLD}SSE Real-time Streaming Test Suite${RESET}                          ${MAGENTA}║${RESET}"
 echo -e "${MAGENTA}╚══════════════════════════════════════════════════════════════╝${RESET}"
 
 # 显示环境信息
@@ -207,7 +207,7 @@ for i in $(seq 1 "${CONCURRENCY}"); do
       echo -e "${RED}✗${RESET} Worker #${i} failed with exit code ${EXIT_CODE}"
     fi
   ) &
-  sleep 0.05
+  sleep 0.1
 done
 
 echo ""
