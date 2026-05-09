@@ -1,0 +1,204 @@
+name: ragent-local
+
+services:
+  # =============================================
+  # PostgreSQL with pgvector extension
+  # =============================================
+  postgres:
+    container_name: ragent-postgres
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ragent
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ../resources/database/schema_pg.sql:/docker-entrypoint-initdb.d/01_schema.sql
+      - ../resources/database/init_data_pg.sql:/docker-entrypoint-initdb.d/02_init_data.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ragent"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # =============================================
+  # Redis
+  # =============================================
+  redis:
+    container_name: ragent-redis
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --requirepass 123456
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "123456", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # =============================================
+  # RustFS - S3 compatible object storage
+  # =============================================
+  rustfs:
+    container_name: ragent-rustfs
+    image: rustfs/rustfs:1.0.0-alpha.72
+    command:
+      - "--address"
+      - ":9000"
+      - "--console-enable"
+      - "--access-key"
+      - "rustfsadmin"
+      - "--secret-key"
+      - "rustfsadmin"
+      - "/data"
+    environment:
+      - RUSTFS_ACCESS_KEY=rustfsadmin
+      - RUSTFS_SECRET_KEY=rustfsadmin
+      - RUSTFS_CONSOLE_ENABLE=true
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - rustfs-data:/data
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget -qO- http://localhost:9000/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # =============================================
+  # etcd - required by Milvus
+  # =============================================
+  etcd:
+    container_name: ragent-etcd
+    image: quay.io/coreos/etcd:v3.5.18
+    environment:
+      - ETCD_AUTO_COMPACTION_MODE=revision
+      - ETCD_AUTO_COMPACTION_RETENTION=1000
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+      - ETCD_SNAPSHOT_COUNT=50000
+    command: >
+      etcd
+      -advertise-client-urls=http://etcd:2379
+      -listen-client-urls http://0.0.0.0:2379
+      --data-dir /etcd
+    volumes:
+      - etcd-data:/etcd
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  # =============================================
+  # Milvus - vector database (optional with pgvector)
+  # =============================================
+  milvus:
+    container_name: ragent-milvus
+    image: milvusdb/milvus:v2.6.6
+    command: ["milvus", "run", "standalone"]
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: rustfs:9000
+      MINIO_ACCESS_KEY_ID: rustfsadmin
+      MINIO_SECRET_ACCESS_KEY: rustfsadmin
+    volumes:
+      - milvus-data:/var/lib/milvus
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    depends_on:
+      etcd:
+        condition: service_healthy
+      rustfs:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 30s
+      start_period: 90s
+      timeout: 20s
+      retries: 3
+
+  # =============================================
+  # RocketMQ Name Server
+  # =============================================
+  rmqnamesrv:
+    container_name: ragent-rmqnamesrv
+    image: apache/rocketmq:5.2.0
+    ports:
+      - "9876:9876"
+    environment:
+      JAVA_OPT_EXT: "-Xms256m -Xmx400m"
+    command: sh mqnamesrv
+    healthcheck:
+      test: ["CMD-SHELL", "grep -q 'The Name Server boot success' /home/rocketmq/logs/rocketmqlogs/namesrv.log || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # =============================================
+  # RocketMQ Broker
+  # =============================================
+  rmqbroker:
+    container_name: ragent-rmqbroker
+    image: apache/rocketmq:5.2.0
+    ports:
+      - "10912:10912"
+      - "10911:10911"
+      - "10909:10909"
+      - "8080:8080"
+      - "8081:8081"
+    environment:
+      NAMESRV_ADDR: "rmqnamesrv:9876"
+      JAVA_OPT_EXT: "-Xms512m -Xmx512m"
+    depends_on:
+      rmqnamesrv:
+        condition: service_healthy
+    command:
+      - sh
+      - -c
+      - |
+        cat > /home/rocketmq/rocketmq-5.2.0/conf/broker.conf << EOF
+        brokerClusterName = DefaultCluster
+        brokerName = broker-a
+        brokerId = 0
+        deleteWhen = 04
+        fileReservedTime = 48
+        brokerRole = ASYNC_MASTER
+        flushDiskType = ASYNC_FLUSH
+        brokerIP1 = 127.0.0.1
+        timerMaxDelaySec = 31622400
+        EOF
+        sh mqbroker --enable-proxy \
+          -c /home/rocketmq/rocketmq-5.2.0/conf/broker.conf
+    restart: unless-stopped
+
+  # =============================================
+  # RocketMQ Dashboard (optional)
+  # =============================================
+  rmqdashboard:
+    container_name: ragent-rmqdashboard
+    image: apacherocketmq/rocketmq-dashboard:2.1.0
+    network_mode: "service:rmqbroker"
+    environment:
+      JAVA_OPTS: >-
+        -Xms256m -Xmx512m
+        -XX:MaxMetaspaceSize=256m
+        -Drocketmq.config.enableDashBoardCollect=false
+        -Drocketmq.namesrv.addr=rmqnamesrv:9876
+        -Dserver.port=8082
+    depends_on:
+      rmqbroker:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  rustfs-data:
+  etcd-data:
+  milvus-data:
