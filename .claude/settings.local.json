@@ -47,7 +47,13 @@
       "Bash(jar xf:*)",
       "Bash(mvn test:*)",
       "Bash(mvn test-compile:*)",
-      "Bash(wc:*)"
+      "Bash(wc:*)",
+      "Bash(mvn -pl bootstrap compile -am -q)",
+      "Bash(mvn -pl bootstrap compile -am)",
+      "Bash(mvn -pl bootstrap -am compile -q -DskipTests)",
+      "Bash(mvn -pl bootstrap -am compile -DskipTests)",
+      "Bash(mvn -pl bootstrap -am clean compile -DskipTests)",
+      "Bash(mvn -pl bootstrap -am clean compile -DskipTests -Dmaven.compiler.showDeprecation=true)"
     ]
   }
 }

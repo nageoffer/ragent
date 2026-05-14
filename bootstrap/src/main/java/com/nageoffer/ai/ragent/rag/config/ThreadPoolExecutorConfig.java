@@ -177,18 +177,20 @@ public class ThreadPoolExecutorConfig {
      * SSE 排队后执行入口线程池
      */
     @Bean
-    public Executor chatEntryExecutor() {
+    public Executor chatEntryExecutor(RAGRateLimitProperties rateLimitProperties) {
+        int size = rateLimitProperties.getGlobalMaxConcurrent();
         ThreadPoolExecutor executor = new ThreadPoolExecutor(
-                Math.max(2, CPU_COUNT >> 1),
-                Math.max(4, CPU_COUNT),
+                size,
+                size,
                 60,
                 TimeUnit.SECONDS,
-                new LinkedBlockingQueue<>(200),
+                new SynchronousQueue<>(),
                 ThreadFactoryBuilder.create()
                         .setNamePrefix("chat_entry_executor_")
                         .build(),
                 new ThreadPoolExecutor.AbortPolicy()
         );
+        executor.allowCoreThreadTimeOut(true);
         return TtlExecutors.getTtlExecutor(executor);
     }
 

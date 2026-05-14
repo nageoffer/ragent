@@ -20,14 +20,14 @@ package com.nageoffer.ai.ragent.rag.service.impl;
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
 import com.nageoffer.ai.ragent.framework.context.UserContext;
-import com.nageoffer.ai.ragent.framework.trace.RagTraceContext;
 import com.nageoffer.ai.ragent.infra.chat.StreamCallback;
-import com.nageoffer.ai.ragent.rag.aop.ChatRateLimit;
+import com.nageoffer.ai.ragent.rag.service.ratelimit.ChatQueueLimiter;
 import com.nageoffer.ai.ragent.rag.service.RAGChatService;
 import com.nageoffer.ai.ragent.rag.service.handler.StreamCallbackFactory;
 import com.nageoffer.ai.ragent.rag.service.handler.StreamTaskManager;
 import com.nageoffer.ai.ragent.rag.service.pipeline.StreamChatContext;
 import com.nageoffer.ai.ragent.rag.service.pipeline.StreamChatPipeline;
+import com.nageoffer.ai.ragent.rag.trace.StreamChatTraceRunner;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -42,36 +42,29 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 public class RAGChatServiceImpl implements RAGChatService {
 
     private final StreamChatPipeline chatPipeline;
+    private final ChatQueueLimiter chatQueueLimiter;
     private final StreamCallbackFactory callbackFactory;
+    private final StreamChatTraceRunner traceRunner;
     private final StreamTaskManager taskManager;
 
     @Override
-    @ChatRateLimit
     public void streamChat(String question, String conversationId, Boolean deepThinking, SseEmitter emitter) {
         String actualConversationId = StrUtil.isBlank(conversationId) ? IdUtil.getSnowflakeNextIdStr() : conversationId;
-        String taskId = StrUtil.isBlank(RagTraceContext.getTaskId())
-                ? IdUtil.getSnowflakeNextIdStr()
-                : RagTraceContext.getTaskId();
-        log.info("开始流式对话，会话ID：{}，任务ID：{}", actualConversationId, taskId);
-        boolean thinkingEnabled = Boolean.TRUE.equals(deepThinking);
-
+        String taskId = IdUtil.getSnowflakeNextIdStr();
         StreamCallback callback = callbackFactory.createChatEventHandler(emitter, actualConversationId, taskId);
 
         StreamChatContext ctx = StreamChatContext.builder()
                 .question(question)
                 .conversationId(actualConversationId)
                 .taskId(taskId)
-                .deepThinking(thinkingEnabled)
+                .deepThinking(Boolean.TRUE.equals(deepThinking))
                 .userId(UserContext.getUserId())
                 .callback(callback)
                 .build();
 
-        try {
-            chatPipeline.execute(ctx);
-        } catch (Exception e) {
-            log.error("流式对话处理异常，会话ID：{}，任务ID：{}", actualConversationId, taskId, e);
-            callback.onError(e);
-        }
+        chatQueueLimiter.enqueue(question, actualConversationId, emitter,
+                () -> traceRunner.run(question, actualConversationId, taskId, callback,
+                        () -> chatPipeline.execute(ctx)));
     }
 
     @Override
