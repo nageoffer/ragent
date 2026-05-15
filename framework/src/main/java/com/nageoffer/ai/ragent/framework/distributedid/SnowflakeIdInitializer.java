@@ -29,7 +29,6 @@ import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.scripting.support.ResourceScriptSource;
 import org.springframework.stereotype.Component;
 
-import java.util.Collections;
 import java.util.List;
 
 /**
@@ -40,6 +39,8 @@ import java.util.List;
 @Component
 @RequiredArgsConstructor
 public class SnowflakeIdInitializer {
+
+    private static final String SNOWFLAKE_WORK_ID_KEY = "snowflake_work_id_key";
 
     private final StringRedisTemplate stringRedisTemplate;
 
@@ -53,7 +54,7 @@ public class SnowflakeIdInitializer {
 
         try {
             // 执行 Lua 脚本获取 workerId 和 datacenterId
-            List<Long> result = stringRedisTemplate.execute(script, Collections.emptyList());
+            List<Long> result = stringRedisTemplate.execute(script, List.of(SNOWFLAKE_WORK_ID_KEY));
 
             if (CollUtil.isEmpty(result) || result.size() != 2) {
                 throw new RuntimeException("从Redis获取WorkerId和DataCenterId失败");
