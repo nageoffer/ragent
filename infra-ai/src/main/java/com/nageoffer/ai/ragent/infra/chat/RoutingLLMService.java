@@ -138,7 +138,14 @@ public class RoutingLLMService implements LLMService {
                 continue;
             }
 
-            ProbeStreamBridge.ProbeResult result = awaitFirstPacket(bridge, handle, callback);
+            ProbeStreamBridge.ProbeResult result;
+            try {
+                result = awaitFirstPacket(bridge, handle, callback);
+            } finally {
+                // 首包探测完成后（无论成功失败）弹出 LLM_PROVIDER 节点，
+                // 确保 TTFT 节点已正确归属到 provider 下
+                handle.detach();
+            }
 
             if (result.isSuccess()) {
                 healthStore.markSuccess(target.id());

@@ -45,4 +45,12 @@ public interface StreamCancellationHandle {
      * - 调用后应该不会再继续产生 onContent() 回调
      */
     void cancel();
+
+    /**
+     * 将该 handle 关联的 trace 节点从当前线程的 NODE_STACK 弹出
+     * <p>
+     * 仅由内部实现覆写（如 StreamChatHandle），用于延迟 detach 跨线程 span，
+     * 使首包探测等同步子节点能正确归属到该 provider 节点下
+     */
+    default void detach() {}
 }
