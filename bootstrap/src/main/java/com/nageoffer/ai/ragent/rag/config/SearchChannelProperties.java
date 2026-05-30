@@ -51,6 +51,16 @@ public class SearchChannelProperties {
          * 意图定向检索配置
          */
         private IntentDirected intentDirected = new IntentDirected();
+
+        /**
+         * 关键词检索配置
+         */
+        private Keyword keyword = new Keyword();
+
+        /**
+         * 混合检索融合配置
+         */
+        private Hybrid hybrid = new Hybrid();
     }
 
     @Data
@@ -98,5 +108,48 @@ public class SearchChannelProperties {
          * TopK 倍数
          */
         private int topKMultiplier = 2;
+    }
+
+    @Data
+    public static class Keyword {
+
+        /**
+         * 是否启用关键词检索通道
+         */
+        private boolean enabled = true;
+
+        /**
+         * TopK 倍数，关键词检索时召回更多候选
+         */
+        private int topKMultiplier = 3;
+
+        /**
+         * 融合时的关键词通道权重(仅 WEIGHTED_SUM 模式)
+         */
+        private float boost = 1.0f;
+    }
+
+    @Data
+    public static class Hybrid {
+
+        /**
+         * 是否启用混合融合
+         */
+        private boolean enabled = true;
+
+        /**
+         * 融合策略：RRF / WEIGHTED_SUM
+         */
+        private FusionMode fusion = FusionMode.RRF;
+
+        /**
+         * 向量权重(仅 WEIGHTED_SUM 模式生效)
+         */
+        private float vectorWeight = 0.7f;
+    }
+
+    public enum FusionMode {
+        RRF,
+        WEIGHTED_SUM
     }
 }

@@ -24,9 +24,13 @@ import com.nageoffer.ai.ragent.rag.config.MemoryProperties;
 import com.nageoffer.ai.ragent.rag.config.RAGConfigProperties;
 import com.nageoffer.ai.ragent.rag.config.RAGDefaultProperties;
 import com.nageoffer.ai.ragent.rag.config.RAGRateLimitProperties;
+import com.nageoffer.ai.ragent.rag.config.SearchChannelProperties;
 import com.nageoffer.ai.ragent.rag.controller.vo.SystemSettingsVO;
 import com.nageoffer.ai.ragent.rag.controller.vo.SystemSettingsVO.AISettings;
+import com.nageoffer.ai.ragent.rag.controller.vo.SystemSettingsVO.ChannelConfig;
+import com.nageoffer.ai.ragent.rag.controller.vo.SystemSettingsVO.ChannelSettings;
 import com.nageoffer.ai.ragent.rag.controller.vo.SystemSettingsVO.DefaultSettings;
+import com.nageoffer.ai.ragent.rag.controller.vo.SystemSettingsVO.HybridChannelConfig;
 import com.nageoffer.ai.ragent.rag.controller.vo.SystemSettingsVO.MemorySettings;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -51,6 +55,7 @@ public class RAGSettingsController {
     private final RAGRateLimitProperties ragRateLimitProperties;
     private final MemoryProperties memoryProperties;
     private final AIModelProperties aiModelProperties;
+    private final SearchChannelProperties searchChannelProperties;
 
     @Value("${spring.servlet.multipart.max-file-size:50MB}")
     private DataSize maxFileSize;
@@ -83,6 +88,7 @@ public class RAGSettingsController {
                                         .build())
                                 .build())
                         .memory(toMemorySettings(memoryProperties))
+                        .channels(toChannelSettings(searchChannelProperties))
                         .build())
                 .ai(toAISettings(aiModelProperties))
                 .build();
@@ -157,6 +163,33 @@ public class RAGSettingsController {
                                     .supportsThinking(c.getSupportsThinking())
                                     .build())
                           .collect(Collectors.toList()))
+                .build();
+    }
+
+    private ChannelSettings toChannelSettings(SearchChannelProperties props) {
+        SearchChannelProperties.Channels channels = props.getChannels();
+        return ChannelSettings.builder()
+                .vectorGlobal(ChannelConfig.builder()
+                        .enabled(channels.getVectorGlobal().isEnabled())
+                        .confidenceThreshold(channels.getVectorGlobal().getConfidenceThreshold())
+                        .singleIntentSupplementThreshold(channels.getVectorGlobal().getSingleIntentSupplementThreshold())
+                        .topKMultiplier(channels.getVectorGlobal().getTopKMultiplier())
+                        .build())
+                .intentDirected(ChannelConfig.builder()
+                        .enabled(channels.getIntentDirected().isEnabled())
+                        .minIntentScore(channels.getIntentDirected().getMinIntentScore())
+                        .topKMultiplier(channels.getIntentDirected().getTopKMultiplier())
+                        .build())
+                .keyword(ChannelConfig.builder()
+                        .enabled(channels.getKeyword().isEnabled())
+                        .topKMultiplier(channels.getKeyword().getTopKMultiplier())
+                        .boost(channels.getKeyword().getBoost())
+                        .build())
+                .hybrid(HybridChannelConfig.builder()
+                        .enabled(channels.getHybrid().isEnabled())
+                        .fusion(channels.getHybrid().getFusion().name())
+                        .vectorWeight(channels.getHybrid().getVectorWeight())
+                        .build())
                 .build();
     }
 

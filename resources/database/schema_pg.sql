@@ -423,16 +423,30 @@ CREATE TABLE t_knowledge_vector (
     id          VARCHAR(20) PRIMARY KEY,
     content     TEXT,
     metadata    JSONB,
-    embedding   vector(1536)
+    embedding   vector(1536),
+    tsv         tsvector
 );
 
 CREATE INDEX idx_kv_metadata ON t_knowledge_vector USING gin(metadata);
 CREATE INDEX idx_kv_embedding ON t_knowledge_vector USING hnsw (embedding vector_cosine_ops);
+CREATE INDEX idx_kv_tsv ON t_knowledge_vector USING GIN(tsv);
 COMMENT ON TABLE t_knowledge_vector IS '知识库向量存储表';
 COMMENT ON COLUMN t_knowledge_vector.id IS '分块ID';
 COMMENT ON COLUMN t_knowledge_vector.content IS '分块文本内容';
 COMMENT ON COLUMN t_knowledge_vector.metadata IS '元数据';
 COMMENT ON COLUMN t_knowledge_vector.embedding IS '向量';
+COMMENT ON COLUMN t_knowledge_vector.tsv IS 'tsvector 全文检索列';
+
+-- 触发器：自动维护 tsv
+CREATE OR REPLACE FUNCTION kv_tsv_trigger() RETURNS trigger AS $$
+BEGIN
+  NEW.tsv := to_tsvector('simple', COALESCE(NEW.content, ''));
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_kv_tsv BEFORE INSERT OR UPDATE OF content ON t_knowledge_vector
+  FOR EACH ROW EXECUTE FUNCTION kv_tsv_trigger();
 
 -- ============================================
 -- Column Comments

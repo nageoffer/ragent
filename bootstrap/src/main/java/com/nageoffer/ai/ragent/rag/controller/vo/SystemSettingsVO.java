@@ -159,13 +159,16 @@ public class SystemSettingsVO {
         private QueryRewriteSettings queryRewrite;
         private RateLimitSettings rateLimit;
         private MemorySettings memory;
+        private ChannelSettings channels;
 
         public RagSettings(DefaultSettings defaultConfig, QueryRewriteSettings queryRewrite,
-                           RateLimitSettings rateLimit, MemorySettings memory) {
+                           RateLimitSettings rateLimit, MemorySettings memory,
+                           ChannelSettings channels) {
             this.defaultConfig = defaultConfig;
             this.queryRewrite = queryRewrite;
             this.rateLimit = rateLimit;
             this.memory = memory;
+            this.channels = channels;
         }
 
         public static RagSettingsBuilder builder() {
@@ -177,6 +180,7 @@ public class SystemSettingsVO {
             private QueryRewriteSettings queryRewrite;
             private RateLimitSettings rateLimit;
             private MemorySettings memory;
+            private ChannelSettings channels;
 
             public RagSettingsBuilder defaultConfig(DefaultSettings defaultConfig) {
                 this.defaultConfig = defaultConfig;
@@ -198,10 +202,71 @@ public class SystemSettingsVO {
                 return this;
             }
 
+            public RagSettingsBuilder channels(ChannelSettings channels) {
+                this.channels = channels;
+                return this;
+            }
+
             public RagSettings build() {
-                return new RagSettings(defaultConfig, queryRewrite, rateLimit, memory);
+                return new RagSettings(defaultConfig, queryRewrite, rateLimit, memory, channels);
             }
         }
+    }
+
+    @Setter
+    @Getter
+    public static class ChannelSettings {
+        private ChannelConfig vectorGlobal;
+        private ChannelConfig intentDirected;
+        private ChannelConfig keyword;
+        private HybridChannelConfig hybrid;
+
+        public ChannelSettings(ChannelConfig vectorGlobal, ChannelConfig intentDirected,
+                               ChannelConfig keyword, HybridChannelConfig hybrid) {
+            this.vectorGlobal = vectorGlobal;
+            this.intentDirected = intentDirected;
+            this.keyword = keyword;
+            this.hybrid = hybrid;
+        }
+
+        public static ChannelSettingsBuilder builder() {
+            return new ChannelSettingsBuilder();
+        }
+
+        public static class ChannelSettingsBuilder {
+            private ChannelConfig vectorGlobal;
+            private ChannelConfig intentDirected;
+            private ChannelConfig keyword;
+            private HybridChannelConfig hybrid;
+
+            public ChannelSettingsBuilder vectorGlobal(ChannelConfig c) { this.vectorGlobal = c; return this; }
+            public ChannelSettingsBuilder intentDirected(ChannelConfig c) { this.intentDirected = c; return this; }
+            public ChannelSettingsBuilder keyword(ChannelConfig c) { this.keyword = c; return this; }
+            public ChannelSettingsBuilder hybrid(HybridChannelConfig c) { this.hybrid = c; return this; }
+
+            public ChannelSettings build() {
+                return new ChannelSettings(vectorGlobal, intentDirected, keyword, hybrid);
+            }
+        }
+    }
+
+    @Data
+    @Builder
+    public static class ChannelConfig {
+        private Boolean enabled;
+        private Double confidenceThreshold;
+        private Double minIntentScore;
+        private Double singleIntentSupplementThreshold;
+        private Integer topKMultiplier;
+        private Float boost;
+    }
+
+    @Data
+    @Builder
+    public static class HybridChannelConfig {
+        private Boolean enabled;
+        private String fusion;
+        private Float vectorWeight;
     }
 
     @Setter
