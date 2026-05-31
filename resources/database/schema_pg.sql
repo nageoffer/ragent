@@ -4,6 +4,15 @@
 -- Enable pgvector extension
 CREATE EXTENSION IF NOT EXISTS vector;
 
+-- Enable zhparser extension (requires zhparser compiled in PG)
+CREATE EXTENSION IF NOT EXISTS zhparser;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_ts_config WHERE cfgname = 'zhparser') THEN
+    CREATE TEXT SEARCH CONFIGURATION zhparser (PARSER = zhparser);
+  END IF;
+END $$;
+
 -- ============================================
 -- User & Conversation Tables
 -- ============================================
@@ -440,7 +449,7 @@ COMMENT ON COLUMN t_knowledge_vector.tsv IS 'tsvector 全文检索列';
 -- 触发器：自动维护 tsv
 CREATE OR REPLACE FUNCTION kv_tsv_trigger() RETURNS trigger AS $$
 BEGIN
-  NEW.tsv := to_tsvector('simple', COALESCE(NEW.content, ''));
+  NEW.tsv := to_tsvector('zhparser', COALESCE(NEW.content, ''));
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;

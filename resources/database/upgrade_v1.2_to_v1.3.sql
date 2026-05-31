@@ -7,10 +7,19 @@ ALTER TABLE t_knowledge_vector ADD COLUMN IF NOT EXISTS tsv tsvector;
 -- 2. GIN 索引加速全文检索
 CREATE INDEX IF NOT EXISTS idx_kv_tsv ON t_knowledge_vector USING GIN(tsv);
 
--- 3. 触发器：自动维护 tsv 列
+-- 3. 启用 zhparser 中文分词扩展
+CREATE EXTENSION IF NOT EXISTS zhparser;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_ts_config WHERE cfgname = 'zhparser') THEN
+    CREATE TEXT SEARCH CONFIGURATION zhparser (PARSER = zhparser);
+  END IF;
+END $$;
+
+-- 4. 触发器：自动维护 tsv 列（zhparser 分词）
 CREATE OR REPLACE FUNCTION kv_tsv_trigger() RETURNS trigger AS $$
 BEGIN
-  NEW.tsv := to_tsvector('simple', COALESCE(NEW.content, ''));
+  NEW.tsv := to_tsvector('zhparser', COALESCE(NEW.content, ''));
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -19,5 +28,5 @@ DROP TRIGGER IF EXISTS trg_kv_tsv ON t_knowledge_vector;
 CREATE TRIGGER trg_kv_tsv BEFORE INSERT OR UPDATE OF content ON t_knowledge_vector
   FOR EACH ROW EXECUTE FUNCTION kv_tsv_trigger();
 
--- 4. 回填已有数据
-UPDATE t_knowledge_vector SET tsv = to_tsvector('simple', COALESCE(content, ''));
+-- 5. 回填已有数据（zhparser 分词）
+UPDATE t_knowledge_vector SET tsv = to_tsvector('zhparser', COALESCE(content, ''));

@@ -169,9 +169,9 @@ public class KeywordSearchChannel implements SearchChannel {
         // 使用带索引的 tsv 列而非实时计算 to_tsvector
         // noinspection SqlDialectInspection,SqlNoDataSourceInspection
         return jdbcTemplate.query(
-                "SELECT id, content, ts_rank(tsv, plainto_tsquery('simple', ?)) AS score " +
+                "SELECT id, content, ts_rank(tsv, plainto_tsquery('zhparser', ?)) AS score " +
                 "FROM t_knowledge_vector " +
-                "WHERE metadata->>'collection_name' = ? AND tsv @@ plainto_tsquery('simple', ?) " +
+                "WHERE metadata->>'collection_name' = ? AND tsv @@ plainto_tsquery('zhparser', ?) " +
                 "ORDER BY score DESC LIMIT ?",
                 (rs, rowNum) -> RetrievedChunk.builder()
                         .id(rs.getString("id"))
