@@ -13,6 +13,15 @@ BEGIN
   END IF;
 END $$;
 
+-- zhparser token 类型映射（n/v/a/i/e/l → simple），否则 token 被丢弃
+ALTER TEXT SEARCH CONFIGURATION zhparser DROP MAPPING IF EXISTS FOR n;
+ALTER TEXT SEARCH CONFIGURATION zhparser DROP MAPPING IF EXISTS FOR v;
+ALTER TEXT SEARCH CONFIGURATION zhparser DROP MAPPING IF EXISTS FOR a;
+ALTER TEXT SEARCH CONFIGURATION zhparser DROP MAPPING IF EXISTS FOR i;
+ALTER TEXT SEARCH CONFIGURATION zhparser DROP MAPPING IF EXISTS FOR e;
+ALTER TEXT SEARCH CONFIGURATION zhparser DROP MAPPING IF EXISTS FOR l;
+ALTER TEXT SEARCH CONFIGURATION zhparser ADD MAPPING FOR n,v,a,i,e,l WITH simple;
+
 -- ============================================
 -- User & Conversation Tables
 -- ============================================

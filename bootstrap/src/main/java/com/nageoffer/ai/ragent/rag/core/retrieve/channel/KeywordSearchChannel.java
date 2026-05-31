@@ -17,7 +17,6 @@
 
 package com.nageoffer.ai.ragent.rag.core.retrieve.channel;
 
-import cn.hutool.core.collection.CollUtil;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
 import com.nageoffer.ai.ragent.knowledge.dao.entity.KnowledgeBaseDO;
@@ -37,7 +36,7 @@ import java.util.concurrent.Executor;
 
 /**
  * 关键词全文检索通道
- * 使用 PostgreSQL tsvector/tsquery 进行关键词精确匹配检索，
+ * 使用 PostgreSQL tsvector/tsquery + zhparser 中文分词进行关键词匹配，
  * 弥补向量检索对专有名词、产品型号等精确关键词的召回不足。
  */
 @Slf4j
@@ -160,13 +159,16 @@ public class KeywordSearchChannel implements SearchChannel {
     }
 
     private List<RetrievedChunk> searchInCollection(String query, String collectionName, int topK) {
-        // 预处理查询：移除特殊字符避免 tsquery 解析错误
         String sanitized = query.replaceAll("[^\\w\\u4e00-\\u9fff\\s]", " ");
+        // 在中英文/数字交界处插入空格，避免 "Redis介绍" 被当成一个无法解析的 token
+        sanitized = sanitized.replaceAll(
+                "(?<=[\\u4e00-\\u9fff])(?=[a-zA-Z0-9])|(?<=[a-zA-Z0-9])(?=[\\u4e00-\\u9fff])", " ");
         if (sanitized.isBlank()) {
             return List.of();
         }
         // 将空格替换为 | 实现 OR 语义：匹配任一词即可命中
         String tsQuery = sanitized.trim().replaceAll("\\s+", " | ");
+
         // noinspection SqlDialectInspection,SqlNoDataSourceInspection
         return jdbcTemplate.query(
                 "SELECT id, content, ts_rank(tsv, to_tsquery('zhparser', ?)) AS score " +
