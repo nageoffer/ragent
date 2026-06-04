@@ -42,3 +42,9 @@ node_modules/
 dist/
 .vite/
 .env.local
+
+### Local environment ###
+.env
+**/.env
+!.env.example
+!**/.env.example

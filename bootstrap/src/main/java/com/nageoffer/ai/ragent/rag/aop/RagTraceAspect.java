@@ -46,7 +46,7 @@ import java.util.Date;
 @Slf4j
 @Aspect
 @Component
-@Order(Ordered.HIGHEST_PRECEDENCE + 10)
+@Order(Ordered.HIGHEST_PRECEDENCE + 10) // 确保在其他切面之前执行
 @RequiredArgsConstructor
 public class RagTraceAspect {
 

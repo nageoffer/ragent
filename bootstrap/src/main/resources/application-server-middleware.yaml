@@ -1,0 +1,24 @@
+spring:
+  config:
+    activate:
+      on-profile: server-middleware
+
+  datasource:
+    username: ${RAGENT_PG_USER:ljh}
+    password: ${RAGENT_PG_PASSWORD:ljh123456}
+    url: jdbc:postgresql://${RAGENT_SERVER_HOST:192.168.30.213}:${RAGENT_PG_PORT:5432}/ragent?client_encoding=UTF8
+
+  data:
+    redis:
+      host: ${RAGENT_SERVER_HOST:192.168.30.213}
+      port: ${RAGENT_REDIS_PORT:6379}
+      password: ${RAGENT_REDIS_PASSWORD:ljh123456}
+
+rocketmq:
+  name-server: ${RAGENT_SERVER_HOST:192.168.30.213}:${RAGENT_ROCKETMQ_NAMESRV_PORT:9876}
+
+milvus:
+  uri: http://${RAGENT_SERVER_HOST:192.168.30.213}:${RAGENT_MILVUS_PORT:19530}
+
+rustfs:
+  url: http://${RAGENT_SERVER_HOST:192.168.30.213}:${RAGENT_RUSTFS_PORT:9000}

@@ -109,6 +109,7 @@ public class ChatQueueLimiter {
 
     public void enqueue(String question, String conversationId, SseEmitter emitter, Runnable onAcquire) {
         if (!Boolean.TRUE.equals(rateLimitProperties.getGlobalEnabled())) {
+            // 未开启全局并发限流，直接执行任务
             chatEntryExecutor.execute(onAcquire);
             return;
         }
