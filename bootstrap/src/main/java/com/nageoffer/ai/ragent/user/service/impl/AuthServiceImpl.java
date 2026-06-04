@@ -27,8 +27,10 @@ import com.nageoffer.ai.ragent.user.dao.mapper.UserMapper;
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.user.service.AuthService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AuthServiceImpl implements AuthService {
@@ -41,10 +43,13 @@ public class AuthServiceImpl implements AuthService {
     public LoginVO login(LoginRequest requestParam) {
         String username = requestParam.getUsername();
         String password = requestParam.getPassword();
+        log.info("[login-debug] login start, username={}", username);
         if (StrUtil.isBlank(username) || StrUtil.isBlank(password)) {
             throw new ClientException("用户名或密码不能为空");
         }
         UserDO user = findByUsername(username);
+        log.info("[login-debug] user loaded, username={}, userExists={}, userId={}, role={}",
+                username, user != null, user != null ? user.getId() : null, user != null ? user.getRole() : null);
         if (user == null || !passwordMatches(password, user.getPassword())) {
             throw new ClientException("用户名或密码错误");
         }
@@ -52,9 +57,13 @@ public class AuthServiceImpl implements AuthService {
             throw new ClientException("用户信息异常");
         }
         String loginId = user.getId().toString();
+        log.info("[login-debug] before StpUtil.login, loginId={}", loginId);
         StpUtil.login(loginId);
+        log.info("[login-debug] after StpUtil.login, loginId={}", loginId);
+        String tokenValue = StpUtil.getTokenValue();
+        log.info("[login-debug] token generated, loginId={}, tokenPresent={}", loginId, StrUtil.isNotBlank(tokenValue));
         String avatar = StrUtil.isBlank(user.getAvatar()) ? DEFAULT_AVATAR_URL : user.getAvatar();
-        return new LoginVO(loginId, user.getRole(), StpUtil.getTokenValue(), avatar);
+        return new LoginVO(loginId, user.getRole(), tokenValue, avatar);
     }
 
     @Override

@@ -34,7 +34,7 @@ import java.io.Serializable;
  * @param <T> 响应数据的类型
  */
 @Data
-@Accessors(chain = true)
+@Accessors(chain = true) // 开启链式调用
 public class Result<T> implements Serializable {
 
     @Serial

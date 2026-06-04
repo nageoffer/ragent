@@ -43,6 +43,8 @@ dist/
 .vite/
 .env.local
 
-### Tmp Out ###
-.output/
-docs/temp
+### Local environment ###
+.env
+**/.env
+!.env.example
+!**/.env.example
