@@ -45,4 +45,13 @@ public interface StreamCancellationHandle {
      * - 调用后应该不会再继续产生 onContent() 回调
      */
     void cancel();
+
+    /**
+     * 释放调用线程上的 trace 资源（从 NODE_STACK 弹出节点）
+     * <p>
+     * 默认实现为空，向后兼容不需要 trace 清理的实现。
+     * 需要 trace 支持的实现应覆写此方法，确保 provider 节点的 span 在合适时机
+     * （如首包探测完成后）从线程栈中弹出
+     */
+    default void detach() {}
 }

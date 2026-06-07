@@ -140,16 +140,23 @@ public class RoutingLLMService implements LLMService {
 
             ProbeStreamBridge.ProbeResult result = awaitFirstPacket(bridge, handle, callback);
 
-            if (result.isSuccess()) {
-                healthStore.markSuccess(target.id());
-                return handle;
+            // 无论成功或失败，都必须 detach span，确保 provider 节点从 NODE_STACK 弹出；
+            // 成功时 detach 在 TTFT 记录之后，保证 llm-first-packet 正确归属到 provider 节点之下；
+            // 失败时 detach 避免影响下一个 provider 的父节点链
+            try {
+                if (result.isSuccess()) {
+                    healthStore.markSuccess(target.id());
+                    return handle;
+                }
+
+                // 失败处理
+                healthStore.markFailure(target.id());
+                handle.cancel();
+
+                lastError = buildLastErrorAndLog(result, target, label);
+            } finally {
+                handle.detach();
             }
-
-            // 失败处理
-            healthStore.markFailure(target.id());
-            handle.cancel();
-
-            lastError = buildLastErrorAndLog(result, target, label);
         }
 
         // 所有模型都失败了，通知客户端错误
