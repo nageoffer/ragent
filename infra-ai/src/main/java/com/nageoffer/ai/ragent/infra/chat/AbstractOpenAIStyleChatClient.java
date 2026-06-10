@@ -144,25 +144,43 @@ public abstract class AbstractOpenAIStyleChatClient implements ChatClient {
 
         // 在调用线程开 stream span，使后续 first-packet 子节点能正确归属父节点；
         // 该 span 由 SSE 终态（onComplete / onError）或 cancel 时收尾，记录真实端到端耗时
+        // 注意：此处不 detach，由调用方（RoutingLLMService）在 awaitFirstPacket 之后调 handle.detach()
         StreamSpan span = streamTraceSupport.beginStreamNode(provider() + "-stream-chat", "LLM_PROVIDER");
-        StreamSpanCallback wrappedCallback;
-        try {
-            wrappedCallback = new StreamSpanCallback(callback, span);
-            StreamCancellationHandle inner = StreamAsyncExecutor.submit(
-                    modelStreamExecutor,
-                    call,
-                    wrappedCallback,
-                    cancelled -> doStream(call, wrappedCallback, cancelled, reasoningEnabled)
-            );
-            return () -> {
-                try {
-                    inner.cancel();
-                } finally {
-                    wrappedCallback.onCancel();
-                }
-            };
-        } finally {
-            // 同步部分结束：把节点从当前线程的 NODE_STACK 弹出，避免污染兄弟节点的父节点链
+        StreamSpanCallback wrappedCallback = new StreamSpanCallback(callback, span);
+        StreamCancellationHandle inner = StreamAsyncExecutor.submit(
+                modelStreamExecutor,
+                call,
+                wrappedCallback,
+                cancelled -> doStream(call, wrappedCallback, cancelled, reasoningEnabled)
+        );
+        return new StreamChatHandle(() -> {
+            try {
+                inner.cancel();
+            } finally {
+                wrappedCallback.onCancel();
+            }
+        }, span);
+    }
+
+    /**
+     * 携带 StreamSpan 的取消句柄，供调用方在首包探测完成后调 detach() 弹出 NODE_STACK
+     */
+    public static final class StreamChatHandle implements StreamCancellationHandle {
+        private final StreamCancellationHandle delegate;
+        private final StreamSpan span;
+
+        public StreamChatHandle(StreamCancellationHandle delegate, StreamSpan span) {
+            this.delegate = delegate;
+            this.span = span;
+        }
+
+        @Override
+        public void cancel() {
+            delegate.cancel();
+        }
+
+        @Override
+        public void detach() {
             span.detach();
         }
     }
