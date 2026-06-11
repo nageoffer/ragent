@@ -1,0 +1,65 @@
+<?xml version="1.0"?>
+<!DOCTYPE module PUBLIC
+        "-//Checkstyle//DTD Checkstyle Configuration 1.3//EN"
+        "https://checkstyle.org/dtds/configuration_1_3.dtd">
+
+<module name="Checker">
+    <property name="charset" value="UTF-8"/>
+    <property name="localeCountry" value="US"/>
+    <property name="localeLanguage" value="en"/>
+
+    <!-- 读取 suppressions -->
+    <module name="SuppressionFilter">
+        <property name="file" value="${checkstyle.suppressions.file}"/>
+    </module>
+
+    <!-- 文件结尾换行 -->
+    <module name="NewlineAtEndOfFile"/>
+
+    <!-- 不允许 Tab -->
+    <module name="FileTabCharacter">
+        <property name="eachLine" value="true"/>
+    </module>
+
+    <module name="TreeWalker">
+
+        <!-- import 相关：适合多模块 Spring Boot 项目 -->
+        <module name="AvoidStarImport"/>
+        <module name="UnusedImports"/>
+        <module name="RedundantImport"/>
+
+        <!-- 命名规范：尽量温和，不和现有代码风格冲突太大 -->
+        <module name="PackageName">
+            <property name="format" value="^[a-z]+(\.[a-z][a-z0-9]*)*$"/>
+        </module>
+
+        <module name="TypeName"/>
+        <module name="MethodName"/>
+        <module name="ParameterName"/>
+        <module name="LocalVariableName"/>
+        <module name="MemberName"/>
+        <module name="StaticVariableName">
+            <property name="format" value="^[A-Z][A-Z0-9_]*$"/>
+        </module>
+
+        <!-- 基础可读性 -->
+        <module name="EmptyBlock">
+            <property name="option" value="TEXT"/>
+        </module>
+
+        <module name="NeedBraces"/>
+
+        <!-- 避免很明显的坏味道 -->
+        <module name="EqualsAvoidNull"/>
+        <module name="SimplifyBooleanExpression"/>
+        <module name="SimplifyBooleanReturn"/>
+
+        <!-- switch 必须有 default -->
+        <module name="MissingSwitchDefault"/>
+
+        <!-- catch 变量名统一 -->
+        <module name="CatchParameterName">
+            <property name="format" value="^(e|ex|exception|throwable|[a-z][a-zA-Z0-9]*)$"/>
+        </module>
+    </module>
+</module>

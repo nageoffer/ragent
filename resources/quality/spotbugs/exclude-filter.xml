@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FindBugsFilter>
+
+    <!-- 排除构建输出 -->
+    <Match>
+        <Source name="~.*[/\\\\]target[/\\\\].*"/>
+    </Match>
+
+    <!-- 排除 generated 代码 -->
+    <Match>
+        <Source name="~.*[/\\\\]generated-sources[/\\\\].*"/>
+    </Match>
+
+    <Match>
+        <Source name="~.*[/\\\\]generated-test-sources[/\\\\].*"/>
+    </Match>
+
+    <!-- 排除前端和文档目录 -->
+    <Match>
+        <Source name="~.*[/\\\\]frontend[/\\\\].*"/>
+    </Match>
+
+    <Match>
+        <Source name="~.*[/\\\\]docs[/\\\\].*"/>
+    </Match>
+
+</FindBugsFilter>

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ruleset name="Ragent PMD Ruleset"
+         xmlns="http://pmd.sourceforge.net/ruleset/2.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://pmd.sourceforge.net/ruleset/2.0.0 https://pmd.sourceforge.io/ruleset_2_0_0.xsd">
+
+    <description>
+        PMD ruleset for ragent, compatible with PMD 7.
+    </description>
+
+    <!-- 排除构建输出和无关目录 -->
+    <exclude-pattern>.*/target/.*</exclude-pattern>
+    <exclude-pattern>.*/generated-sources/.*</exclude-pattern>
+    <exclude-pattern>.*/generated-test-sources/.*</exclude-pattern>
+    <exclude-pattern>.*/frontend/.*</exclude-pattern>
+    <exclude-pattern>.*/docs/.*</exclude-pattern>
+
+    <!-- 第一阶段建议：只使用 PMD 7 官方分类规则 -->
+    <rule ref="category/java/bestpractices.xml"/>
+    <rule ref="category/java/errorprone.xml"/>
+    <rule ref="category/java/codestyle.xml"/>
+    <rule ref="category/java/performance.xml"/>
+
+</ruleset>

@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<!DOCTYPE suppressions PUBLIC
+        "-//Checkstyle//DTD SuppressionFilter Configuration 1.2//EN"
+        "https://checkstyle.org/dtds/suppressions_1_2.dtd">
+
+<suppressions>
+    <!-- Maven 构建输出 -->
+    <suppress files="[/\\\\]target[/\\\\].*" checks=".*"/>
+
+    <!-- 生成代码 -->
+    <suppress files="[/\\\\]generated-sources[/\\\\].*" checks=".*"/>
+    <suppress files="[/\\\\]generated-test-sources[/\\\\].*" checks=".*"/>
+
+    <!-- 前端和文档目录，不属于 Java Checkstyle 范围 -->
+    <suppress files="[/\\\\]frontend[/\\\\].*" checks=".*"/>
+    <suppress files="[/\\\\]docs[/\\\\].*" checks=".*"/>
+</suppressions>

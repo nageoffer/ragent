@@ -1,0 +1,79 @@
+name: Java Static Analysis
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+    branches:
+      - '**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-analyze:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17 with Maven cache
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - name: Build and run static analysis
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        run: |
+          mvn clean verify -DskipTests
+
+      - name: Debug report files
+        if: always()
+        run: |
+          echo "==== reports dir ===="
+          find . -type d -path "*/target/reports" | sort || true
+          echo "==== site dir ===="
+          find . -type d -path "*/target/site" | sort || true
+          echo "==== report files ===="
+          find . -type f \( \
+            -name "checkstyle.html" -o \
+            -name "pmd.html" -o \
+            -name "checkstyle-result.xml" -o \
+            -name "pmd.xml" -o \
+            -name "spotbugs.html" -o \
+            -name "spotbugs.xml" -o \
+            -name "spotbugsXml.xml" -o \
+            -name "dependency-check-report.html" \
+          \) | sort || true
+
+      - name: Upload reports directories
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: analysis-report-sites
+          path: |
+            **/target/reports/**
+            **/target/site/**
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Upload XML and root HTML reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: analysis-report-files
+          path: |
+            **/target/checkstyle-result.xml
+            **/target/checkstyle-checker.xml
+            **/target/pmd.xml
+            **/target/spotbugs.xml
+            **/target/spotbugsXml.xml
+            **/target/dependency-check-report.html
+          retention-days: 7
+          if-no-files-found: warn
