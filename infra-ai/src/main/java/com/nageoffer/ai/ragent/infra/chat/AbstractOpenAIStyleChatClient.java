@@ -154,16 +154,28 @@ public abstract class AbstractOpenAIStyleChatClient implements ChatClient {
                     wrappedCallback,
                     cancelled -> doStream(call, wrappedCallback, cancelled, reasoningEnabled)
             );
-            return () -> {
-                try {
-                    inner.cancel();
-                } finally {
-                    wrappedCallback.onCancel();
+            // 不在此处 detach span，而是将 detach 封装到返回的 handle 中，
+            // 由 RoutingLLMService 在 awaitFirstPacket 之后调用，确保 llm-first-packet
+            // 节点能正确归属到 provider 流式节点之下
+            return new StreamCancellationHandle() {
+                @Override
+                public void cancel() {
+                    try {
+                        inner.cancel();
+                    } finally {
+                        wrappedCallback.onCancel();
+                    }
+                }
+
+                @Override
+                public void detach() {
+                    span.detach();
                 }
             };
-        } finally {
-            // 同步部分结束：把节点从当前线程的 NODE_STACK 弹出，避免污染兄弟节点的父节点链
+        } catch (Exception e) {
+            // 异常路径：确保 span 在退出前从 NODE_STACK 弹出，避免污染后续调用
             span.detach();
+            throw e;
         }
     }
 
