@@ -139,7 +139,7 @@ ai:
     message-chunk-size: 1
 
   chat:
-    default-model: qwen3-max
+    default-model: qwen-plus
     deep-thinking-model: qwen3-max
     candidates:
       - id: qwen-plus
