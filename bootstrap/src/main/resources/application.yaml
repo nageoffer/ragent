@@ -85,6 +85,11 @@ rag:
       lock-seconds: 900
       batch-size: 20
       min-interval-seconds: 60
+    cleanup:
+      scan-delay-ms: 15000
+      batch-size: 50
+      max-retry: 5
+      base-backoff-seconds: 30
 
   mcp:
     servers:
