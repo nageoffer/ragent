@@ -30,6 +30,37 @@ export interface SystemSettings {
       summaryMaxChars: number;
       titleMaxLength: number;
     };
+    channels: {
+      vectorGlobal: {
+        enabled: boolean;
+        confidenceThreshold: number;
+        singleIntentSupplementThreshold: number;
+        topKMultiplier: number;
+        minIntentScore?: number;
+        boost?: number;
+      };
+      intentDirected: {
+        enabled: boolean;
+        minIntentScore: number;
+        topKMultiplier: number;
+        confidenceThreshold?: number;
+        singleIntentSupplementThreshold?: number;
+        boost?: number;
+      };
+      keyword: {
+        enabled: boolean;
+        topKMultiplier: number;
+        boost: number;
+        confidenceThreshold?: number;
+        minIntentScore?: number;
+        singleIntentSupplementThreshold?: number;
+      };
+      hybrid: {
+        enabled: boolean;
+        fusion: string;
+        vectorWeight: number;
+      };
+    };
   };
   ai: {
     providers: Record<

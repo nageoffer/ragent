@@ -260,6 +260,52 @@ export function SystemSettingsPage() {
 
       <Card>
         <CardHeader>
+          <CardTitle>检索通道配置</CardTitle>
+          <CardDescription>多路检索通道的启用状态与参数</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {rag.channels && (
+            <div className="space-y-4">
+              <div>
+                <h4 className="text-sm font-semibold text-slate-700 mb-2">向量全局检索</h4>
+                <div className="grid gap-4 md:grid-cols-4">
+                  <InfoItem label="Enabled" value={<BoolBadge value={rag.channels.vectorGlobal.enabled} />} />
+                  <InfoItem label="Confidence Threshold" value={rag.channels.vectorGlobal.confidenceThreshold} />
+                  <InfoItem label="Supplement Threshold" value={rag.channels.vectorGlobal.singleIntentSupplementThreshold} />
+                  <InfoItem label="TopK Multiplier" value={rag.channels.vectorGlobal.topKMultiplier} />
+                </div>
+              </div>
+              <div>
+                <h4 className="text-sm font-semibold text-slate-700 mb-2">意图定向检索</h4>
+                <div className="grid gap-4 md:grid-cols-3">
+                  <InfoItem label="Enabled" value={<BoolBadge value={rag.channels.intentDirected.enabled} />} />
+                  <InfoItem label="Min Intent Score" value={rag.channels.intentDirected.minIntentScore} />
+                  <InfoItem label="TopK Multiplier" value={rag.channels.intentDirected.topKMultiplier} />
+                </div>
+              </div>
+              <div>
+                <h4 className="text-sm font-semibold text-slate-700 mb-2">关键词检索</h4>
+                <div className="grid gap-4 md:grid-cols-3">
+                  <InfoItem label="Enabled" value={<BoolBadge value={rag.channels.keyword.enabled} />} />
+                  <InfoItem label="TopK Multiplier" value={rag.channels.keyword.topKMultiplier} />
+                  <InfoItem label="Boost" value={rag.channels.keyword.boost} />
+                </div>
+              </div>
+              <div>
+                <h4 className="text-sm font-semibold text-slate-700 mb-2">混合融合</h4>
+                <div className="grid gap-4 md:grid-cols-3">
+                  <InfoItem label="Enabled" value={<BoolBadge value={rag.channels.hybrid.enabled} />} />
+                  <InfoItem label="Fusion Mode" value={rag.channels.hybrid.fusion} />
+                  <InfoItem label="Vector Weight" value={rag.channels.hybrid.vectorWeight} />
+                </div>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>Rerank 模型配置</CardTitle>
           <CardDescription>重排模型列表</CardDescription>
         </CardHeader>
