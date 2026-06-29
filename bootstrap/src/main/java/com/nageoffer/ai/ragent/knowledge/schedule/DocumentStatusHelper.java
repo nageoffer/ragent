@@ -49,7 +49,10 @@ public class DocumentStatusHelper {
                         .eq(KnowledgeDocumentDO::getId, docId)
                         .eq(KnowledgeDocumentDO::getDeleted, 0)
                         .eq(KnowledgeDocumentDO::getEnabled, 1)
-                        .ne(KnowledgeDocumentDO::getStatus, DocumentStatus.RUNNING.getCode())
+                        .in(KnowledgeDocumentDO::getStatus,
+                                DocumentStatus.PENDING.getCode(),
+                                DocumentStatus.FAILED.getCode(),
+                                DocumentStatus.SUCCESS.getCode())
         ) > 0;
     }
 
@@ -111,5 +114,58 @@ public class DocumentStatusHelper {
     }
 
     public record StuckRecoveryResult(List<String> stuckDocIds, int actualRecovered) {
+    }
+
+    /**
+     * 删除入口 CAS：pending/success/failed -> deleting。
+     *
+     * @return true 抢占成功；false 表示分块正在进行或已被其它删除流程抢占
+     */
+    public boolean tryMarkDeleting(String docId) {
+        return documentMapper.casStatus(
+                docId,
+                List.of(DocumentStatus.PENDING.getCode(),
+                        DocumentStatus.SUCCESS.getCode(),
+                        DocumentStatus.FAILED.getCode()),
+                DocumentStatus.DELETING.getCode()
+        ) > 0;
+    }
+
+    /**
+     * 分块入口 CAS：pending/failed -> running。
+     *
+     * @return true 抢占成功；false 表示文档非空闲（运行中 / 删除中 / 已完成）
+     */
+    public boolean tryStartChunk(String docId) {
+        return documentMapper.casStatus(
+                docId,
+                List.of(DocumentStatus.PENDING.getCode(),
+                        DocumentStatus.FAILED.getCode()),
+                DocumentStatus.RUNNING.getCode()
+        ) > 0;
+    }
+
+    /**
+     * 分块完成 CAS：running -> success。
+     *
+     * @return true 成功写回；false 表示运行权已被删除流程或其它流程抢走
+     */
+    public boolean tryMarkSuccess(String docId) {
+        return documentMapper.casStatus(
+                docId,
+                List.of(DocumentStatus.RUNNING.getCode()),
+                DocumentStatus.SUCCESS.getCode()
+        ) > 0;
+    }
+
+    /**
+     * 分块失败 CAS：running -> failed。
+     */
+    public boolean tryMarkFailed(String docId) {
+        return documentMapper.casStatus(
+                docId,
+                List.of(DocumentStatus.RUNNING.getCode()),
+                DocumentStatus.FAILED.getCode()
+        ) > 0;
     }
 }
