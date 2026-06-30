@@ -1,4 +1,4 @@
-local hashKey = 'snowflake_work_id_key'
+local hashKey = KEYS[1]
 local dataCenterIdKey = 'dataCenterId'
 local workIdKey = 'workId'
 
