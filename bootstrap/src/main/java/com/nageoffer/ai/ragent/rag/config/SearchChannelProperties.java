@@ -61,6 +61,11 @@ public class SearchChannelProperties {
          * 关键词检索配置
          */
         private Keyword keyword = new Keyword();
+
+        /**
+         * 联网检索配置（You.com Search）
+         */
+        private WebSearch webSearch = new WebSearch();
     }
 
     @Data
@@ -145,6 +150,39 @@ public class SearchChannelProperties {
          * 关键词召回更多候选，后续通过融合与 Rerank 筛选
          */
         private int topKMultiplier = 2;
+    }
+
+    @Data
+    public static class WebSearch {
+
+        /**
+         * 是否启用
+         * 默认关闭；开启后还需配置 api-key（或环境变量 YDC_API_KEY），两者缺一通道不生效
+         */
+        private boolean enabled = false;
+
+        /**
+         * 返回结果数量
+         * 默认 5，上限 20（超出会被通道内截断）
+         */
+        private int count = 5;
+
+        /**
+         * 请求超时（秒）
+         */
+        private int timeoutSeconds = 10;
+
+        /**
+         * You.com Search API Key
+         * 建议留空，此时回退读取环境变量 YDC_API_KEY，避免密钥落入配置文件
+         */
+        private String apiKey = "";
+
+        /**
+         * You.com Search API 地址
+         * 一般无需修改，测试时可指向本地 stub
+         */
+        private String apiUrl = "https://ydc-index.io/v1/search";
     }
 
     @Data
