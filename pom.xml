@@ -13,6 +13,9 @@
     </description>
 
     <properties>
+        <!-- surefire 配置中的 @{argLine} 需要该属性存在（通常由 jacoco 定义）；
+             未接入 jacoco 时给出空默认值，避免 fork 出的测试 JVM 收到字面量 @{argLine} 直接崩溃 -->
+        <argLine></argLine>
         <java.version>17</java.version>
         <spring-boot.version>3.5.7</spring-boot.version>
         <milvus-sdk.version>2.6.6</milvus-sdk.version>
