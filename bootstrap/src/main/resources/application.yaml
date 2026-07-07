@@ -113,6 +113,11 @@ rag:
         enabled: true
         mode: both
         top-k-multiplier: 2
+      web-search:  # You.com 联网检索通道，与本地知识库通道互补（结果实时来自网络）
+        enabled: false  # 默认关闭；开启后还需配置 api-key 或环境变量 YDC_API_KEY，两者缺一通道不生效
+        count: 5  # 返回结果数量，上限 20
+        timeout-seconds: 10  # 请求超时（秒），超时降级为空结果，不影响本地检索
+        api-key: ${YDC_API_KEY:}  # 默认读取环境变量 YDC_API_KEY（https://you.com/platform/api-keys 获取），不建议直接填写明文 Key
     fusion:
       strategy: rrf
       rrf-k: 60
