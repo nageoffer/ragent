@@ -17,6 +17,7 @@
 
 package com.nageoffer.ai.ragent.rag.core.retrieve.postprocessor;
 
+import cn.hutool.crypto.digest.DigestUtil;
 import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
 import com.nageoffer.ai.ragent.rag.config.SearchChannelProperties;
 import com.nageoffer.ai.ragent.rag.core.retrieve.channel.SearchChannelResult;
@@ -135,8 +136,10 @@ public class FusionPostProcessor implements SearchResultPostProcessor {
      * 生成 Chunk 融合键，与去重处理器保持一致（优先 id，缺失时退化为文本哈希）
      */
     private String chunkKey(RetrievedChunk chunk) {
+        // 与去重处理器一致改用 SHA-256：String.hashCode() 碰撞会让不同 Chunk 的
+        // RRF 分数被错误地累加到同一个键上
         return chunk.getId() != null
                 ? chunk.getId()
-                : String.valueOf(chunk.getText().hashCode());
+                : DigestUtil.sha256Hex(chunk.getText() == null ? "" : chunk.getText());
     }
 }

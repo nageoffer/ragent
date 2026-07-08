@@ -17,6 +17,7 @@
 
 package com.nageoffer.ai.ragent.rag.core.retrieve.postprocessor;
 
+import cn.hutool.crypto.digest.DigestUtil;
 import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
 import com.nageoffer.ai.ragent.rag.core.retrieve.channel.SearchChannelResult;
 import com.nageoffer.ai.ragent.rag.core.retrieve.channel.SearchChannelType;
@@ -75,9 +76,9 @@ public class DeduplicationPostProcessor implements SearchResultPostProcessor {
                             // 新 Chunk，直接添加
                             chunkMap.put(key, chunk);
                         } else {
-                            // 已存在，合并分数（取最高分）
+                            // 已存在，合并分数（取最高分；score 允许为 null，需空值安全比较）
                             RetrievedChunk existing = chunkMap.get(key);
-                            if (chunk.getScore() > existing.getScore()) {
+                            if (scoreOf(chunk) > scoreOf(existing)) {
                                 chunkMap.put(key, chunk);
                             }
                         }
@@ -91,10 +92,19 @@ public class DeduplicationPostProcessor implements SearchResultPostProcessor {
      * 生成 Chunk 唯一键
      */
     private String generateChunkKey(RetrievedChunk chunk) {
-        // 基于 id 或内容哈希生成唯一键
+        // 基于 id 或内容摘要生成唯一键
+        // 注意不能用 String.hashCode()：32 位哈希碰撞概率不可忽略（如 "Aa" 与 "BB"），
+        // 碰撞会把内容不同的 Chunk 误判为重复并静默丢弃，这里改用 SHA-256 内容摘要
         return chunk.getId() != null
                 ? chunk.getId()
-                : String.valueOf(chunk.getText().hashCode());
+                : DigestUtil.sha256Hex(chunk.getText() == null ? "" : chunk.getText());
+    }
+
+    /**
+     * 空值安全取分：score 为 null 时视为最低分，避免装箱 Float 拆箱 NPE
+     */
+    private static float scoreOf(RetrievedChunk chunk) {
+        return chunk.getScore() != null ? chunk.getScore() : Float.NEGATIVE_INFINITY;
     }
 
     /**

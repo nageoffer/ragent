@@ -84,7 +84,8 @@ public class ChunkPacker {
             // 再加会超预算: 先冲刷, 用尾部完整块作为重叠起点(留出容纳当前块的余量, 保证不超 maxChars)
             if (!buffer.isEmpty() && bufferLen + sepLen + addLen > maxChars) {
                 flush(buffer, result);
-                buffer = overlapTail(buffer, Math.min(overlapChars, maxChars - addLen));
+                // 重叠预算需同时扣除当前块与其前面的分隔符长度，否则合并结果可能超出 maxChars
+                buffer = overlapTail(buffer, Math.min(overlapChars, maxChars - addLen - SEPARATOR.length()));
                 bufferLen = bufferedLength(buffer);
             }
             bufferLen += (buffer.isEmpty() ? 0 : SEPARATOR.length()) + addLen;
@@ -162,6 +163,9 @@ public class ChunkPacker {
      */
     private static VectorChunk merge(List<VectorChunk> buffer) {
         StringBuilder content = new StringBuilder();
+        StringBuilder embeddingText = new StringBuilder();
+        boolean hasExplicitEmbeddingText = false;
+        String sectionContext = null;
         Set<String> sourceBlockIds = new LinkedHashSet<>();
         List<AssetRef> assets = new ArrayList<>();
         String blockType = buffer.get(0).getBlockType();
@@ -171,6 +175,25 @@ public class ChunkPacker {
                 content.append(SEPARATOR);
             }
             content.append(c.getContent() == null ? "" : c.getContent());
+            // embeddingText 不能在合并时丢弃：图片块特意用「无 URL 噪声」的描述文本做向量化，
+            // 丢弃后 embedding 会退化为携带原始 URL 的 content。任一块显式提供 embeddingText
+            // 时，合并块按「显式值优先、否则回退 content」逐块拼接
+            String effectiveEmbedding = c.getEmbeddingText() != null && !c.getEmbeddingText().isBlank()
+                    ? c.getEmbeddingText()
+                    : c.getContent();
+            if (c.getEmbeddingText() != null && !c.getEmbeddingText().isBlank()) {
+                hasExplicitEmbeddingText = true;
+            }
+            if (effectiveEmbedding != null && !effectiveEmbedding.isBlank()) {
+                if (!embeddingText.isEmpty()) {
+                    embeddingText.append(SEPARATOR);
+                }
+                embeddingText.append(effectiveEmbedding);
+            }
+            // sectionContext 取首个非空值（合并块与 outlinePath 一样归属共同上级章节）
+            if (sectionContext == null && c.getSectionContext() != null && !c.getSectionContext().isBlank()) {
+                sectionContext = c.getSectionContext();
+            }
             if (c.getSourceBlockIds() != null) {
                 sourceBlockIds.addAll(c.getSourceBlockIds());
             }
@@ -184,6 +207,8 @@ public class ChunkPacker {
         return VectorChunk.builder()
                 .chunkId(IdUtil.getSnowflakeNextIdStr())
                 .content(content.toString())
+                .embeddingText(hasExplicitEmbeddingText ? embeddingText.toString() : null)
+                .sectionContext(sectionContext)
                 .blockType(homogeneous ? blockType : "PARAGRAPH")
                 .outlinePath(commonPrefix(buffer))
                 .sourceBlockIds(new ArrayList<>(sourceBlockIds))
