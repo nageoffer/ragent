@@ -17,13 +17,28 @@
 
 package com.nageoffer.ai.ragent.ingestion.dao.mapper;
 
-import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import com.nageoffer.ai.ragent.ingestion.dao.entity.IngestionPipelineNodeDO;
 import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Param;
+import org.junit.jupiter.api.Test;
 
-public interface IngestionPipelineNodeMapper extends BaseMapper<IngestionPipelineNodeDO> {
+import java.lang.reflect.Method;
 
-    @Delete("DELETE FROM t_ingestion_pipeline_node WHERE pipeline_id = #{pipelineId}")
-    int physicalDeleteByPipelineId(@Param("pipelineId") String pipelineId);
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+
+class IngestionPipelineNodeMapperTest {
+
+    @Test
+    void physicalDeleteByPipelineIdUsesHardDeleteSql() throws NoSuchMethodException {
+        Method method = IngestionPipelineNodeMapper.class.getMethod("physicalDeleteByPipelineId", String.class);
+
+        Delete delete = method.getAnnotation(Delete.class);
+        assertNotNull(delete);
+        assertEquals("DELETE FROM t_ingestion_pipeline_node WHERE pipeline_id = #{pipelineId}", delete.value()[0]);
+        assertEquals(int.class, method.getReturnType());
+
+        Param param = method.getParameters()[0].getAnnotation(Param.class);
+        assertNotNull(param);
+        assertEquals("pipelineId", param.value());
+    }
 }
