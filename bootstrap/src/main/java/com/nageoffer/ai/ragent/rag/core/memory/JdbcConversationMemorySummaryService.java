@@ -124,13 +124,19 @@ public class JdbcConversationMemorySummaryService implements ConversationMemoryS
             if (latestUserTurns.isEmpty()) {
                 return;
             }
-            String cutoffId = resolveCutoffId(latestUserTurns);
-            if (StrUtil.isBlank(cutoffId)) {
+            String historyStartId = resolveHistoryStartId(latestUserTurns);
+            if (StrUtil.isBlank(historyStartId)) {
                 return;
             }
 
             String afterId = resolveSummaryStartId(conversationId, userId, latestSummary);
-            if (afterId != null && Long.parseLong(afterId) >= Long.parseLong(cutoffId)) {
+            if (afterId != null && Long.parseLong(afterId) >= Long.parseLong(historyStartId)) {
+                return;
+            }
+
+            // 摘要覆盖约一半原文窗口；只有这段重叠滑出窗口后才再次生成摘要
+            String summaryCutoffId = resolveSummaryCutoffId(latestUserTurns);
+            if (StrUtil.isBlank(summaryCutoffId)) {
                 return;
             }
 
@@ -138,7 +144,7 @@ public class JdbcConversationMemorySummaryService implements ConversationMemoryS
                     conversationId,
                     userId,
                     afterId,
-                    cutoffId
+                    summaryCutoffId
             );
             if (CollUtil.isEmpty(toSummarize)) {
                 return;
@@ -253,7 +259,7 @@ public class JdbcConversationMemorySummaryService implements ConversationMemoryS
         return conversationGroupService.findMaxMessageIdAtOrBefore(conversationId, userId, after);
     }
 
-    private String resolveCutoffId(List<ConversationMessageDO> latestUserTurns) {
+    private String resolveHistoryStartId(List<ConversationMessageDO> latestUserTurns) {
         if (CollUtil.isEmpty(latestUserTurns)) {
             return null;
         }
@@ -261,6 +267,15 @@ public class JdbcConversationMemorySummaryService implements ConversationMemoryS
         // 倒序列表的最后一个就是最早的
         ConversationMessageDO oldest = latestUserTurns.get(latestUserTurns.size() - 1);
         return oldest == null ? null : oldest.getId();
+    }
+
+    private String resolveSummaryCutoffId(List<ConversationMessageDO> latestUserTurns) {
+        if (CollUtil.isEmpty(latestUserTurns)) {
+            return null;
+        }
+
+        ConversationMessageDO overlapBoundary = latestUserTurns.get((latestUserTurns.size() - 1) / 2);
+        return overlapBoundary == null ? null : overlapBoundary.getId();
     }
 
     private String resolveLastMessageId(List<ConversationMessageDO> toSummarize) {
