@@ -8,7 +8,7 @@ import {
   deleteSession as deleteSessionRequest,
   renameSession as renameSessionRequest
 } from "@/services/sessionService";
-import { stopTask, submitFeedback } from "@/services/chatService";
+import { stopTask, submitFeedback, cancelFeedback } from "@/services/chatService";
 import { buildQuery } from "@/utils/helpers";
 import { createStreamResponse } from "@/hooks/useStreamResponse";
 import { storage } from "@/utils/storage";
@@ -508,11 +508,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
         message.id === messageId ? { ...message, feedback } : message
       )
     }));
-    if (vote === null) {
-      toast.success("取消成功");
-      return;
-    }
     try {
+      if (vote === null) {
+        await cancelFeedback(messageId);
+        toast.success("取消成功");
+        return;
+      }
       await submitFeedback(messageId, vote);
       toast.success(feedback === "like" ? "点赞成功" : "点踩成功");
     } catch (error) {
@@ -521,7 +522,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           message.id === messageId ? { ...message, feedback: prev } : message
         )
       }));
-      toast.error((error as Error).message || "反馈保存失败");
+      toast.error((error as Error).message || (vote === null ? "取消反馈失败" : "反馈保存失败"));
     }
   }
 }));

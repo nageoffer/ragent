@@ -44,8 +44,8 @@ public class MessageFeedbackConsumer implements RocketMQListener<MessageWrapper<
     public void onMessage(MessageWrapper<MessageFeedbackEvent> message) {
         MessageFeedbackEvent event = message.getBody();
 
-        log.info("[消费者] 开始处理点赞/点踩事件，messageId: {}, userId: {}, vote: {}, keys: {}",
-                event.getMessageId(), event.getUserId(), event.getVote(), message.getKeys());
+        log.info("[消费者] 开始处理反馈事件，messageId: {}, userId: {}, vote: {}, cancelled: {}, keys: {}",
+                event.getMessageId(), event.getUserId(), event.getVote(), event.isCancelled(), message.getKeys());
         feedbackService.submitFeedbackByEvent(event);
     }
 }

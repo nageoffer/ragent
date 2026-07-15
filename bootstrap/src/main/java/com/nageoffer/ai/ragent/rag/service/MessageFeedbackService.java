@@ -42,6 +42,13 @@ public interface MessageFeedbackService {
     void submitFeedbackAsync(String messageId, MessageFeedbackRequest request);
 
     /**
+     * 取消会话消息反馈（异步，通过 MQ 持久化）
+     *
+     * @param messageId 消息ID
+     */
+    void cancelFeedbackAsync(String messageId);
+
+    /**
      * 通过 MQ 事件异步持久化反馈（由消费者调用）
      *
      * @param event 反馈事件

@@ -9,3 +9,7 @@ export async function submitFeedback(messageId: string, vote: number) {
     vote
   });
 }
+
+export async function cancelFeedback(messageId: string) {
+  return api.delete<void>(`/conversations/messages/${messageId}/feedback`);
+}

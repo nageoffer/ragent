@@ -63,6 +63,11 @@ public class MessageFeedbackEvent implements Serializable {
     private String comment;
 
     /**
+     * 是否为取消反馈事件；旧消息缺少该字段时默认为 false
+     */
+    private boolean cancelled;
+
+    /**
      * 用户提交时间戳（毫秒），用于多节点消费时保证最终一致性
      */
     private long submitTime;

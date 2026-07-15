@@ -74,6 +74,21 @@ public class MessageFeedbackServiceImpl implements MessageFeedbackService {
     }
 
     @Override
+    public void cancelFeedbackAsync(String messageId) {
+        String userId = UserContext.getUserId();
+        Assert.notBlank(userId, () -> new ClientException("未获取到当前登录用户"));
+        Assert.notBlank(messageId, () -> new ClientException("消息ID不能为空"));
+
+        MessageFeedbackEvent event = MessageFeedbackEvent.builder()
+                .messageId(messageId)
+                .userId(userId)
+                .cancelled(true)
+                .submitTime(System.currentTimeMillis())
+                .build();
+        messageQueueProducer.send(feedbackTopic, userId + ":" + messageId, "取消消息反馈", event);
+    }
+
+    @Override
     public void submitFeedback(String messageId, MessageFeedbackRequest request) {
         String userId = UserContext.getUserId();
         Assert.notBlank(userId, () -> new ClientException("未获取到当前登录用户"));
@@ -141,7 +156,7 @@ public class MessageFeedbackServiceImpl implements MessageFeedbackService {
                     .reason(reason)
                     .comment(comment)
                     .build();
-            feedbackMapper.insert(feedback);
+            feedbackMapper.upsertActiveFeedback(feedback);
         } else {
             // 仅当本次提交时间晚于记录最后更新时间时才覆盖，避免多节点并行消费乱序
             feedbackMapper.update(
@@ -163,8 +178,18 @@ public class MessageFeedbackServiceImpl implements MessageFeedbackService {
         String userId = event.getUserId();
         Assert.notBlank(messageId, () -> new ClientException("消息ID不能为空"));
         Assert.notBlank(userId, () -> new ClientException("用户ID不能为空"));
-        Assert.notNull(event.getVote(), () -> new ClientException("反馈值不能为空"));
+        if (event.isCancelled()) {
+            ConversationMessageDO message = loadAssistantMessage(messageId, userId);
+            MessageFeedbackDO feedback = MessageFeedbackDO.builder()
+                    .messageId(messageId)
+                    .conversationId(message.getConversationId())
+                    .userId(userId)
+                    .build();
+            feedbackMapper.upsertCancelledFeedback(feedback);
+            return;
+        }
 
+        Assert.notNull(event.getVote(), () -> new ClientException("反馈值不能为空"));
         ConversationMessageDO message = loadAssistantMessage(messageId, userId);
         doUpsertFeedback(
                 messageId,
