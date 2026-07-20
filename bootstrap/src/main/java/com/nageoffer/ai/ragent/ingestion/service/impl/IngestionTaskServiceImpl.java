@@ -17,7 +17,6 @@
 
 package com.nageoffer.ai.ragent.ingestion.service.impl;
 
-import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.lang.Assert;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
@@ -368,7 +367,7 @@ public class IngestionTaskServiceImpl implements IngestionTaskService {
                 .chunkCount(task.getChunkCount())
                 .errorMessage(task.getErrorMessage())
                 .logs(readLogs(task.getLogsJson()))
-                .metadata(BeanUtil.beanToMap(task.getMetadataJson()))
+                .metadata(readMap(task.getMetadataJson()))
                 .startedAt(task.getStartedAt())
                 .completedAt(task.getCompletedAt())
                 .createdBy(task.getCreatedBy())
@@ -389,7 +388,7 @@ public class IngestionTaskServiceImpl implements IngestionTaskService {
                 .durationMs(node.getDurationMs())
                 .message(node.getMessage())
                 .errorMessage(node.getErrorMessage())
-                .output(BeanUtil.beanToMap(node.getOutputJson()))
+                .output(readMap(node.getOutputJson()))
                 .createTime(node.getCreateTime())
                 .updateTime(node.getUpdateTime())
                 .build();
@@ -403,6 +402,19 @@ public class IngestionTaskServiceImpl implements IngestionTaskService {
             return objectMapper.writeValueAsString(value);
         } catch (Exception e) {
             return null;
+        }
+    }
+
+    private Map<String, Object> readMap(String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return Map.of();
+        }
+        try {
+            Map<String, Object> value = objectMapper.readValue(raw, new TypeReference<Map<String, Object>>() {
+            });
+            return value == null ? Map.of() : value;
+        } catch (Exception e) {
+            return Map.of();
         }
     }
 
