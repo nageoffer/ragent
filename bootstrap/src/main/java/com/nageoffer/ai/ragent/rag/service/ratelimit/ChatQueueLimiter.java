@@ -18,6 +18,7 @@
 package com.nageoffer.ai.ragent.rag.service.ratelimit;
 
 import cn.dev33.satoken.stp.StpUtil;
+import com.alibaba.ttl.TtlRunnable;
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
 import com.nageoffer.ai.ragent.framework.convention.ChatMessage;
@@ -73,8 +74,8 @@ public class ChatQueueLimiter {
 
         chatRateLimiter.acquire(AcquireRequest.builder()
                 .maxWaitMillis(TimeUnit.SECONDS.toMillis(rateLimitProperties.getGlobalMaxWaitSeconds()))
-                .onAcquired(onAcquire)
-                .onTimeout(() -> handleReject(question, conversationId, emitter))
+                .onAcquired(TtlRunnable.get(onAcquire))
+                .onTimeout(TtlRunnable.get(() -> handleReject(question, conversationId, emitter)))
                 .onAcquiredExecutor(chatEntryExecutor)
                 .cancelBinder(cancel -> {
                     emitter.onCompletion(cancel);
