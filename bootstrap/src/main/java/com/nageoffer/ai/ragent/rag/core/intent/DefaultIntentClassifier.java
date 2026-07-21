@@ -138,6 +138,10 @@ public class DefaultIntentClassifier implements IntentClassifier, IntentNodeRegi
     public List<NodeScore> classifyTargets(String question) {
         // 每次都从Redis读取最新数据
         IntentTreeData data = loadIntentTreeData();
+        if (data.leafNodes.isEmpty()) {
+            log.debug("意图树没有可用叶子节点，跳过 LLM 意图识别");
+            return List.of();
+        }
 
         String systemPrompt = buildPrompt(data.leafNodes);
         ChatRequest request = ChatRequest.builder()
