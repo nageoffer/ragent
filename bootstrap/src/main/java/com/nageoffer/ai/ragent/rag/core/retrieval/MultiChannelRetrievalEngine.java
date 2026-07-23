@@ -62,9 +62,38 @@ public class MultiChannelRetrievalEngine {
      */
     @RagTraceNode(name = "multi-channel-retrieval", type = "RETRIEVE_CHANNEL")
     public List<RetrievedChunk> retrieveKnowledgeChannels(List<SubQuestionIntent> subIntents, RetrievalBudget budget) {
-        // 构建检索上下文
-        SearchContext context = buildSearchContext(subIntents, budget);
+        List<SearchContext> contexts = prepareKnowledgeChannels(subIntents, budget);
+        if (contexts.isEmpty()) {
+            return List.of();
+        }
+        return retrieveKnowledgeChannels(contexts.get(0));
+    }
 
+    /**
+     * 为同一请求中的全部子问题构建上下文，并让各检索通道集中完成批量准备。
+     */
+    public List<SearchContext> prepareKnowledgeChannels(List<SubQuestionIntent> subIntents, RetrievalBudget budget) {
+        if (CollUtil.isEmpty(subIntents)) {
+            return List.of();
+        }
+        List<SearchContext> contexts = subIntents.stream()
+                .map(subIntent -> buildSearchContext(List.of(subIntent), budget))
+                .toList();
+        for (SearchChannel channel : searchChannels) {
+            List<SearchContext> enabledContexts = contexts.stream()
+                    .filter(channel::isEnabled)
+                    .toList();
+            if (!enabledContexts.isEmpty()) {
+                channel.prepare(enabledContexts);
+            }
+        }
+        return contexts;
+    }
+
+    /**
+     * 使用已完成请求级准备的上下文执行知识检索。
+     */
+    public List<RetrievedChunk> retrieveKnowledgeChannels(SearchContext context) {
         // 【阶段1：多通道并行检索】
         List<SearchChannelResult> channelResults = executeSearchChannels(context);
         if (CollUtil.isEmpty(channelResults)) {

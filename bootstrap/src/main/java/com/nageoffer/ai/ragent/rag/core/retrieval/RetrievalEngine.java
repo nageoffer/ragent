@@ -31,6 +31,7 @@ import com.nageoffer.ai.ragent.rag.core.mcp.McpToolExecutor;
 import com.nageoffer.ai.ragent.rag.core.mcp.McpToolRegistry;
 import com.nageoffer.ai.ragent.rag.core.prompt.ContextFormatter;
 import com.nageoffer.ai.ragent.rag.core.prompt.PromptTemplateLoader;
+import com.nageoffer.ai.ragent.rag.core.retrieval.channel.SearchContext;
 import com.nageoffer.ai.ragent.rag.dto.KbResult;
 import com.nageoffer.ai.ragent.rag.dto.RetrievalContext;
 import com.nageoffer.ai.ragent.rag.dto.SubQuestionIntent;
@@ -49,6 +50,7 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.CONTEXT_FORMAT_PATH;
 import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.MULTI_CHANNEL_KEY;
@@ -90,11 +92,15 @@ public class RetrievalEngine {
                 searchProperties.getFusion().getRerankCandidateLimit(),
                 contextTopK
         );
-        List<CompletableFuture<SubQuestionContext>> tasks = subIntents.stream()
-                .map(si -> CompletableFuture.supplyAsync(
+        // 先构建全部子问题的检索任务并完成请求级批量准备，再并行执行各子问题。
+        // 这样查询向量可以按实际 Collection 对应的模型集中计算并在当前请求内复用。
+        List<SearchContext> searchContexts = multiChannelRetrievalEngine.prepareKnowledgeChannels(subIntents, budget);
+        List<CompletableFuture<SubQuestionContext>> tasks = IntStream.range(0, subIntents.size())
+                .mapToObj(index -> CompletableFuture.supplyAsync(
                         () -> {
+                            SubQuestionIntent si = subIntents.get(index);
                             try {
-                                return buildSubQuestionContext(si, budget);
+                                return buildSubQuestionContext(si, budget, searchContexts.get(index));
                             } catch (Exception e) {
                                 log.error("子问题上下文构建失败，降级为空上下文，question：{}", si.subQuestion(), e);
                                 return new SubQuestionContext(si.subQuestion(), "", "", Map.of());
@@ -150,11 +156,13 @@ public class RetrievalEngine {
                 .build();
     }
 
-    private SubQuestionContext buildSubQuestionContext(SubQuestionIntent intent, RetrievalBudget budget) {
+    private SubQuestionContext buildSubQuestionContext(SubQuestionIntent intent,
+                                                       RetrievalBudget budget,
+                                                       SearchContext searchContext) {
         List<NodeScore> kbIntents = NodeScoreFilters.kb(intent.nodeScores());
         List<NodeScore> mcpIntents = NodeScoreFilters.mcp(intent.nodeScores());
 
-        KbResult kbResult = retrieveAndRerank(intent, kbIntents, budget);
+        KbResult kbResult = retrieveAndRerank(intent, kbIntents, budget, searchContext);
 
         String mcpContext = CollUtil.isNotEmpty(mcpIntents)
                 ? executeMcpAndMerge(intent.subQuestion(), mcpIntents)
@@ -187,10 +195,12 @@ public class RetrievalEngine {
         return contextFormatter.formatMcpContext(toolResults, mcpIntents);
     }
 
-    private KbResult retrieveAndRerank(SubQuestionIntent intent, List<NodeScore> kbIntents, RetrievalBudget budget) {
+    private KbResult retrieveAndRerank(SubQuestionIntent intent,
+                                       List<NodeScore> kbIntents,
+                                       RetrievalBudget budget,
+                                       SearchContext searchContext) {
         // 使用多通道检索引擎（是否启用全局检索由置信度阈值决定）
-        List<SubQuestionIntent> subIntents = List.of(intent);
-        List<RetrievedChunk> chunks = multiChannelRetrievalEngine.retrieveKnowledgeChannels(subIntents, budget);
+        List<RetrievedChunk> chunks = multiChannelRetrievalEngine.retrieveKnowledgeChannels(searchContext);
 
         if (CollUtil.isEmpty(chunks)) {
             return KbResult.empty();

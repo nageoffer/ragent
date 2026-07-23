@@ -22,14 +22,21 @@ import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
 import com.nageoffer.ai.ragent.rag.config.SearchChannelProperties;
 import com.nageoffer.ai.ragent.rag.core.intent.NodeScore;
 import com.nageoffer.ai.ragent.rag.core.intent.NodeScoreFilters;
+import com.nageoffer.ai.ragent.rag.core.vector.QueryEmbeddingBatcher;
+import com.nageoffer.ai.ragent.rag.core.vector.QueryEmbeddingContext;
+import com.nageoffer.ai.ragent.rag.core.vector.SearchTask;
 import com.nageoffer.ai.ragent.rag.core.vector.VectorRetrieverService;
 import com.nageoffer.ai.ragent.rag.core.vector.strategy.CollectionParallelRetriever;
 import com.nageoffer.ai.ragent.rag.core.vector.strategy.IntentParallelRetriever;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.Executor;
 
 /**
@@ -44,8 +51,11 @@ import java.util.concurrent.Executor;
 @Component
 public class VectorSearchChannel implements SearchChannel {
 
+    private static final String PLANNED_COLLECTIONS_KEY = VectorSearchChannel.class.getName() + ".collections";
+
     private final SearchChannelProperties properties;
     private final KbCollectionProvider kbCollectionProvider;
+    private final QueryEmbeddingBatcher queryEmbeddingBatcher;
     private final VectorRetrieverService retrieverService;
     private final IntentParallelRetriever intentRetriever;
     private final CollectionParallelRetriever globalRetriever;
@@ -53,9 +63,11 @@ public class VectorSearchChannel implements SearchChannel {
     public VectorSearchChannel(VectorRetrieverService retrieverService,
                                SearchChannelProperties properties,
                                KbCollectionProvider kbCollectionProvider,
+                               QueryEmbeddingBatcher queryEmbeddingBatcher,
                                Executor innerRetrievalExecutor) {
         this.properties = properties;
         this.kbCollectionProvider = kbCollectionProvider;
+        this.queryEmbeddingBatcher = queryEmbeddingBatcher;
         this.retrieverService = retrieverService;
         this.intentRetriever = new IntentParallelRetriever(retrieverService, innerRetrievalExecutor);
         this.globalRetriever = new CollectionParallelRetriever(retrieverService, innerRetrievalExecutor);
@@ -70,6 +82,41 @@ public class VectorSearchChannel implements SearchChannel {
     public boolean isEnabled(SearchContext context) {
         // 一条通道一个开关；启用后内部总有一条作用域可走（意图定向或全局兜底）
         return properties.getChannels().getVector().isEnabled();
+    }
+
+    @Override
+    public void prepare(List<SearchContext> contexts) {
+        List<SearchTask> scopedTasks = new ArrayList<>();
+        List<String> globalQuestions = new ArrayList<>();
+        Map<SearchContext, Boolean> globalScopes = new java.util.IdentityHashMap<>();
+
+        for (SearchContext context : contexts) {
+            List<NodeScore> kbIntents = extractKbIntents(context);
+            boolean global = !shouldNarrowToIntent(kbIntents);
+            globalScopes.put(context, global);
+            if (global) {
+                globalQuestions.add(context.getMainQuestion());
+                continue;
+            }
+            kbIntents.stream()
+                    .map(NodeScore::getNode)
+                    .filter(Objects::nonNull)
+                    .map(node -> node.getCollectionName())
+                    .filter(Objects::nonNull)
+                    .distinct()
+                    .forEach(collection -> scopedTasks.add(new SearchTask(context.getMainQuestion(), collection)));
+        }
+
+        QueryEmbeddingContext embeddingContext = queryEmbeddingBatcher.prepare(scopedTasks, globalQuestions);
+        for (SearchContext context : contexts) {
+            context.getMetadata().put(QueryEmbeddingContext.METADATA_KEY, embeddingContext);
+            if (Boolean.TRUE.equals(globalScopes.get(context)) && embeddingContext.isPrepared()) {
+                context.getMetadata().put(
+                        PLANNED_COLLECTIONS_KEY,
+                        embeddingContext.collectionsFor(context.getMainQuestion())
+                );
+            }
+        }
     }
 
     @Override
@@ -166,7 +213,11 @@ public class VectorSearchChannel implements SearchChannel {
     private List<RetrievedChunk> retrieveByIntent(SearchContext context, List<NodeScore> kbIntents) {
         log.info("执行向量检索（意图作用域），命中 {} 个 KB 意图，问题：{}", kbIntents.size(), context.getMainQuestion());
         return intentRetriever.retrieveByIntents(
-                context.getMainQuestion(), kbIntents, context.getBudget().recallBudget());
+                context.getMainQuestion(),
+                kbIntents,
+                context.getBudget().recallBudget(),
+                embeddingContext(context)
+        );
     }
 
     /**
@@ -175,7 +226,11 @@ public class VectorSearchChannel implements SearchChannel {
     private List<RetrievedChunk> retrieveGlobal(SearchContext context) {
         log.info("执行向量检索（全局作用域），问题：{}", context.getMainQuestion());
 
-        List<String> collections = kbCollectionProvider.listActiveCollections();
+        QueryEmbeddingContext embeddingContext = embeddingContext(context);
+        List<String> collections = plannedCollections(context);
+        if (collections.isEmpty() && !embeddingContext.isPrepared()) {
+            collections = kbCollectionProvider.listActiveCollections();
+        }
         if (collections.isEmpty()) {
             log.warn("未找到任何 KB collection，跳过全局检索");
             return List.of();
@@ -183,12 +238,67 @@ public class VectorSearchChannel implements SearchChannel {
 
         SearchChannelProperties.Global config = properties.getChannels().getVector().getGlobal();
         if (retrieverService.supportsGlobalRetrieval()) {
-            // 后端支持单次全局检索（如 PG）：一条带总预算的 SQL 跨库召回。candidate-budget 未配置时跟随 Rerank 候选池上限
             int budget = config.resolveCandidateBudget(context.getBudget().candidateLimit());
-            return retrieverService.retrieveGlobal(context.getMainQuestion(), collections, budget);
+            if (!embeddingContext.isPrepared()) {
+                return retrieverService.retrieveGlobal(context.getMainQuestion(), collections, budget);
+            }
+            return retrieveGlobalByModel(context.getMainQuestion(), collections, budget, embeddingContext);
         }
         // 后端不支持单次全局检索时：退化为逐库并行 fan-out 兜底，每库取候选预算，合并后交下游截断
         int perCollectionBudget = config.resolveCandidateBudget(context.getBudget().candidateLimit());
-        return globalRetriever.executeParallelRetrieval(context.getMainQuestion(), collections, perCollectionBudget);
+        return globalRetriever.retrieveByCollections(
+                context.getMainQuestion(),
+                collections,
+                perCollectionBudget,
+                embeddingContext
+        );
+    }
+
+    private List<RetrievedChunk> retrieveGlobalByModel(String question,
+                                                       List<String> collections,
+                                                       int budget,
+                                                       QueryEmbeddingContext embeddingContext) {
+        Map<String, List<String>> collectionsByModel = new LinkedHashMap<>();
+        for (String collection : collections) {
+            collectionsByModel.computeIfAbsent(
+                    embeddingContext.modelFor(collection),
+                    ignored -> new ArrayList<>()
+            ).add(collection);
+        }
+
+        List<RetrievedChunk> chunks = new ArrayList<>();
+        collectionsByModel.forEach((model, modelCollections) -> {
+            float[] vector = embeddingContext.vectorFor(question, modelCollections.get(0));
+            if (vector != null) {
+                chunks.addAll(retrieverService.retrieveGlobalByVector(vector, modelCollections, budget));
+            } else if (QueryEmbeddingContext.DEFAULT_MODEL_KEY.equals(model)) {
+                chunks.addAll(retrieverService.retrieveGlobal(question, modelCollections, budget));
+            } else {
+                log.error("全局检索缺少指定模型的预计算向量，跳过模型组: {}", model);
+            }
+        });
+        chunks.sort(Comparator.comparing(
+                RetrievedChunk::getScore,
+                Comparator.nullsLast(Comparator.reverseOrder())
+        ));
+        return chunks.stream().limit(budget).toList();
+    }
+
+    private QueryEmbeddingContext embeddingContext(SearchContext context) {
+        Object value = context.getMetadata().get(QueryEmbeddingContext.METADATA_KEY);
+        return value instanceof QueryEmbeddingContext embeddings
+                ? embeddings
+                : QueryEmbeddingContext.unavailable();
+    }
+
+    private List<String> plannedCollections(SearchContext context) {
+        Object value = context.getMetadata().get(PLANNED_COLLECTIONS_KEY);
+        if (!(value instanceof List<?> values)) {
+            return List.of();
+        }
+        return values.stream()
+                .filter(String.class::isInstance)
+                .map(String.class::cast)
+                .toList();
     }
 }

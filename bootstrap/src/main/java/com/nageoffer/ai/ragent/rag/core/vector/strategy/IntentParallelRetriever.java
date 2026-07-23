@@ -21,8 +21,8 @@ import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentNode;
 import com.nageoffer.ai.ragent.rag.core.intent.NodeScore;
 import com.nageoffer.ai.ragent.rag.core.retrieval.RetrieveRequest;
+import com.nageoffer.ai.ragent.rag.core.vector.QueryEmbeddingContext;
 import com.nageoffer.ai.ragent.rag.core.vector.VectorRetrieverService;
-import com.nageoffer.ai.ragent.rag.core.vector.strategy.AbstractParallelRetriever;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
@@ -37,7 +37,7 @@ public class IntentParallelRetriever extends AbstractParallelRetriever<IntentPar
 
     private final VectorRetrieverService retrieverService;
 
-    public record IntentTask(NodeScore nodeScore, int intentTopK) {
+    public record IntentTask(NodeScore nodeScore, int intentTopK, float[] queryVector, boolean defaultModel) {
     }
 
     public IntentParallelRetriever(VectorRetrieverService retrieverService,
@@ -52,12 +52,22 @@ public class IntentParallelRetriever extends AbstractParallelRetriever<IntentPar
      */
     public List<RetrievedChunk> retrieveByIntents(String question,
                                                   List<NodeScore> targets,
-                                                  int recallBudget) {
+                                                  int recallBudget,
+                                                  QueryEmbeddingContext embeddingContext) {
         List<IntentTask> intentTasks = targets.stream()
-                .map(nodeScore -> new IntentTask(
-                        nodeScore,
-                        resolveIntentTopK(nodeScore, recallBudget)
-                ))
+                .map(nodeScore -> {
+                    String collectionName = nodeScore.getNode().getCollectionName();
+                    return new IntentTask(
+                            nodeScore,
+                            resolveIntentTopK(nodeScore, recallBudget),
+                            embeddingContext != null && embeddingContext.isPrepared()
+                                    ? embeddingContext.vectorFor(question, collectionName)
+                                    : null,
+                            embeddingContext == null
+                                    || !embeddingContext.isPrepared()
+                                    || embeddingContext.usesDefaultModel(collectionName)
+                    );
+                })
                 .toList();
         return super.executeParallelRetrieval(question, intentTasks, recallBudget);
     }
@@ -67,13 +77,19 @@ public class IntentParallelRetriever extends AbstractParallelRetriever<IntentPar
         NodeScore nodeScore = task.nodeScore();
         IntentNode node = nodeScore.getNode();
         try {
-            return retrieverService.retrieve(
-                    RetrieveRequest.builder()
-                            .collectionName(node.getCollectionName())
-                            .query(question)
-                            .topK(task.intentTopK())
-                            .build()
-            );
+            RetrieveRequest request = RetrieveRequest.builder()
+                    .collectionName(node.getCollectionName())
+                    .query(question)
+                    .topK(task.intentTopK())
+                    .build();
+            if (task.queryVector() != null) {
+                return retrieverService.retrieveByVector(task.queryVector(), request);
+            }
+            if (task.defaultModel()) {
+                return retrieverService.retrieve(request);
+            }
+            log.error("意图检索缺少指定模型的预计算向量，跳过 Collection: {}", node.getCollectionName());
+            return List.of();
         } catch (Exception e) {
             log.error("意图检索失败 - 意图ID: {}, 意图名称: {}, Collection: {}, 错误: {}",
                     node.getId(), node.getName(), node.getCollectionName(), e.getMessage(), e);

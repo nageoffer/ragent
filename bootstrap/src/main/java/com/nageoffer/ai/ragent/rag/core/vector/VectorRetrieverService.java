@@ -20,6 +20,8 @@ package com.nageoffer.ai.ragent.rag.core.vector;
 import com.nageoffer.ai.ragent.rag.core.retrieval.RetrieveRequest;
 import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
 
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -125,6 +127,31 @@ public interface VectorRetrieverService {
      */
     default List<RetrievedChunk> retrieveGlobal(String query, List<String> collectionNames, int candidateBudget) {
         throw new UnsupportedOperationException("该检索后端不支持单次全局检索");
+    }
+
+    /**
+     * 使用预计算向量执行跨库检索。
+     * <p>
+     * 默认实现逐库检索并合并，支持单次跨库查询的后端应覆盖此方法。
+     */
+    default List<RetrievedChunk> retrieveGlobalByVector(float[] vector,
+                                                        List<String> collectionNames,
+                                                        int candidateBudget) {
+        List<RetrievedChunk> chunks = new ArrayList<>();
+        for (String collectionName : collectionNames) {
+            chunks.addAll(retrieveByVector(
+                    vector,
+                    RetrieveRequest.builder()
+                            .collectionName(collectionName)
+                            .topK(candidateBudget)
+                            .build()
+            ));
+        }
+        chunks.sort(Comparator.comparing(
+                RetrievedChunk::getScore,
+                Comparator.nullsLast(Comparator.reverseOrder())
+        ));
+        return chunks.stream().limit(candidateBudget).toList();
     }
 }
 

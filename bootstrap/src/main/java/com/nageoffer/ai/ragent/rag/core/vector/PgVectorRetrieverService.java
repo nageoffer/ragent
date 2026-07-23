@@ -66,6 +66,16 @@ public class PgVectorRetrieverService implements VectorRetrieverService {
         return queryByCollections(vector, collectionNames, candidateBudget);
     }
 
+    @Override
+    public List<RetrievedChunk> retrieveGlobalByVector(float[] vector,
+                                                       List<String> collectionNames,
+                                                       int candidateBudget) {
+        if (collectionNames == null || collectionNames.isEmpty()) {
+            return List.of();
+        }
+        return queryByCollections(vector, collectionNames, candidateBudget);
+    }
+
     /**
      * 在指定 collection 范围内执行一次向量相似度检索
      * <p>

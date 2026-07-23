@@ -82,6 +82,19 @@ public class MilvusVectorRetrieverService implements VectorRetrieverService {
         return searchShared(norm, filter, candidateBudget);
     }
 
+    @Override
+    public List<RetrievedChunk> retrieveGlobalByVector(float[] vector,
+                                                       List<String> collectionNames,
+                                                       int candidateBudget) {
+        if (collectionNames == null || collectionNames.isEmpty()) {
+            return List.of();
+        }
+        String inList = collectionNames.stream()
+                .map(c -> "\"" + c + "\"")
+                .collect(Collectors.joining(", "));
+        return searchShared(vector, "collection_name in [" + inList + "]", candidateBudget);
+    }
+
     /**
      * 在共享 collection 内执行一次向量检索
      *

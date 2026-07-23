@@ -17,6 +17,8 @@
 
 package com.nageoffer.ai.ragent.rag.core.retrieval.channel;
 
+import java.util.List;
+
 /**
  * 检索通道接口
  * <p>
@@ -28,6 +30,16 @@ package com.nageoffer.ai.ragent.rag.core.retrieval.channel;
  * 多个通道可以并行执行，最后统一合并结果
  */
 public interface SearchChannel {
+
+    /**
+     * 在通道并行执行前准备请求级共享数据。
+     * <p>
+     * 默认无需准备；需要批量预处理的通道可覆盖此方法。
+     *
+     * @param contexts 同一请求内即将执行的检索上下文
+     */
+    default void prepare(List<SearchContext> contexts) {
+    }
 
     /**
      * 通道名称（用于日志和监控）
