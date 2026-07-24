@@ -97,6 +97,9 @@ public class StreamChatPipeline {
 
     // ==================== 流水线阶段 ====================
 
+    /**
+     * 加载对话记忆
+     */
     private void loadMemory(StreamChatContext ctx) {
         List<ChatMessage> history = memoryService.loadAndAppend(
                 ctx.getConversationId(),
@@ -106,16 +109,25 @@ public class StreamChatPipeline {
         ctx.setHistory(history);
     }
 
+    /**
+     * 改写拆分查询
+     */
     private void rewriteQuery(StreamChatContext ctx) {
         RewriteResult rewriteResult = queryRewriteService.rewriteWithSplit(ctx.getQuestion(), ctx.getHistory());
         ctx.setRewriteResult(rewriteResult);
     }
 
+    /**
+     * 意图解析
+     */
     private void resolveIntents(StreamChatContext ctx) {
         List<SubQuestionIntent> subIntents = intentResolver.resolve(ctx.getRewriteResult());
         ctx.setSubIntents(subIntents);
     }
 
+    /**
+     * 歧义引导
+     */
     private boolean handleGuidance(StreamChatContext ctx) {
         GuidanceDecision decision = guidanceService.detectAmbiguity(
                 ctx.getRewriteResult().rewrittenQuestion(),
@@ -130,6 +142,9 @@ public class StreamChatPipeline {
         return true;
     }
 
+    /**
+     * 系统响应
+     */
     private boolean handleSystemOnly(StreamChatContext ctx) {
         List<SubQuestionIntent> subIntents = ctx.getSubIntents();
         boolean allSystemOnly = subIntents.stream()
@@ -152,11 +167,16 @@ public class StreamChatPipeline {
         taskManager.bindHandle(ctx.getTaskId(), handle);
         return true;
     }
-
+    /**
+     * 检索
+     */
     private RetrievalContext retrieve(StreamChatContext ctx) {
         return retrievalEngine.retrieve(ctx.getSubIntents(), searchProperties.getDefaultTopK());
     }
 
+    /**
+     * 处理空检索结果
+     */
     private boolean handleEmptyRetrieval(StreamChatContext ctx, RetrievalContext retrievalCtx) {
         if (!retrievalCtx.isEmpty()) {
             return false;
@@ -167,6 +187,9 @@ public class StreamChatPipeline {
         return true;
     }
 
+    /**
+     * 流式响应
+     */
     private void streamRagResponse(StreamChatContext ctx, RetrievalContext retrievalCtx) {
         // 聚合所有意图用于 prompt 规划
         IntentGroup mergedGroup = intentResolver.mergeIntentGroup(ctx.getSubIntents());

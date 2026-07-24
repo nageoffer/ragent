@@ -114,6 +114,10 @@ public class StreamChatEventHandler implements StreamCallback {
             try {
                 String thinkingContent = thinking.isEmpty() ? null : thinking.toString();
                 ChatMessage message = ChatMessage.assistant(content, thinkingContent, resolveThinkingDuration());
+                // 持久化消息
+                // 1. 写入t_message表
+                // 2. 写入t_conversation表，更新last_message_id
+                // 3. 写入t_conversation_summary表，压缩历史记录
                 messageId = memoryService.append(conversationId, userId, message);
             } catch (Exception e) {
                 log.error("取消时持久化消息失败，conversationId：{}", conversationId, e);

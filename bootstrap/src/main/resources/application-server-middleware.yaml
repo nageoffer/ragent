@@ -22,3 +22,6 @@ milvus:
 
 rustfs:
   url: http://${RAGENT_SERVER_HOST:192.168.30.213}:${RAGENT_RUSTFS_PORT:9000}
+  access-key-id: ${RAGENT_RUSTFS_ACCESS_KEY:rustfsadmin}
+  secret-access-key: ${RAGENT_RUSTFS_SECRET_KEY:change_me_rustfs_secret}
+  asset-bucket: ${RAGENT_RUSTFS_ASSET_BUCKET:ragent-assets}

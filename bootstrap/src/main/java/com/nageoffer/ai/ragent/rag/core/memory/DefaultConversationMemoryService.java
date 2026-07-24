@@ -109,6 +109,7 @@ public class DefaultConversationMemoryService implements ConversationMemoryServi
             return null;
         }
         String messageId = memoryStore.append(conversationId, userId, message);
+        // 压缩历史记录
         summaryService.compressIfNeeded(conversationId, userId, message);
         return messageId;
     }

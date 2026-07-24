@@ -255,21 +255,27 @@ public final class FairDistributedRateLimiter {
         void cleanup() {
             boolean removed = false;
             try {
+                // 从队列移除
                 removed = redissonClient.getScoredSortedSet(queueKey, StringCodec.INSTANCE).remove(requestId);
             } catch (Exception ex) {
                 log.debug("[{}] 移除队列失败 (requestId={})", name, requestId, ex);
             }
+            // 删除 entry 标记
             deleteEntryMarker(requestId);
 
             boolean releasedPermit = false;
+            // 非 GRANTED 状态下释放 permit, 避免并发请求拿到尚在使用的 permit, GRANTED 状态下由 grant 的包装 Runnable 接管
             if (state.get() != State.GRANTED) {
-                String permitId = permitRef.getAndSet(null);
+                String permitId = permitRef.getAndSet(null); 
                 if (permitId != null) {
+                    // 释放 permit
+                    // 业务未运行，必须显式释放（cleanup 在 GRANTED 状态不会释放 permit）
                     releasePermitQuietly(permitId);
                     releasedPermit = true;
                 }
             }
             if (removed || releasedPermit) {
+                // 通知队列更新
                 publishQueueNotify();
             }
             unregisterFromNotifier();
@@ -280,6 +286,9 @@ public final class FairDistributedRateLimiter {
             pollNotifier.unregister(requestId);
         }
 
+        /**
+         * 幂等取消 future。线程安全 + 幂等
+         */
         void cancelFutureQuietly() {
             ScheduledFuture<?> f = future;
             if (f != null && !f.isCancelled()) {
@@ -298,6 +307,9 @@ public final class FairDistributedRateLimiter {
 
     // ==================== 抢占核心 ====================
 
+    /**
+     * 尝试抢占 permit。线程安全 + 幂等
+     */
     private boolean tryAcquireIfReady(Ticket ticket) {
         if (!ticket.isPending()) {
             return false;
@@ -355,6 +367,9 @@ public final class FairDistributedRateLimiter {
 
     // ==================== Redis 操作 ====================
 
+    /**
+     * 尝试获取 permit。线程安全 + 幂等
+     */
     private String tryAcquirePermit() {
         RPermitExpirableSemaphore sem = redissonClient.getPermitExpirableSemaphore(semaphoreKey);
         try {
@@ -365,10 +380,16 @@ public final class FairDistributedRateLimiter {
         }
     }
 
+    /**
+     * 获取当前可用 permit 数量。线程安全 + 幂等
+     */
     private int availablePermits() {
         return redissonClient.getPermitExpirableSemaphore(semaphoreKey).availablePermits();
     }
 
+    /**
+     * 安静释放 permit。线程安全 + 幂等
+     */
     private void releasePermitQuietly(String permitId) {
         try {
             redissonClient.getPermitExpirableSemaphore(semaphoreKey).release(permitId);
@@ -419,17 +440,32 @@ public final class FairDistributedRateLimiter {
         return result.size() >= 2 ? parseLong(result.get(1)) : nextQueueSeq();
     }
 
+    /**
+     * 获取下一个队列序列号。线程安全 + 幂等
+     */
+    /**
+     * 获取下一个队列序列号。线程安全 + 幂等
+     */
     private long nextQueueSeq() {
         RAtomicLong seq = redissonClient.getAtomicLong(queueSeqKey);
         return seq.incrementAndGet();
     }
 
+    /**
+     * 发布队列通知。线程安全 + 幂等
+     */
     private void publishQueueNotify() {
         redissonClient.getTopic(notifyTopicKey).publish("permit_changed");
     }
 
     // ==================== 辅助 ====================
 
+    /**
+     * 解析 Long 值，支持 Number 和 String 类型。
+     *
+     * @param value 要解析的值
+     * @return 解析后的 Long 值，解析失败返回 0L
+     */
     private static long parseLong(Object value) {
         if (value instanceof Number n) {
             return n.longValue();
@@ -444,6 +480,9 @@ public final class FairDistributedRateLimiter {
         return 0L;
     }
 
+    /**
+     * 加载 Lua 脚本。线程安全 + 幂等
+     */
     private static String loadLuaScript() {
         try {
             ClassPathResource resource = new ClassPathResource(LUA_PATH);
@@ -453,6 +492,9 @@ public final class FairDistributedRateLimiter {
         }
     }
 
+    /**
+     * 等待线程池优雅关闭。线程安全 + 幂等
+     */
     private static void awaitShutdown(ScheduledExecutorService exec) {
         try {
             if (!exec.awaitTermination(3, TimeUnit.SECONDS)) {
