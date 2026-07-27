@@ -55,7 +55,7 @@ public class ModelRoutingExecutor {
                 log.warn("{} provider client missing: provider={}, modelId={}", label, target.candidate().getProvider(), target.id());
                 continue;
             }
-            if (!healthStore.allowCall(target.id())) {
+            if (healthStore.allowCall(target.id()) == null) {
                 continue;
             }
 
