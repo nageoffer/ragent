@@ -24,6 +24,7 @@ import com.nageoffer.ai.ragent.rag.enums.SSEEventType;
 import com.nageoffer.ai.ragent.rag.dto.CompletionPayload;
 import com.nageoffer.ai.ragent.framework.web.SseEmitterSender;
 import com.nageoffer.ai.ragent.infra.chat.StreamCancellationHandle;
+import com.nageoffer.ai.ragent.rag.service.RagTraceRecordService;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.SneakyThrows;
@@ -34,6 +35,7 @@ import org.redisson.api.RedissonClient;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
+import java.util.Date;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 
@@ -51,10 +53,12 @@ public class StreamTaskManager {
             .build();
 
     private final RedissonClient redissonClient;
+    private final RagTraceRecordService traceRecordService;
     private int listenerId = -1;
 
-    public StreamTaskManager(RedissonClient redissonClient) {
+    public StreamTaskManager(RedissonClient redissonClient, RagTraceRecordService traceRecordService) {
         this.redissonClient = redissonClient;
+        this.traceRecordService = traceRecordService;
     }
 
     @PostConstruct
@@ -148,6 +152,26 @@ public class StreamTaskManager {
             CompletionPayload payload = taskInfo.onCancelSupplier.get();
             sendCancelAndDone(taskInfo.sender, payload);
             taskInfo.sender.complete();
+        }
+
+        reportTraceRunCancelled(taskId);
+    }
+
+    /**
+     * 上报 run 级取消终态
+     * <p>
+     * 取消信号在 provider client 层就被 {@code ForwardingStreamCallback} 拦截了（对外部取消不透传 delegate，
+     * 否则流式 failover 切换候选时会终止用户 SSE），run 级终态无法由回调链驱动。
+     * 而 {@code cancelLocal} 的 CAS 成功分支是全链路唯一能确定「这是用户主动取消」而非「failover 内部取消」的位置，
+     * 因此在这里上报
+     * </p>
+     */
+    private void reportTraceRunCancelled(String taskId) {
+        try {
+            traceRecordService.cancelRunByTaskId(taskId, new Date());
+        } catch (Exception e) {
+            // trace 是旁路观测，失败不能影响取消本身
+            log.warn("上报 trace run 取消状态失败，任务ID：{}", taskId, e);
         }
     }
 
