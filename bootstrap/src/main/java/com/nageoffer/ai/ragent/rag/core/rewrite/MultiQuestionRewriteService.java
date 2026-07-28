@@ -136,10 +136,12 @@ public class MultiQuestionRewriteService implements QueryRewriteService {
         // 只保留最近 1-2 轮的 User 和 Assistant 消息
         // 过滤掉 System 摘要，避免 Token 浪费
         if (CollUtil.isNotEmpty(history)) {
-            List<ChatMessage> recentHistory = history.stream()
+            List<ChatMessage> dialogueHistory = history.stream()
                     .filter(msg -> msg.getRole() == ChatMessage.Role.USER
                             || msg.getRole() == ChatMessage.Role.ASSISTANT)
-                    .skip(Math.max(0, history.size() - 4))  // 最多保留最近 4 条消息（2 轮对话）
+                    .toList();
+            List<ChatMessage> recentHistory = dialogueHistory.stream()
+                    .skip(Math.max(0, dialogueHistory.size() - 4))  // 最多保留最近 4 条消息（2 轮对话）
                     .toList();
             messages.addAll(recentHistory);
         }
