@@ -79,6 +79,7 @@ public class ConversationMessageServiceImpl implements ConversationMessageServic
                         .eq(ConversationMessageDO::getUserId, userId)
                         .eq(ConversationMessageDO::getDeleted, 0)
                         .orderBy(true, asc, ConversationMessageDO::getCreateTime)
+                        .orderBy(true, asc, ConversationMessageDO::getId)
                         .last(limit != null, "limit " + limit)
         );
         if (records == null || records.isEmpty()) {
