@@ -90,6 +90,8 @@ public abstract class AbstractOpenAIStyleChatClient implements ChatClient {
     protected void customizeRequestBody(JsonObject body, ChatRequest request) {
         if (Boolean.TRUE.equals(request.getThinking())) {
             body.addProperty("enable_thinking", true);
+        } else {
+            body.addProperty("enable_thinking", false);
         }
     }
 
