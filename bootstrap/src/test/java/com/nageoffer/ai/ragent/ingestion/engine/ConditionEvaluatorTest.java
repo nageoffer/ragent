@@ -31,6 +31,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.params.provider.Arguments.arguments;
 
 class ConditionEvaluatorTest {
@@ -116,5 +117,116 @@ class ConditionEvaluatorTest {
                 .put("operator", operator);
         rule.set("value", objectMapper.valueToTree(right));
         return rule;
+    }
+
+    @Test
+    void unknownObjectConditionFailsClosed() {
+        IngestionContext context = IngestionContext.builder().build();
+        ObjectNode malformed = objectMapper.createObjectNode()
+                .put("fields", "rawText")
+                .put("operator", "eq")
+                .put("value", "x");
+
+        assertFalse(evaluator.evaluate(context, malformed));
+    }
+
+    @Test
+    void nonArrayAnyFailsClosed() {
+        IngestionContext context = IngestionContext.builder().build();
+        ObjectNode nonArrayAny = objectMapper.createObjectNode();
+        nonArrayAny.put("any", "not-an-array");
+        assertFalse(evaluator.evaluate(context, nonArrayAny));
+
+        ObjectNode emptyAny = objectMapper.createObjectNode();
+        emptyAny.set("any", objectMapper.createArrayNode());
+        assertFalse(evaluator.evaluate(context, emptyAny));
+    }
+
+    @Test
+    void nonArrayAllFailsClosed() {
+        IngestionContext context = IngestionContext.builder().build();
+        ObjectNode nonArrayAll = objectMapper.createObjectNode();
+        nonArrayAll.put("all", "not-an-array");
+        assertFalse(evaluator.evaluate(context, nonArrayAll));
+    }
+
+    @Test
+    void malformedConditionInsideNotFailsClosed() {
+        IngestionContext context = IngestionContext.builder().build();
+
+        ObjectNode notUnknown = objectMapper.createObjectNode();
+        notUnknown.set("not", objectMapper.createObjectNode()
+                .put("fields", "rawText").put("operator", "eq").put("value", "x"));
+        assertFalse(evaluator.evaluate(context, notUnknown));
+
+        ObjectNode notNonArrayAll = objectMapper.createObjectNode();
+        notNonArrayAll.set("not", objectMapper.createObjectNode().put("all", "not-an-array"));
+        assertFalse(evaluator.evaluate(context, notNonArrayAll));
+
+        ObjectNode notNonArrayAny = objectMapper.createObjectNode();
+        notNonArrayAny.set("not", objectMapper.createObjectNode().put("any", "not-an-array"));
+        assertFalse(evaluator.evaluate(context, notNonArrayAny));
+    }
+
+    @Test
+    void validNotConditionStillNegates() {
+        IngestionContext context = IngestionContext.builder().build();
+
+        ObjectNode notTrue = objectMapper.createObjectNode();
+        notTrue.set("not", objectMapper.getNodeFactory().booleanNode(true));
+        assertFalse(evaluator.evaluate(context, notTrue));
+
+        ObjectNode notFalse = objectMapper.createObjectNode();
+        notFalse.set("not", objectMapper.getNodeFactory().booleanNode(false));
+        assertTrue(evaluator.evaluate(context, notFalse));
+    }
+
+    @Test
+    void blankOrNullFieldFailsClosed() {
+        IngestionContext context = IngestionContext.builder().build();
+
+        ObjectNode blankField = objectMapper.createObjectNode()
+                .put("field", "").put("operator", "eq").put("value", "x");
+        assertFalse(evaluator.evaluate(context, blankField));
+
+        ObjectNode nullField = objectMapper.createObjectNode()
+                .put("operator", "eq").put("value", "x");
+        nullField.putNull("field");
+        assertFalse(evaluator.evaluate(context, nullField));
+    }
+
+    @Test
+    void malformedNestedGroupInsideNotFailsClosed() {
+        IngestionContext context = IngestionContext.builder().build();
+        ObjectNode malformed = objectMapper.createObjectNode().put("fields", "rawText");
+
+        ObjectNode any = objectMapper.createObjectNode();
+        any.set("any", objectMapper.createArrayNode().add(true).add(malformed));
+        ObjectNode notAny = objectMapper.createObjectNode();
+        notAny.set("not", any);
+        assertFalse(evaluator.evaluate(context, notAny));
+
+        ObjectNode all = objectMapper.createObjectNode();
+        all.set("all", objectMapper.createArrayNode().add(false).add(malformed));
+        ObjectNode notAll = objectMapper.createObjectNode();
+        notAll.set("not", all);
+        assertFalse(evaluator.evaluate(context, notAll));
+    }
+
+    @Test
+    void validGroupConditionsKeepShortCircuiting() {
+        IngestionContext context = IngestionContext.builder().rawText("text").build();
+        ObjectNode invalidRegex = objectMapper.createObjectNode()
+                .put("field", "rawText")
+                .put("operator", "regex")
+                .put("value", "[");
+
+        ObjectNode any = objectMapper.createObjectNode();
+        any.set("any", objectMapper.createArrayNode().add(true).add(invalidRegex));
+        assertTrue(evaluator.evaluate(context, any));
+
+        ObjectNode all = objectMapper.createObjectNode();
+        all.set("all", objectMapper.createArrayNode().add(false).add(invalidRegex));
+        assertFalse(evaluator.evaluate(context, all));
     }
 }
