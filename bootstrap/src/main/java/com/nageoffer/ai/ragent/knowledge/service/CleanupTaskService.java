@@ -15,47 +15,21 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.knowledge.enums;
-
-import lombok.Getter;
-import lombok.RequiredArgsConstructor;
+package com.nageoffer.ai.ragent.knowledge.service;
 
 /**
- * 文档处理状态枚举
- *
- * <p>表示文档在处理过程中可能处于的各种状态
+ * outbox 清理任务入队服务。
+ * 必须在删除主事务内调用，保证「业务删除」与「清理意图」原子落库。
  */
-@Getter
-@RequiredArgsConstructor
-public enum DocumentStatus {
+public interface CleanupTaskService {
 
     /**
-     * 文档待处理
+     * 入队向量清理任务。
      */
-    PENDING("pending"),
+    void enqueueVectorCleanup(String docId, String collectionName);
 
     /**
-     * 文档处理中
+     * 入队文件清理任务；fileUrl 为空白时跳过。
      */
-    RUNNING("running"),
-
-    /**
-     * 文档处理失败
-     */
-    FAILED("failed"),
-
-    /**
-     * 文档处理成功
-     */
-    SUCCESS("success"),
-
-    /**
-     * 文档删除中（删除流程已抢占，分块不得再启动或写回）
-     */
-    DELETING("deleting");
-
-    /**
-     * 状态码
-     */
-    private final String code;
+    void enqueueFileCleanup(String fileUrl);
 }

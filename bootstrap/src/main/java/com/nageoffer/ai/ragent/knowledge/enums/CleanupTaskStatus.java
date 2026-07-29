@@ -21,41 +21,34 @@ import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
 /**
- * 文档处理状态枚举
- *
- * <p>表示文档在处理过程中可能处于的各种状态
+ * outbox 清理任务状态
  */
 @Getter
 @RequiredArgsConstructor
-public enum DocumentStatus {
+public enum CleanupTaskStatus {
 
     /**
-     * 文档待处理
+     * 待执行
      */
     PENDING("pending"),
 
     /**
-     * 文档处理中
+     * 已被 worker 领取，正在执行
      */
     RUNNING("running"),
 
     /**
-     * 文档处理失败
-     */
-    FAILED("failed"),
-
-    /**
-     * 文档处理成功
+     * 执行成功
      */
     SUCCESS("success"),
 
     /**
-     * 文档删除中（删除流程已抢占，分块不得再启动或写回）
+     * 重试耗尽，进入死信，需人工介入
      */
-    DELETING("deleting");
+    FAILED("failed");
 
-    /**
-     * 状态码
-     */
+    public static final String PENDING_CODE = "pending";
+    public static final String RUNNING_CODE = "running";
+
     private final String code;
 }
