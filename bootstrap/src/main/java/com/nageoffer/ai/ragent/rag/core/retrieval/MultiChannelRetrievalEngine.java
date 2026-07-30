@@ -58,21 +58,26 @@ public class MultiChannelRetrievalEngine {
      *
      * @param subIntents 子问题意图列表
      * @param budget     检索预算（召回扇出 / Rerank 候选池上限 / 最终条数）
-     * @return 检索到的 Chunk 列表
+     * @return 后处理后的 Chunk 列表及其真实意图归属
      */
     @RagTraceNode(name = "multi-channel-retrieval", type = "RETRIEVE_CHANNEL")
-    public List<RetrievedChunk> retrieveKnowledgeChannels(List<SubQuestionIntent> subIntents, RetrievalBudget budget) {
+    public KnowledgeRetrievalResult retrieveKnowledgeChannels(List<SubQuestionIntent> subIntents,
+                                                               RetrievalBudget budget) {
         // 构建检索上下文
         SearchContext context = buildSearchContext(subIntents, budget);
 
         // 【阶段1：多通道并行检索】
         List<SearchChannelResult> channelResults = executeSearchChannels(context);
         if (CollUtil.isEmpty(channelResults)) {
-            return List.of();
+            return KnowledgeRetrievalResult.empty();
         }
 
         // 【阶段2：后置处理器链】
-        return executePostProcessors(channelResults, context);
+        List<RetrievedChunk> chunks = executePostProcessors(channelResults, context);
+        IntentChunkAttribution intentAttribution = IntentChunkAttribution.merge(
+                channelResults.stream().map(SearchChannelResult::getIntentAttribution).toList()
+        ).retain(chunks);
+        return new KnowledgeRetrievalResult(chunks, intentAttribution);
     }
 
     /**

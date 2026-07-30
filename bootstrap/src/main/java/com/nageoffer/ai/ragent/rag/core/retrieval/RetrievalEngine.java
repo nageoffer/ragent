@@ -199,29 +199,19 @@ public class RetrievalEngine {
     private KbResult retrieveAndRerank(SubQuestionIntent intent, List<NodeScore> kbIntents, RetrievalBudget budget) {
         // 使用多通道检索引擎（是否启用全局检索由置信度阈值决定）
         List<SubQuestionIntent> subIntents = List.of(intent);
-        List<RetrievedChunk> chunks = multiChannelRetrievalEngine.retrieveKnowledgeChannels(subIntents, budget);
+        KnowledgeRetrievalResult retrievalResult =
+                multiChannelRetrievalEngine.retrieveKnowledgeChannels(subIntents, budget);
+        List<RetrievedChunk> chunks = retrievalResult.chunks();
 
         if (CollUtil.isEmpty(chunks)) {
             return KbResult.empty();
         }
 
-        // 按意图节点分组（用于格式化上下文）
-        Map<String, List<RetrievedChunk>> intentChunks = new LinkedHashMap<>();
+        // 只按最终存活证据的真实召回意图分组；无法确定归属的全局证据使用特殊 key
+        Map<String, List<RetrievedChunk>> intentChunks = retrievalResult.groupByIntent(MULTI_CHANNEL_KEY);
 
-        // 如果有意图识别结果，按意图节点 ID 分组
-        if (CollUtil.isNotEmpty(kbIntents)) {
-            // 将所有 chunks 按意图节点 ID 分配
-            // 注意：多通道检索返回的 chunks 无法精确对应到某个意图节点
-            // 所以我们将所有 chunks 分配给每个意图节点
-            for (NodeScore ns : kbIntents) {
-                intentChunks.put(ns.getNode().getId(), chunks);
-            }
-        } else {
-            // 如果没有意图识别结果，使用特殊 key
-            intentChunks.put(MULTI_CHANNEL_KEY, chunks);
-        }
-
-        String groupedContext = contextFormatter.formatKbContext(kbIntents, intentChunks, budget.contextTopK());
+        String groupedContext = contextFormatter.formatKbContext(
+                kbIntents, intentChunks, chunks, budget.contextTopK());
         return new KbResult(groupedContext, intentChunks);
     }
 

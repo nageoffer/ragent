@@ -17,6 +17,7 @@
 
 package com.nageoffer.ai.ragent.rag.core.vector.strategy;
 
+import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
 import com.nageoffer.ai.ragent.rag.config.SearchChannelProperties;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentNode;
 import com.nageoffer.ai.ragent.rag.core.intent.NodeScore;
@@ -33,8 +34,10 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -103,5 +106,100 @@ class IntentParallelRetrieverTest {
         assertEquals("global", result.getMetadata().get("scope"));
         verify(kbCollectionProvider).listActiveCollections();
         verifyNoInteractions(retrieverService);
+    }
+
+    @Test
+    @DisplayName("意图定向检索只记录真实召回归属")
+    void recordsOnlyActualIntentMatches() {
+        VectorRetrieverService retrieverService = mock(VectorRetrieverService.class);
+        when(retrieverService.embedAndNormalize("问题")).thenReturn(new float[]{1F});
+        RetrievedChunk chunkA = RetrievedChunk.builder().id("chunk-a").text("A资料").score(0.9F).build();
+        when(retrieverService.retrieveByVector(any(float[].class), any(RetrieveRequest.class)))
+                .thenAnswer(invocation -> {
+                    RetrieveRequest request = invocation.getArgument(1);
+                    return request.getEffectiveCollectionNames().contains("collection-a")
+                            ? List.of(chunkA)
+                            : List.of();
+                });
+
+        IntentParallelRetriever.IntentRetrievalResult result = new IntentParallelRetriever(
+                retrieverService, Runnable::run).retrieveByIntents(
+                "问题", List.of(intent("A", "collection-a"), intent("B", "collection-b")), 10);
+        Map<String, List<RetrievedChunk>> grouped =
+                result.intentAttribution().groupRetainedChunks(result.chunks(), "multi_channel");
+
+        assertEquals(List.of(chunkA), grouped.get("A"));
+        assertFalse(grouped.containsKey("B"));
+        assertFalse(grouped.containsKey("multi_channel"));
+    }
+
+    @Test
+    @DisplayName("单个意图检索失败不会污染其他意图归属")
+    void failedIntentDoesNotPolluteOtherAttribution() {
+        VectorRetrieverService retrieverService = mock(VectorRetrieverService.class);
+        when(retrieverService.embedAndNormalize("问题")).thenReturn(new float[]{1F});
+        RetrievedChunk chunkB = RetrievedChunk.builder().id("chunk-b").text("B资料").score(0.8F).build();
+        when(retrieverService.retrieveByVector(any(float[].class), any(RetrieveRequest.class)))
+                .thenAnswer(invocation -> {
+                    RetrieveRequest request = invocation.getArgument(1);
+                    if (request.getEffectiveCollectionNames().contains("collection-a")) {
+                        throw new IllegalStateException("A retrieval failed");
+                    }
+                    return List.of(chunkB);
+                });
+
+        IntentParallelRetriever.IntentRetrievalResult result = new IntentParallelRetriever(
+                retrieverService, Runnable::run).retrieveByIntents(
+                "问题", List.of(intent("A", "collection-a"), intent("B", "collection-b")), 10);
+        Map<String, List<RetrievedChunk>> grouped =
+                result.intentAttribution().groupRetainedChunks(result.chunks(), "multi_channel");
+
+        assertFalse(grouped.containsKey("A"));
+        assertEquals(List.of(chunkB), grouped.get("B"));
+    }
+
+    @Test
+    @DisplayName("向量通道向上游暴露不同意图的精确归属")
+    void vectorChannelCarriesIntentAttribution() {
+        VectorRetrieverService retrieverService = mock(VectorRetrieverService.class);
+        when(retrieverService.embedAndNormalize("问题")).thenReturn(new float[]{1F});
+        RetrievedChunk chunkA = RetrievedChunk.builder().id("chunk-a").text("A资料").score(0.9F).build();
+        RetrievedChunk chunkB = RetrievedChunk.builder().id("chunk-b").text("B资料").score(0.8F).build();
+        when(retrieverService.retrieveByVector(any(float[].class), any(RetrieveRequest.class)))
+                .thenAnswer(invocation -> {
+                    RetrieveRequest request = invocation.getArgument(1);
+                    return request.getEffectiveCollectionNames().contains("collection-a")
+                            ? List.of(chunkA)
+                            : List.of(chunkB);
+                });
+        SearchContext context = SearchContext.builder()
+                .originalQuestion("问题")
+                .intents(List.of(new SubQuestionIntent(
+                        "问题", List.of(intent("A", "collection-a"), intent("B", "collection-b")))))
+                .budget(RetrievalBudget.uniform(10))
+                .build();
+
+        SearchChannelResult result = new VectorSearchChannel(
+                retrieverService,
+                new SearchChannelProperties(),
+                mock(KbCollectionProvider.class),
+                Runnable::run
+        ).search(context);
+        Map<String, List<RetrievedChunk>> grouped =
+                result.getIntentAttribution().groupRetainedChunks(result.getChunks(), "multi_channel");
+
+        assertEquals(List.of(chunkA), grouped.get("A"));
+        assertEquals(List.of(chunkB), grouped.get("B"));
+    }
+
+    private NodeScore intent(String id, String collectionName) {
+        return NodeScore.builder()
+                .node(IntentNode.builder()
+                        .id(id)
+                        .name(id)
+                        .collectionNames(List.of(collectionName))
+                        .build())
+                .score(0.95)
+                .build();
     }
 }

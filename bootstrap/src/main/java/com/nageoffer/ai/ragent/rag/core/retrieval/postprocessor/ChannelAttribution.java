@@ -17,8 +17,8 @@
 
 package com.nageoffer.ai.ragent.rag.core.retrieval.postprocessor;
 
-import cn.hutool.crypto.digest.DigestUtil;
 import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
+import com.nageoffer.ai.ragent.rag.core.retrieval.RetrievedChunkKey;
 import com.nageoffer.ai.ragent.rag.core.retrieval.channel.SearchChannelResult;
 import com.nageoffer.ai.ragent.rag.core.retrieval.channel.SearchChannelType;
 
@@ -47,9 +47,7 @@ final class ChannelAttribution {
      * 生成 chunk 归因键，与去重 / 融合处理器保持一致
      */
     static String keyOf(RetrievedChunk chunk) {
-        return chunk.getId() != null
-                ? chunk.getId()
-                : DigestUtil.sha256Hex(chunk.getText() == null ? "" : chunk.getText());
+        return RetrievedChunkKey.of(chunk);
     }
 
     /**
