@@ -127,6 +127,8 @@ public class IngestionTaskServiceImpl implements IngestionTaskService {
             IngestionResult result = executeInternal(pipelineId, source, bytes, mimeType, null);
             putTaskSnapshot(result);
             return result;
+        } catch (ClientException e) {
+            throw e;
         } catch (Exception e) {
             throw new ClientException("读取上传文件失败: " + e.getMessage());
         }

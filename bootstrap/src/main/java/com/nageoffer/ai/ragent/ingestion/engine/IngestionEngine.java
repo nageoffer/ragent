@@ -17,7 +17,6 @@
 
 package com.nageoffer.ai.ragent.ingestion.engine;
 
-import cn.hutool.core.util.StrUtil;
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.ingestion.domain.context.IngestionContext;
 import com.nageoffer.ai.ragent.ingestion.domain.context.NodeLog;
@@ -70,8 +69,15 @@ public class IngestionEngine {
         validatePipeline(nodeConfigMap);
 
         // 找到起始节点（没有被任何节点引用的节点）
-        String startNodeId = findStartNode(nodeConfigMap);
-        if (StrUtil.isBlank(startNodeId)) {
+        List<String> startNodeIds = findStartNodes(nodeConfigMap);
+        if (startNodeIds.isEmpty()) {
+            throw new ClientException("流水线未找到起始节点");
+        }
+        if (startNodeIds.size() > 1) {
+            throw new ClientException("流水线存在多个起始节点: " + String.join(", ", startNodeIds));
+        }
+        String startNodeId = startNodeIds.get(0);
+        if (!StringUtils.hasText(startNodeId)) {
             throw new ClientException("流水线未找到起始节点");
         }
 
@@ -140,7 +146,7 @@ public class IngestionEngine {
     /**
      * 找到起始节点（没有被任何节点引用的节点）
      */
-    private String findStartNode(Map<String, NodeConfig> nodeConfigMap) {
+    private List<String> findStartNodes(Map<String, NodeConfig> nodeConfigMap) {
         Set<String> referencedNodes = nodeConfigMap.values().stream()
                 .map(NodeConfig::getNextNodeId)
                 .filter(StringUtils::hasText)
@@ -148,8 +154,8 @@ public class IngestionEngine {
 
         return nodeConfigMap.keySet().stream()
                 .filter(nodeId -> !referencedNodes.contains(nodeId))
-                .findFirst()
-                .orElse(null);
+                .sorted(Comparator.nullsFirst(Comparator.naturalOrder()))
+                .toList();
     }
 
     /**

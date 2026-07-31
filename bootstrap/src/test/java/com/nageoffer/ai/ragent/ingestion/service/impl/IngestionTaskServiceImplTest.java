@@ -19,12 +19,14 @@ package com.nageoffer.ai.ragent.ingestion.service.impl;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nageoffer.ai.ragent.audit.support.BizChangeLogContext;
+import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.ingestion.controller.vo.IngestionTaskNodeVO;
 import com.nageoffer.ai.ragent.ingestion.controller.vo.IngestionTaskVO;
 import com.nageoffer.ai.ragent.ingestion.dao.entity.IngestionTaskDO;
 import com.nageoffer.ai.ragent.ingestion.dao.entity.IngestionTaskNodeDO;
 import com.nageoffer.ai.ragent.ingestion.dao.mapper.IngestionTaskMapper;
 import com.nageoffer.ai.ragent.ingestion.dao.mapper.IngestionTaskNodeMapper;
+import com.nageoffer.ai.ragent.ingestion.domain.pipeline.PipelineDefinition;
 import com.nageoffer.ai.ragent.ingestion.engine.IngestionEngine;
 import com.nageoffer.ai.ragent.ingestion.service.IngestionPipelineService;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,13 +34,18 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.mock.web.MockMultipartFile;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -129,5 +136,18 @@ class IngestionTaskServiceImplTest {
 
         task.setMetadataJson("null");
         assertTrue(service.get("task-1").getMetadata().isEmpty());
+    }
+
+    @Test
+    void uploadPropagatesEngineClientExceptionWithoutWrapping() {
+        ClientException engineFailure = new ClientException("流水线存在多个起始节点: a-root, z-root");
+        when(pipelineService.getDefinition("pipeline-1")).thenReturn(mock(PipelineDefinition.class));
+        when(engine.execute(any(), any())).thenThrow(engineFailure);
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "doc.txt", "text/plain", "hello".getBytes(StandardCharsets.UTF_8));
+
+        ClientException thrown = assertThrows(ClientException.class, () -> service.upload("pipeline-1", file));
+
+        assertSame(engineFailure, thrown);
     }
 }
