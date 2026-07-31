@@ -177,7 +177,15 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
                 .createdBy(UserContext.getUsername())
                 .updatedBy(UserContext.getUsername())
                 .build();
-        documentMapper.insert(documentDO);
+        try {
+            int inserted = documentMapper.insert(documentDO);
+            if (inserted <= 0) {
+                throw new ClientException("文档保存失败");
+            }
+        } catch (RuntimeException e) {
+            deleteStoredFileIfDocumentAbsent(documentDO, stored.getUrl());
+            throw e;
+        }
         bizChangeLogContext.put(String.valueOf(documentDO.getId()), null, documentDO);
         bizChangeLogContext.putName(documentDO.getDocName());
 
@@ -851,6 +859,35 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
             fileStorageService.deleteByUrl(documentDO.getFileUrl());
         } catch (Exception e) {
             log.warn("删除文档存储文件失败, docId={}, fileUrl={}", documentDO.getId(), documentDO.getFileUrl(), e);
+        }
+    }
+
+    private void deleteStoredFileIfDocumentAbsent(KnowledgeDocumentDO documentDO, String fileUrl) {
+        String docId = documentDO.getId();
+        if (!StringUtils.hasText(docId)) {
+            log.warn("无法确认文档插入结果，保留已上传文件, fileUrl={}", fileUrl);
+            return;
+        }
+        try {
+            if (documentMapper.selectById(docId) != null) {
+                log.warn("文档插入结果异常但记录已存在，保留已上传文件, docId={}, fileUrl={}", docId, fileUrl);
+                return;
+            }
+        } catch (Exception e) {
+            log.warn("复核文档插入结果失败，保留已上传文件, docId={}, fileUrl={}", docId, fileUrl, e);
+            return;
+        }
+        deleteStoredFileQuietly(fileUrl);
+    }
+
+    private void deleteStoredFileQuietly(String fileUrl) {
+        if (!StringUtils.hasText(fileUrl)) {
+            return;
+        }
+        try {
+            fileStorageService.deleteByUrl(fileUrl);
+        } catch (Exception e) {
+            log.warn("补偿删除上传文件失败, fileUrl={}", fileUrl, e);
         }
     }
 }
