@@ -46,6 +46,7 @@ public final class LogSafe {
         if (raw == null) {
             return null;
         }
+        raw = raw.trim();
         if (raw.length() <= max) {
             return raw;
         }
