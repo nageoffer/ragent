@@ -30,8 +30,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.stream.Collectors;
@@ -74,10 +78,19 @@ public class MultiChannelRetrievalEngine {
 
         // 【阶段2：后置处理器链】
         List<RetrievedChunk> chunks = executePostProcessors(channelResults, context);
-        IntentChunkAttribution intentAttribution = IntentChunkAttribution.merge(
-                channelResults.stream().map(SearchChannelResult::getIntentAttribution).toList()
-        ).retain(chunks);
-        return new KnowledgeRetrievalResult(chunks, intentAttribution);
+        Set<String> retainedKeys = chunks.stream()
+                .map(RetrievedChunkKey::of)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        Map<String, Set<String>> intentIdsByChunkKey = new LinkedHashMap<>();
+        channelResults.stream()
+                .map(SearchChannelResult::getIntentIdsByChunkKey)
+                .filter(Objects::nonNull)
+                .flatMap(attribution -> attribution.entrySet().stream())
+                .filter(entry -> retainedKeys.contains(entry.getKey()))
+                .forEach(entry -> intentIdsByChunkKey
+                        .computeIfAbsent(entry.getKey(), ignored -> new LinkedHashSet<>())
+                        .addAll(entry.getValue()));
+        return new KnowledgeRetrievalResult(chunks, intentIdsByChunkKey);
     }
 
     /**

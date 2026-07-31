@@ -22,7 +22,6 @@ import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
 import com.nageoffer.ai.ragent.rag.config.SearchChannelProperties;
 import com.nageoffer.ai.ragent.rag.core.intent.NodeScore;
 import com.nageoffer.ai.ragent.rag.core.intent.NodeScoreFilters;
-import com.nageoffer.ai.ragent.rag.core.retrieval.IntentChunkAttribution;
 import com.nageoffer.ai.ragent.rag.core.vector.VectorRetrieverService;
 import com.nageoffer.ai.ragent.rag.core.vector.strategy.CollectionParallelRetriever;
 import com.nageoffer.ai.ragent.rag.core.vector.strategy.IntentParallelRetriever;
@@ -31,6 +30,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Executor;
 
 /**
@@ -81,12 +81,12 @@ public class VectorSearchChannel implements SearchChannel {
             List<NodeScore> kbIntents = extractKbIntents(context);
 
             List<RetrievedChunk> chunks;
-            IntentChunkAttribution intentAttribution = IntentChunkAttribution.empty();
+            Map<String, Set<String>> intentIdsByChunkKey = Map.of();
             Map<String, Object> metadata;
             if (shouldNarrowToIntent(kbIntents)) {
                 IntentParallelRetriever.IntentRetrievalResult result = retrieveByIntent(context, kbIntents);
                 chunks = result.chunks();
-                intentAttribution = result.intentAttribution();
+                intentIdsByChunkKey = result.intentIdsByChunkKey();
                 metadata = Map.of("scope", "intent", "intentCount", kbIntents.size());
             } else {
                 chunks = retrieveGlobal(context);
@@ -101,7 +101,7 @@ public class VectorSearchChannel implements SearchChannel {
                     .channelType(SearchChannelType.VECTOR)
                     .channelName(getName())
                     .chunks(chunks)
-                    .intentAttribution(intentAttribution)
+                    .intentIdsByChunkKey(intentIdsByChunkKey)
                     .latencyMs(latency)
                     .metadata(metadata)
                     .build();

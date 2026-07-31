@@ -28,10 +28,12 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -39,7 +41,8 @@ class MultiChannelRetrievalEngineTest {
 
     @Test
     void filtersAttributionByFinalChunksAndKeepsGlobalEvidence() {
-        RetrievedChunk chunkA = chunk("a", "A资料", 0.9F);
+        RetrievedChunk originalA = chunk(null, "A资料", 0.9F);
+        RetrievedChunk chunkA = chunk(null, "A资料", 0.9F);
         RetrievedChunk discardedA = chunk("discarded", "被淘汰的A资料", 0.8F);
         RetrievedChunk globalChunk = chunk("global", "全局资料", 0.7F);
 
@@ -49,9 +52,10 @@ class MultiChannelRetrievalEngineTest {
                 SearchChannelResult.builder()
                         .channelType(SearchChannelType.VECTOR)
                         .channelName("vector")
-                        .chunks(List.of(chunkA, discardedA))
-                        .intentAttribution(IntentChunkAttribution.fromIntentChunks(
-                                Map.of("A", List.of(chunkA, discardedA))))
+                        .chunks(List.of(originalA, discardedA))
+                        .intentIdsByChunkKey(Map.of(
+                                RetrievedChunkKey.of(originalA), Set.of("A", "B"),
+                                RetrievedChunkKey.of(discardedA), Set.of("A")))
                         .build()
         );
         SearchChannel keyword = channel(
@@ -64,29 +68,11 @@ class MultiChannelRetrievalEngineTest {
                         .build()
         );
 
-        SearchResultPostProcessor finalSelection = new SearchResultPostProcessor() {
-            @Override
-            public String getName() {
-                return "FinalSelection";
-            }
-
-            @Override
-            public int getOrder() {
-                return 1;
-            }
-
-            @Override
-            public boolean isEnabled(SearchContext context) {
-                return true;
-            }
-
-            @Override
-            public List<RetrievedChunk> process(List<RetrievedChunk> chunks,
-                                                List<SearchChannelResult> results,
-                                                SearchContext context) {
-                return List.of(globalChunk, chunkA);
-            }
-        };
+        SearchResultPostProcessor finalSelection = mock(SearchResultPostProcessor.class);
+        when(finalSelection.getOrder()).thenReturn(1);
+        when(finalSelection.isEnabled(any(SearchContext.class))).thenReturn(true);
+        when(finalSelection.process(anyList(), anyList(), any(SearchContext.class)))
+                .thenReturn(List.of(globalChunk, chunkA));
 
         KnowledgeRetrievalResult result = new MultiChannelRetrievalEngine(
                 List.of(vector, keyword), List.of(finalSelection), Runnable::run)
@@ -98,7 +84,9 @@ class MultiChannelRetrievalEngineTest {
 
         assertEquals(List.of(globalChunk, chunkA), result.chunks(), "不得改变最终后处理顺序");
         assertEquals(List.of(chunkA), grouped.get("A"));
+        assertEquals(List.of(chunkA), grouped.get("B"));
         assertEquals(List.of(globalChunk), grouped.get("multi_channel"));
+        assertFalse(result.intentIdsByChunkKey().containsKey(RetrievedChunkKey.of(discardedA)));
         assertFalse(grouped.values().stream().flatMap(List::stream).toList().contains(discardedA));
     }
 

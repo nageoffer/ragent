@@ -18,13 +18,13 @@
 package com.nageoffer.ai.ragent.rag.core.retrieval.channel;
 
 import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
-import com.nageoffer.ai.ragent.rag.core.retrieval.IntentChunkAttribution;
 import lombok.Builder;
 import lombok.Data;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 检索通道结果
@@ -54,7 +54,7 @@ public class SearchChannelResult {
      * Chunk 的真实意图归属；全局或无法确定归属的通道保持为空
      */
     @Builder.Default
-    private IntentChunkAttribution intentAttribution = IntentChunkAttribution.empty();
+    private Map<String, Set<String>> intentIdsByChunkKey = Map.of();
 
     /**
      * 检索耗时（毫秒）

@@ -119,7 +119,7 @@ public abstract class AbstractParallelRetriever<T> {
         log.info("{} 检索统计 - 总目标数: {}, 成功: {}, 失败: {}, 检索到 Chunk 总数: {}",
                 getStatisticsName(), targets.size(), successCount, failureCount, allChunks.size());
 
-        return new ParallelRetrievalResult<>(List.copyOf(allChunks), List.copyOf(targetResults));
+        return new ParallelRetrievalResult<>(allChunks, targetResults);
     }
 
     protected record TargetRetrievalResult<T>(T target, List<RetrievedChunk> chunks) {

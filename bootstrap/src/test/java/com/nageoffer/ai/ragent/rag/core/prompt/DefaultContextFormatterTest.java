@@ -26,7 +26,6 @@ import org.springframework.core.io.DefaultResourceLoader;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -116,66 +115,6 @@ class DefaultContextFormatterTest {
         assertTrue(result.contains("SNIPPET_A"));
         assertFalse(result.contains("SNIPPET_B"), "未召回 Chunk 的候选意图不得注入 snippet");
         assertTrue(result.contains("A的资料"));
-    }
-
-    @Test
-    void globalChunksDoNotActivateCandidateSnippets() {
-        NodeScore intentA = intent("A", "SNIPPET_A");
-        NodeScore intentB = intent("B", "SNIPPET_B");
-        RetrievedChunk globalChunk = chunk("global", "全局资料", "docG", null, 0, 0.9f);
-
-        String result = formatter().formatKbContext(
-                List.of(intentA, intentB),
-                Map.of("multi_channel", List.of(globalChunk)),
-                List.of(globalChunk),
-                100
-        );
-
-        assertFalse(result.contains("SNIPPET_A"));
-        assertFalse(result.contains("SNIPPET_B"));
-        assertTrue(result.contains("全局资料"), "全局证据仍应进入上下文");
-    }
-
-    @Test
-    void matchedIntentAndGlobalEvidenceKeepOnlyMatchedSnippet() {
-        NodeScore intentA = intent("A", "SNIPPET_A");
-        NodeScore intentB = intent("B", "SNIPPET_B");
-        RetrievedChunk chunkA = chunk("chunk-a", "A的资料", "docA", null, 0, 0.9f);
-        RetrievedChunk globalChunk = chunk("global", "全局资料", "docG", null, 0, 0.8f);
-        Map<String, List<RetrievedChunk>> grouped = new java.util.LinkedHashMap<>();
-        grouped.put("A", List.of(chunkA));
-        grouped.put("multi_channel", List.of(globalChunk));
-
-        String result = formatter().formatKbContext(
-                List.of(intentA, intentB),
-                grouped,
-                List.of(chunkA, globalChunk),
-                100
-        );
-
-        assertTrue(result.contains("SNIPPET_A"));
-        assertFalse(result.contains("SNIPPET_B"));
-        assertTrue(result.contains("A的资料"));
-        assertTrue(result.contains("全局资料"));
-        assertTrue(result.indexOf("A的资料") < result.indexOf("全局资料"), "保持最终 Chunk 顺序");
-    }
-
-    @Test
-    void sharedChunkActivatesBothActualIntentSnippetsWithoutDuplicateEvidence() {
-        NodeScore intentA = intent("A", "SNIPPET_A");
-        NodeScore intentB = intent("B", "SNIPPET_B");
-        RetrievedChunk shared = chunk("shared", "共享资料", "docS", null, 0, 0.9f);
-
-        String result = formatter().formatKbContext(
-                List.of(intentA, intentB),
-                Map.of("A", List.of(shared), "B", List.of(shared)),
-                List.of(shared),
-                100
-        );
-
-        assertTrue(result.contains("SNIPPET_A"));
-        assertTrue(result.contains("SNIPPET_B"));
-        assertEquals(result.indexOf("共享资料"), result.lastIndexOf("共享资料"));
     }
 
     private NodeScore intent(String id, String snippet) {

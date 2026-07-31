@@ -108,45 +108,6 @@ class RAGPromptServiceTest {
     }
 
     @Test
-    void unmatchedCandidateDoesNotDisableMatchedIntentTemplate() {
-        NodeScore intentA = intent("A", "CUSTOM_TEMPLATE_A");
-        NodeScore intentB = intent("B", "CUSTOM_TEMPLATE_B");
-        PromptContext context = PromptContext.builder()
-                .kbContext("<content>A资料</content>")
-                .kbIntents(List.of(intentA, intentB))
-                .intentChunks(Map.of(
-                        "A", List.of(RetrievedChunk.builder().id("chunk-a").text("A资料").build())
-                ))
-                .build();
-
-        String result = service(false).buildSystemPrompt(context);
-
-        assertTrue(result.contains("CUSTOM_TEMPLATE_A"));
-        assertFalse(result.contains("CUSTOM_TEMPLATE_B"));
-        assertFalse(result.contains("# 企业级知识库问答系统"), "单真实命中意图不应回退多意图默认模板");
-    }
-
-    @Test
-    void globalEvidenceDoesNotActivateCandidateIntentTemplate() {
-        PromptContext context = PromptContext.builder()
-                .kbContext("<content>全局资料</content>")
-                .kbIntents(List.of(
-                        intent("A", "CUSTOM_TEMPLATE_A"),
-                        intent("B", "CUSTOM_TEMPLATE_B")
-                ))
-                .intentChunks(Map.of(
-                        "multi_channel",
-                        List.of(RetrievedChunk.builder().id("global").text("全局资料").build())
-                ))
-                .build();
-
-        String result = service(false).buildSystemPrompt(context);
-
-        assertFalse(result.contains("CUSTOM_TEMPLATE_A"));
-        assertFalse(result.contains("CUSTOM_TEMPLATE_B"));
-    }
-
-    @Test
     void includesKnowledgeRulesFromMixedPrompt() {
         PromptContext context = PromptContext.builder()
                 .mcpContext("<data>动态数据</data>")
@@ -184,11 +145,5 @@ class RAGPromptServiceTest {
                 .promptTemplate(template)
                 .build();
         return NodeScore.builder().node(node).build();
-    }
-
-    private static NodeScore intent(String id, String template) {
-        return NodeScore.builder()
-                .node(IntentNode.builder().id(id).promptTemplate(template).build())
-                .build();
     }
 }

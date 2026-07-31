@@ -20,15 +20,16 @@ package com.nageoffer.ai.ragent.rag.core.vector.strategy;
 import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentNode;
 import com.nageoffer.ai.ragent.rag.core.intent.NodeScore;
-import com.nageoffer.ai.ragent.rag.core.retrieval.IntentChunkAttribution;
 import com.nageoffer.ai.ragent.rag.core.retrieval.RetrieveRequest;
+import com.nageoffer.ai.ragent.rag.core.retrieval.RetrievedChunkKey;
 import com.nageoffer.ai.ragent.rag.core.vector.VectorRetrieverService;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Executor;
 
 /**
@@ -42,7 +43,7 @@ public class IntentParallelRetriever extends AbstractParallelRetriever<IntentPar
     }
 
     public record IntentRetrievalResult(List<RetrievedChunk> chunks,
-                                        IntentChunkAttribution intentAttribution) {
+                                        Map<String, Set<String>> intentIdsByChunkKey) {
     }
 
     public IntentParallelRetriever(VectorRetrieverService retrieverService,
@@ -66,19 +67,18 @@ public class IntentParallelRetriever extends AbstractParallelRetriever<IntentPar
         ParallelRetrievalResult<IntentTask> result =
                 super.executeParallelRetrievalDetailed(question, intentTasks, recallBudget);
 
-        Map<String, List<RetrievedChunk>> chunksByIntent = new LinkedHashMap<>();
+        Map<String, Set<String>> intentIdsByChunkKey = new LinkedHashMap<>();
         for (TargetRetrievalResult<IntentTask> targetResult : result.targetResults()) {
             IntentNode node = targetResult.target().nodeScore().getNode();
             if (node == null || node.getId() == null || node.getId().isBlank() || targetResult.chunks().isEmpty()) {
                 continue;
             }
-            chunksByIntent.computeIfAbsent(node.getId(), ignored -> new ArrayList<>())
-                    .addAll(targetResult.chunks());
+            for (RetrievedChunk chunk : targetResult.chunks()) {
+                intentIdsByChunkKey.computeIfAbsent(RetrievedChunkKey.of(chunk), ignored -> new LinkedHashSet<>())
+                        .add(node.getId());
+            }
         }
-        return new IntentRetrievalResult(
-                result.chunks(),
-                IntentChunkAttribution.fromIntentChunks(chunksByIntent)
-        );
+        return new IntentRetrievalResult(result.chunks(), intentIdsByChunkKey);
     }
 
     @Override

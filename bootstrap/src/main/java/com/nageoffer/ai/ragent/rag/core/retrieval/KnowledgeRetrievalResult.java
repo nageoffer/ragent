@@ -19,25 +19,39 @@ package com.nageoffer.ai.ragent.rag.core.retrieval;
 
 import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 多通道后处理完成后的最终 Chunk 与其真实意图归属。
  */
 public record KnowledgeRetrievalResult(List<RetrievedChunk> chunks,
-                                       IntentChunkAttribution intentAttribution) {
+                                       Map<String, Set<String>> intentIdsByChunkKey) {
 
     public KnowledgeRetrievalResult {
-        chunks = chunks == null ? List.of() : List.copyOf(chunks);
-        intentAttribution = intentAttribution == null ? IntentChunkAttribution.empty() : intentAttribution;
+        chunks = chunks == null ? List.of() : chunks;
+        intentIdsByChunkKey = intentIdsByChunkKey == null ? Map.of() : intentIdsByChunkKey;
     }
 
     public static KnowledgeRetrievalResult empty() {
-        return new KnowledgeRetrievalResult(List.of(), IntentChunkAttribution.empty());
+        return new KnowledgeRetrievalResult(List.of(), Map.of());
     }
 
     public Map<String, List<RetrievedChunk>> groupByIntent(String globalKey) {
-        return intentAttribution.groupRetainedChunks(chunks, globalKey);
+        Map<String, List<RetrievedChunk>> grouped = new LinkedHashMap<>();
+        for (RetrievedChunk chunk : chunks) {
+            Set<String> intentIds = intentIdsByChunkKey.get(RetrievedChunkKey.of(chunk));
+            if (intentIds == null || intentIds.isEmpty()) {
+                grouped.computeIfAbsent(globalKey, ignored -> new ArrayList<>()).add(chunk);
+                continue;
+            }
+            for (String intentId : intentIds) {
+                grouped.computeIfAbsent(intentId, ignored -> new ArrayList<>()).add(chunk);
+            }
+        }
+        return grouped;
     }
 }

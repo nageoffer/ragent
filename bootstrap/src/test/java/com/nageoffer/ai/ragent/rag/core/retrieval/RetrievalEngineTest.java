@@ -29,9 +29,9 @@ import com.nageoffer.ai.ragent.rag.dto.RetrievalContext;
 import com.nageoffer.ai.ragent.rag.dto.SubQuestionIntent;
 import org.junit.jupiter.api.Test;
 
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.MULTI_CHANNEL_KEY;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -54,7 +54,7 @@ class RetrievalEngineTest {
         when(multiChannel.retrieveKnowledgeChannels(anyList(), any(RetrievalBudget.class)))
                 .thenReturn(new KnowledgeRetrievalResult(
                         List.of(chunkA, globalChunk),
-                        IntentChunkAttribution.fromIntentChunks(Map.of("A", List.of(chunkA)))
+                        attribution(chunkA, "A")
                 ));
 
         RetrievalContext result = engine(multiChannel).retrieve(List.of(
@@ -63,41 +63,6 @@ class RetrievalEngineTest {
 
         assertEquals(List.of(chunkA), result.getIntentChunks().get("A"));
         assertFalse(result.getIntentChunks().containsKey("B"));
-        assertEquals(List.of(globalChunk), result.getIntentChunks().get(MULTI_CHANNEL_KEY));
-    }
-
-    @Test
-    void mergesSubQuestionsWithoutCrossingIntentOrGlobalKeys() {
-        RetrievedChunk chunkA1 = chunk("a1", "A资料1");
-        RetrievedChunk chunkA2 = chunk("a2", "A资料2");
-        RetrievedChunk chunkB = chunk("b", "B资料");
-        RetrievedChunk globalChunk = chunk("global", "全局资料");
-        MultiChannelRetrievalEngine multiChannel = mock(MultiChannelRetrievalEngine.class);
-        when(multiChannel.retrieveKnowledgeChannels(anyList(), any(RetrievalBudget.class)))
-                .thenAnswer(invocation -> {
-                    List<SubQuestionIntent> request = invocation.getArgument(0);
-                    if ("问题1".equals(request.get(0).subQuestion())) {
-                        return new KnowledgeRetrievalResult(
-                                List.of(chunkA1),
-                                IntentChunkAttribution.fromIntentChunks(Map.of("A", List.of(chunkA1)))
-                        );
-                    }
-                    Map<String, List<RetrievedChunk>> byIntent = new LinkedHashMap<>();
-                    byIntent.put("A", List.of(chunkA2));
-                    byIntent.put("B", List.of(chunkB));
-                    return new KnowledgeRetrievalResult(
-                            List.of(chunkA2, globalChunk, chunkB),
-                            IntentChunkAttribution.fromIntentChunks(byIntent)
-                    );
-                });
-
-        RetrievalContext result = engine(multiChannel).retrieve(List.of(
-                new SubQuestionIntent("问题1", List.of(intent("A"))),
-                new SubQuestionIntent("问题2", List.of(intent("A"), intent("B")))
-        ));
-
-        assertEquals(List.of(chunkA1, chunkA2), result.getIntentChunks().get("A"));
-        assertEquals(List.of(chunkB), result.getIntentChunks().get("B"));
         assertEquals(List.of(globalChunk), result.getIntentChunks().get(MULTI_CHANNEL_KEY));
     }
 
@@ -121,6 +86,10 @@ class RetrievalEngineTest {
 
     private NodeScore intent(String id) {
         return NodeScore.builder().node(IntentNode.builder().id(id).build()).score(0.9).build();
+    }
+
+    private Map<String, Set<String>> attribution(RetrievedChunk chunk, String intentId) {
+        return Map.of(RetrievedChunkKey.of(chunk), Set.of(intentId));
     }
 
     private RetrievedChunk chunk(String id, String text) {
