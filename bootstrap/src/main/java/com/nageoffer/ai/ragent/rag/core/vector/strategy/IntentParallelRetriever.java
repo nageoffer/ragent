@@ -21,10 +21,15 @@ import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentNode;
 import com.nageoffer.ai.ragent.rag.core.intent.NodeScore;
 import com.nageoffer.ai.ragent.rag.core.retrieval.RetrieveRequest;
+import com.nageoffer.ai.ragent.rag.core.retrieval.RetrievedChunkKey;
 import com.nageoffer.ai.ragent.rag.core.vector.VectorRetrieverService;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Executor;
 
 /**
@@ -37,6 +42,10 @@ public class IntentParallelRetriever extends AbstractParallelRetriever<IntentPar
     public record IntentTask(NodeScore nodeScore, int intentTopK) {
     }
 
+    public record IntentRetrievalResult(List<RetrievedChunk> chunks,
+                                        Map<String, Set<String>> intentIdsByChunkKey) {
+    }
+
     public IntentParallelRetriever(VectorRetrieverService retrieverService,
                                    Executor executor) {
         super(retrieverService, executor);
@@ -46,16 +55,30 @@ public class IntentParallelRetriever extends AbstractParallelRetriever<IntentPar
      * 按意图节点并行检索：将 NodeScore 解析为各自召回深度后委托模板方法执行
      * （独立命名以避免与父类 {@code executeParallelRetrieval(String, List, int)} 泛型擦除后签名冲突）
      */
-    public List<RetrievedChunk> retrieveByIntents(String question,
-                                                  List<NodeScore> targets,
-                                                  int recallBudget) {
+    public IntentRetrievalResult retrieveByIntents(String question,
+                                                   List<NodeScore> targets,
+                                                   int recallBudget) {
         List<IntentTask> intentTasks = targets.stream()
                 .map(nodeScore -> new IntentTask(
                         nodeScore,
                         resolveIntentTopK(nodeScore, recallBudget)
                 ))
                 .toList();
-        return super.executeParallelRetrieval(question, intentTasks, recallBudget);
+        ParallelRetrievalResult<IntentTask> result =
+                super.executeParallelRetrievalDetailed(question, intentTasks, recallBudget);
+
+        Map<String, Set<String>> intentIdsByChunkKey = new LinkedHashMap<>();
+        for (TargetRetrievalResult<IntentTask> targetResult : result.targetResults()) {
+            IntentNode node = targetResult.target().nodeScore().getNode();
+            if (node == null || node.getId() == null || node.getId().isBlank() || targetResult.chunks().isEmpty()) {
+                continue;
+            }
+            for (RetrievedChunk chunk : targetResult.chunks()) {
+                intentIdsByChunkKey.computeIfAbsent(RetrievedChunkKey.of(chunk), ignored -> new LinkedHashSet<>())
+                        .add(node.getId());
+            }
+        }
+        return new IntentRetrievalResult(result.chunks(), intentIdsByChunkKey);
     }
 
     @Override

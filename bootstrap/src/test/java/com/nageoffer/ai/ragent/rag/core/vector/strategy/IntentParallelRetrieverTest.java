@@ -17,10 +17,12 @@
 
 package com.nageoffer.ai.ragent.rag.core.vector.strategy;
 
+import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
 import com.nageoffer.ai.ragent.rag.config.SearchChannelProperties;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentNode;
 import com.nageoffer.ai.ragent.rag.core.intent.NodeScore;
 import com.nageoffer.ai.ragent.rag.core.retrieval.RetrieveRequest;
+import com.nageoffer.ai.ragent.rag.core.retrieval.RetrievedChunkKey;
 import com.nageoffer.ai.ragent.rag.core.retrieval.RetrievalBudget;
 import com.nageoffer.ai.ragent.rag.core.retrieval.channel.KbCollectionProvider;
 import com.nageoffer.ai.ragent.rag.core.retrieval.channel.SearchChannelResult;
@@ -33,8 +35,11 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -103,5 +108,39 @@ class IntentParallelRetrieverTest {
         assertEquals("global", result.getMetadata().get("scope"));
         verify(kbCollectionProvider).listActiveCollections();
         verifyNoInteractions(retrieverService);
+    }
+
+    @Test
+    @DisplayName("意图定向检索只记录真实召回归属")
+    void recordsOnlyActualIntentMatches() {
+        VectorRetrieverService retrieverService = mock(VectorRetrieverService.class);
+        when(retrieverService.embedAndNormalize("问题")).thenReturn(new float[]{1F});
+        RetrievedChunk chunkA = RetrievedChunk.builder().id("chunk-a").text("A资料").score(0.9F).build();
+        when(retrieverService.retrieveByVector(any(float[].class), any(RetrieveRequest.class)))
+                .thenAnswer(invocation -> {
+                    RetrieveRequest request = invocation.getArgument(1);
+                    return request.getEffectiveCollectionNames().contains("collection-a")
+                            ? List.of(chunkA)
+                            : List.of();
+                });
+
+        IntentParallelRetriever.IntentRetrievalResult result = new IntentParallelRetriever(
+                retrieverService, Runnable::run).retrieveByIntents(
+                "问题", List.of(intent("A", "collection-a"), intent("B", "collection-b")), 10);
+        Map<String, Set<String>> attribution = result.intentIdsByChunkKey();
+
+        assertEquals(Set.of("A"), attribution.get(RetrievedChunkKey.of(chunkA)));
+        assertFalse(attribution.values().stream().anyMatch(intentIds -> intentIds.contains("B")));
+    }
+
+    private NodeScore intent(String id, String collectionName) {
+        return NodeScore.builder()
+                .node(IntentNode.builder()
+                        .id(id)
+                        .name(id)
+                        .collectionNames(List.of(collectionName))
+                        .build())
+                .score(0.95)
+                .build();
     }
 }

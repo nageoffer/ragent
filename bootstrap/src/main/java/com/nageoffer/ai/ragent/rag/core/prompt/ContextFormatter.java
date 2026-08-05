@@ -34,10 +34,14 @@ public interface ContextFormatter {
      *
      * @param kbIntents        知识库意图节点及其得分列表
      * @param rerankedByIntent 按意图分组的重排序后检索文档块
+     * @param rerankedChunks   后处理完成后的最终有序文档块
      * @param contextTopK      最终进 LLM 的文档块条数上限（检索预算的 contextTopK 段）
      * @return 格式化后的知识库上下文文本
      */
-    String formatKbContext(List<NodeScore> kbIntents, Map<String, List<RetrievedChunk>> rerankedByIntent, int contextTopK);
+    String formatKbContext(List<NodeScore> kbIntents,
+                           Map<String, List<RetrievedChunk>> rerankedByIntent,
+                           List<RetrievedChunk> rerankedChunks,
+                           int contextTopK);
 
     /**
      * 格式化 MCP 工具调用上下文

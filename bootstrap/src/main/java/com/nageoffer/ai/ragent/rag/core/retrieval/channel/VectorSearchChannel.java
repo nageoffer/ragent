@@ -30,6 +30,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Executor;
 
 /**
@@ -80,9 +81,12 @@ public class VectorSearchChannel implements SearchChannel {
             List<NodeScore> kbIntents = extractKbIntents(context);
 
             List<RetrievedChunk> chunks;
+            Map<String, Set<String>> intentIdsByChunkKey = Map.of();
             Map<String, Object> metadata;
             if (shouldNarrowToIntent(kbIntents)) {
-                chunks = retrieveByIntent(context, kbIntents);
+                IntentParallelRetriever.IntentRetrievalResult result = retrieveByIntent(context, kbIntents);
+                chunks = result.chunks();
+                intentIdsByChunkKey = result.intentIdsByChunkKey();
                 metadata = Map.of("scope", "intent", "intentCount", kbIntents.size());
             } else {
                 chunks = retrieveGlobal(context);
@@ -97,6 +101,7 @@ public class VectorSearchChannel implements SearchChannel {
                     .channelType(SearchChannelType.VECTOR)
                     .channelName(getName())
                     .chunks(chunks)
+                    .intentIdsByChunkKey(intentIdsByChunkKey)
                     .latencyMs(latency)
                     .metadata(metadata)
                     .build();
@@ -166,7 +171,8 @@ public class VectorSearchChannel implements SearchChannel {
      * 意图作用域：并行检索命中意图；单个意图下的全部 Collection 共享一个召回预算
      * （node.topK 可覆盖为该意图的绝对总深度）
      */
-    private List<RetrievedChunk> retrieveByIntent(SearchContext context, List<NodeScore> kbIntents) {
+    private IntentParallelRetriever.IntentRetrievalResult retrieveByIntent(SearchContext context,
+                                                                           List<NodeScore> kbIntents) {
         log.info("执行向量检索（意图作用域），命中 {} 个 KB 意图，问题：{}", kbIntents.size(), context.getMainQuestion());
         return intentRetriever.retrieveByIntents(
                 context.getMainQuestion(), kbIntents, context.getBudget().recallBudget());

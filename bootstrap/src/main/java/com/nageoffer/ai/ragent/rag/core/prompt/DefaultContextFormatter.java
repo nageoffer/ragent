@@ -22,6 +22,7 @@ import cn.hutool.core.util.StrUtil;
 import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentNode;
 import com.nageoffer.ai.ragent.rag.core.intent.NodeScore;
+import com.nageoffer.ai.ragent.rag.core.retrieval.RetrievedChunkKey;
 import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
 import io.modelcontextprotocol.spec.McpSchema.TextContent;
 import lombok.RequiredArgsConstructor;
@@ -44,36 +45,50 @@ public class DefaultContextFormatter implements ContextFormatter {
     private final PromptTemplateLoader templateLoader;
 
     @Override
-    public String formatKbContext(List<NodeScore> kbIntents, Map<String, List<RetrievedChunk>> rerankedByIntent, int contextTopK) {
-        if (rerankedByIntent == null || rerankedByIntent.isEmpty()) {
+    public String formatKbContext(List<NodeScore> kbIntents,
+                                  Map<String, List<RetrievedChunk>> rerankedByIntent,
+                                  List<RetrievedChunk> rerankedChunks,
+                                  int contextTopK) {
+        if (rerankedByIntent == null || rerankedByIntent.isEmpty() || CollUtil.isEmpty(rerankedChunks)) {
             return "";
         }
+
+        List<NodeScore> retrievedIntents = retrievedIntents(kbIntents, rerankedByIntent);
+        if (retrievedIntents.isEmpty()) {
+            return formatChunksWithoutIntent(rerankedChunks, contextTopK);
+        }
+        if (retrievedIntents.size() > 1) {
+            return formatMultiIntentContext(retrievedIntents, rerankedChunks, contextTopK);
+        }
+        return formatSingleIntentContext(retrievedIntents.get(0), rerankedChunks, contextTopK);
+    }
+
+    private List<NodeScore> retrievedIntents(List<NodeScore> kbIntents,
+                                             Map<String, List<RetrievedChunk>> rerankedByIntent) {
         if (CollUtil.isEmpty(kbIntents)) {
-            return formatChunksWithoutIntent(rerankedByIntent, contextTopK);
+            return List.of();
         }
-        if (kbIntents.size() > 1) {
-            return formatMultiIntentContext(kbIntents, rerankedByIntent, contextTopK);
-        }
-        return formatSingleIntentContext(kbIntents.get(0), rerankedByIntent, contextTopK);
+        return kbIntents.stream()
+                .filter(nodeScore -> nodeScore != null && nodeScore.getNode() != null)
+                .filter(nodeScore -> CollUtil.isNotEmpty(rerankedByIntent.get(nodeScore.getNode().getId())))
+                .toList();
     }
 
     /**
      * 格式化单意图上下文
      */
-    private String formatSingleIntentContext(NodeScore nodeScore, Map<String, List<RetrievedChunk>> rerankedByIntent, int topK) {
-        List<RetrievedChunk> chunks = rerankedByIntent.get(nodeScore.getNode().getId());
-        if (CollUtil.isEmpty(chunks)) {
-            return "";
-        }
+    private String formatSingleIntentContext(NodeScore nodeScore, List<RetrievedChunk> rerankedChunks, int topK) {
         String snippet = StrUtil.emptyIfNull(nodeScore.getNode().getPromptSnippet()).trim();
-        String docBlocks = renderChunksGroupedByDoc(chunks, topK);
+        String docBlocks = renderChunksGroupedByDoc(distinctChunks(rerankedChunks), topK);
         return renderKbSection(renderSnippetRules(snippet), docBlocks);
     }
 
     /**
      * 格式化多意图上下文
      */
-    private String formatMultiIntentContext(List<NodeScore> kbIntents, Map<String, List<RetrievedChunk>> rerankedByIntent, int topK) {
+    private String formatMultiIntentContext(List<NodeScore> kbIntents,
+                                            List<RetrievedChunk> rerankedChunks,
+                                            int topK) {
         // 1. 合并所有意图的回答规则
         List<String> snippets = kbIntents.stream()
                 .map(ns -> ns.getNode().getPromptSnippet())
@@ -91,14 +106,7 @@ public class DefaultContextFormatter implements ContextFormatter {
         }
 
         // 2. 合并所有意图的文档片段（按 chunk id 去重，保持相关性顺序）
-        Map<String, RetrievedChunk> dedupById = new LinkedHashMap<>();
-        rerankedByIntent.values().stream()
-                .flatMap(List::stream)
-                .forEach(chunk -> {
-                    String key = StrUtil.isNotBlank(chunk.getId()) ? chunk.getId() : "__anon__" + dedupById.size();
-                    dedupById.putIfAbsent(key, chunk);
-                });
-        List<RetrievedChunk> allChunks = new ArrayList<>(dedupById.values());
+        List<RetrievedChunk> allChunks = distinctChunks(rerankedChunks);
 
         if (allChunks.isEmpty()) {
             return snippetSection;
@@ -108,29 +116,20 @@ public class DefaultContextFormatter implements ContextFormatter {
         return renderKbSection(snippetSection, docBlocks);
     }
 
-    private String formatChunksWithoutIntent(Map<String, List<RetrievedChunk>> rerankedByIntent, int topK) {
-        int limit = topK > 0 ? topK : Integer.MAX_VALUE;
-        List<RetrievedChunk> chunks = new ArrayList<>();
-        for (List<RetrievedChunk> list : rerankedByIntent.values()) {
-            if (CollUtil.isEmpty(list)) {
-                continue;
-            }
-            for (RetrievedChunk chunk : list) {
-                chunks.add(chunk);
-                if (chunks.size() >= limit) {
-                    break;
-                }
-            }
-            if (chunks.size() >= limit) {
-                break;
-            }
-        }
+    private String formatChunksWithoutIntent(List<RetrievedChunk> rerankedChunks, int topK) {
+        List<RetrievedChunk> chunks = distinctChunks(rerankedChunks);
         if (chunks.isEmpty()) {
             return "";
         }
 
         String docBlocks = renderChunksGroupedByDoc(chunks, topK);
         return renderKbSection("", docBlocks);
+    }
+
+    private List<RetrievedChunk> distinctChunks(List<RetrievedChunk> chunks) {
+        Map<String, RetrievedChunk> distinct = new LinkedHashMap<>();
+        chunks.forEach(chunk -> distinct.putIfAbsent(RetrievedChunkKey.of(chunk), chunk));
+        return new ArrayList<>(distinct.values());
     }
 
     @Override

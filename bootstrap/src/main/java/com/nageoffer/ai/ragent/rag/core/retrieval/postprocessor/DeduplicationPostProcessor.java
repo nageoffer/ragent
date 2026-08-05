@@ -17,8 +17,8 @@
 
 package com.nageoffer.ai.ragent.rag.core.retrieval.postprocessor;
 
-import cn.hutool.crypto.digest.DigestUtil;
 import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
+import com.nageoffer.ai.ragent.rag.core.retrieval.RetrievedChunkKey;
 import com.nageoffer.ai.ragent.rag.core.retrieval.channel.SearchChannelResult;
 import com.nageoffer.ai.ragent.rag.core.retrieval.channel.SearchContext;
 import lombok.extern.slf4j.Slf4j;
@@ -74,11 +74,6 @@ public class DeduplicationPostProcessor implements SearchResultPostProcessor {
      * 生成 Chunk 唯一键
      */
     private String generateChunkKey(RetrievedChunk chunk) {
-        // 基于 id 或内容摘要生成唯一键
-        // 注意不能用 String.hashCode()：32 位哈希碰撞概率不可忽略（如 "Aa" 与 "BB"），
-        // 碰撞会把内容不同的 Chunk 误判为重复并静默丢弃，这里改用 SHA-256 内容摘要
-        return chunk.getId() != null
-                ? chunk.getId()
-                : DigestUtil.sha256Hex(chunk.getText() == null ? "" : chunk.getText());
+        return RetrievedChunkKey.of(chunk);
     }
 }

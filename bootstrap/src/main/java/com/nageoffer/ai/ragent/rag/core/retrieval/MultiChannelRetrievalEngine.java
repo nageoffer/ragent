@@ -30,8 +30,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.stream.Collectors;
@@ -58,21 +62,35 @@ public class MultiChannelRetrievalEngine {
      *
      * @param subIntents 子问题意图列表
      * @param budget     检索预算（召回扇出 / Rerank 候选池上限 / 最终条数）
-     * @return 检索到的 Chunk 列表
+     * @return 后处理后的 Chunk 列表及其真实意图归属
      */
     @RagTraceNode(name = "multi-channel-retrieval", type = "RETRIEVE_CHANNEL")
-    public List<RetrievedChunk> retrieveKnowledgeChannels(List<SubQuestionIntent> subIntents, RetrievalBudget budget) {
+    public KnowledgeRetrievalResult retrieveKnowledgeChannels(List<SubQuestionIntent> subIntents,
+                                                               RetrievalBudget budget) {
         // 构建检索上下文
         SearchContext context = buildSearchContext(subIntents, budget);
 
         // 【阶段1：多通道并行检索】
         List<SearchChannelResult> channelResults = executeSearchChannels(context);
         if (CollUtil.isEmpty(channelResults)) {
-            return List.of();
+            return KnowledgeRetrievalResult.empty();
         }
 
         // 【阶段2：后置处理器链】
-        return executePostProcessors(channelResults, context);
+        List<RetrievedChunk> chunks = executePostProcessors(channelResults, context);
+        Set<String> retainedKeys = chunks.stream()
+                .map(RetrievedChunkKey::of)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        Map<String, Set<String>> intentIdsByChunkKey = new LinkedHashMap<>();
+        channelResults.stream()
+                .map(SearchChannelResult::getIntentIdsByChunkKey)
+                .filter(Objects::nonNull)
+                .flatMap(attribution -> attribution.entrySet().stream())
+                .filter(entry -> retainedKeys.contains(entry.getKey()))
+                .forEach(entry -> intentIdsByChunkKey
+                        .computeIfAbsent(entry.getKey(), ignored -> new LinkedHashSet<>())
+                        .addAll(entry.getValue()));
+        return new KnowledgeRetrievalResult(chunks, intentIdsByChunkKey);
     }
 
     /**
