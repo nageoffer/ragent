@@ -19,6 +19,7 @@ package com.nageoffer.ai.ragent.rag.core.retrieval;
 
 import cn.hutool.core.collection.CollUtil;
 import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
+import com.nageoffer.ai.ragent.framework.convention.RetrievedChunkKey;
 import com.nageoffer.ai.ragent.framework.trace.RagTraceNode;
 import com.nageoffer.ai.ragent.rag.core.retrieval.channel.RetrievalScopeResolver;
 import com.nageoffer.ai.ragent.rag.core.retrieval.channel.SearchChannel;
@@ -31,8 +32,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.stream.Collectors;
@@ -62,28 +67,35 @@ public class MultiChannelRetrievalEngine {
      *
      * @param subIntent 子问题及其意图
      * @param budget    检索预算（召回扇出 / Rerank 候选池上限 / 最终条数）
-     * @return 检索到的 Chunk 列表
+     * @return 后处理后的 Chunk 及其意图归属
      */
     @RagTraceNode(name = "multi-channel-retrieval", type = "RETRIEVE_CHANNEL")
-    public List<RetrievedChunk> retrieveKnowledgeChannels(SubQuestionIntent subIntent, RetrievalBudget budget) {
-        // 构建检索上下文
+    public KnowledgeRetrievalResult retrieveKnowledgeChannels(SubQuestionIntent subIntent,
+                                                               RetrievalBudget budget) {
         SearchContext context = buildSearchContext(subIntent, budget);
 
-        // 【阶段1：多通道并行检索】
         List<SearchChannelResult> channelResults = executeSearchChannels(context);
         if (CollUtil.isEmpty(channelResults)) {
-            return List.of();
+            return KnowledgeRetrievalResult.empty();
         }
 
-        // 【阶段2：后置处理器链】
-        return executePostProcessors(channelResults, context);
+        List<RetrievedChunk> chunks = executePostProcessors(channelResults, context);
+        Set<String> retainedKeys = chunks.stream()
+                .map(RetrievedChunkKey::of)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        Map<String, Set<String>> intentIdsByChunkKey = new LinkedHashMap<>();
+        channelResults.stream()
+                .map(SearchChannelResult::getIntentIdsByChunkKey)
+                .filter(Objects::nonNull)
+                .flatMap(attribution -> attribution.entrySet().stream())
+                .filter(entry -> retainedKeys.contains(entry.getKey()))
+                .forEach(entry -> intentIdsByChunkKey
+                        .computeIfAbsent(entry.getKey(), ignored -> new LinkedHashSet<>())
+                        .addAll(entry.getValue()));
+        return new KnowledgeRetrievalResult(chunks, intentIdsByChunkKey);
     }
 
-    /**
-     * 执行所有启用的检索通道
-     */
     private List<SearchChannelResult> executeSearchChannels(SearchContext context) {
-        // 过滤启用的通道
         // 按通道类型枚举序做稳定排序：通道并行执行、下游融合（RRF）与归因均与顺序无关，
         // 这里排序仅为日志/派发顺序稳定可复现，不承载任何检索优先级语义
         List<SearchChannel> enabledChannels = searchChannels.stream()
@@ -115,7 +127,6 @@ public class MultiChannelRetrievalEngine {
                 ))
                 .toList();
 
-        // 等待所有通道完成并统计
         int successCount = 0;
         int failureCount = 0;
         int totalChunks = 0;
@@ -125,7 +136,6 @@ public class MultiChannelRetrievalEngine {
                 .filter(Objects::nonNull)
                 .toList();
 
-        // 打印详细统计信息
         for (SearchChannelResult result : results) {
             int chunkCount = result.getChunks().size();
             totalChunks += chunkCount;
@@ -152,12 +162,8 @@ public class MultiChannelRetrievalEngine {
         return results;
     }
 
-    /**
-     * 执行后置处理器链
-     */
     private List<RetrievedChunk> executePostProcessors(List<SearchChannelResult> results,
                                                        SearchContext context) {
-        // 过滤启用的处理器并排序
         List<SearchResultPostProcessor> enabledProcessors = postProcessors.stream()
                 .filter(processor -> processor.isEnabled(context))
                 .sorted(Comparator.comparingInt(SearchResultPostProcessor::getOrder))
@@ -170,14 +176,12 @@ public class MultiChannelRetrievalEngine {
                     .collect(Collectors.toList());
         }
 
-        // 初始 Chunk 列表（所有通道的结果合并）
         List<RetrievedChunk> chunks = results.stream()
                 .flatMap(r -> r.getChunks().stream())
                 .collect(Collectors.toList());
 
         int initialSize = chunks.size();
 
-        // 依次执行处理器
         for (SearchResultPostProcessor processor : enabledProcessors) {
             try {
                 int beforeSize = chunks.size();
@@ -192,7 +196,6 @@ public class MultiChannelRetrievalEngine {
                 );
             } catch (Exception e) {
                 log.error("后置处理器 {} 执行失败，跳过该处理器", processor.getName(), e);
-                // 继续执行下一个处理器，不中断整个链
             }
         }
 

@@ -24,6 +24,7 @@ import lombok.Data;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 检索通道结果
@@ -48,6 +49,12 @@ public class SearchChannelResult {
      * 检索到的 Chunk 列表
      */
     private List<RetrievedChunk> chunks;
+
+    /**
+     * 仅向量定向检索填写精确归属，关键词、图谱和全局结果保持为空
+     */
+    @Builder.Default
+    private Map<String, Set<String>> intentIdsByChunkKey = Map.of();
 
     /**
      * 检索耗时（毫秒）

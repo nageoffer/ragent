@@ -18,6 +18,7 @@
 package com.nageoffer.ai.ragent.rag.core.retrieval.postprocessor;
 
 import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
+import com.nageoffer.ai.ragent.framework.convention.RetrievedChunkKey;
 import com.nageoffer.ai.ragent.rag.config.SearchChannelProperties;
 import com.nageoffer.ai.ragent.rag.core.retrieval.channel.SearchChannelResult;
 import com.nageoffer.ai.ragent.rag.core.retrieval.channel.SearchChannelType;
@@ -104,7 +105,7 @@ public class FusionPostProcessor implements SearchResultPostProcessor {
             double weight = weightOf(result.getChannelType());
             List<RetrievedChunk> channelChunks = result.getChunks();
             for (int rank = 0; rank < channelChunks.size(); rank++) {
-                String key = chunkKey(channelChunks.get(rank));
+                String key = RetrievedChunkKey.of(channelChunks.get(rank));
                 double delta = weight / (k + rank + 1);
                 rrfScores.merge(key, delta, Double::sum);
             }
@@ -112,7 +113,7 @@ public class FusionPostProcessor implements SearchResultPostProcessor {
 
         List<RetrievedChunk> fused = new ArrayList<>(chunks);
         for (RetrievedChunk chunk : fused) {
-            Double score = rrfScores.get(chunkKey(chunk));
+            Double score = rrfScores.get(RetrievedChunkKey.of(chunk));
             chunk.setScore(score != null ? score.floatValue() : 0f);
         }
         fused.sort((a, b) -> Float.compare(b.getScore(), a.getScore()));
@@ -141,14 +142,6 @@ public class FusionPostProcessor implements SearchResultPostProcessor {
                     ChannelAttribution.format(ChannelAttribution.countByChannel(candidates, index)));
         }
         return candidates;
-    }
-
-    /**
-     * 生成 Chunk 融合键 复用统一的归因键规则（优先 id，缺失时退化为文本 SHA-256），
-     * 保证融合累分与归因反查用的是同一套 key
-     */
-    private String chunkKey(RetrievedChunk chunk) {
-        return ChannelAttribution.keyOf(chunk);
     }
 
     /**

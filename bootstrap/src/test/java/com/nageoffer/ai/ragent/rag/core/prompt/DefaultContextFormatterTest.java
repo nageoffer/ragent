@@ -18,11 +18,13 @@
 package com.nageoffer.ai.ragent.rag.core.prompt;
 
 import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
+import com.nageoffer.ai.ragent.rag.core.intent.IntentNode;
+import com.nageoffer.ai.ragent.rag.core.intent.NodeScore;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.DefaultResourceLoader;
 
 import java.util.List;
-import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -57,7 +59,7 @@ class DefaultContextFormatterTest {
                 chunk("a1", "A-idx1正文", "docA", "员工手册.pdf", 1, 0.7f),
                 chunk("x0", "孤块正文", null, null, null, 0.6f));
 
-        String result = formatter().formatKbContext(List.of(), Map.of("mc", chunks), 100);
+        String result = formatter().formatKbContext(List.of(), Set.of(), chunks, 100);
 
         // 文档 A 整体在文档 B 之前（A 的最佳块排名更高），孤块最后
         assertTrue(result.indexOf("A-idx1正文") < result.indexOf("A-idx3正文"), "同文档内应按 chunkIndex 升序");
@@ -72,7 +74,8 @@ class DefaultContextFormatterTest {
         assertFalse(result.contains("报销政策"));
 
         // 孤块单独成组、无任何属性
-        assertTrue(result.contains("<content>\n孤块正文\n</content>"), "docId 缺失应渲染为无属性的独立块");
+        assertTrue(result.replace("\r\n", "\n").contains("<content>\n孤块正文\n</content>"),
+                "docId 缺失应渲染为无属性的独立块");
     }
 
     @Test
@@ -82,7 +85,7 @@ class DefaultContextFormatterTest {
                 chunk("c1", "第一块正文", "docC", "说明.txt", 1, 0.9f),
                 chunk("c2", "第二块正文", "docC", "说明.txt", 2, 0.8f));
 
-        String result = formatter().formatKbContext(List.of(), Map.of("mc", chunks), 100);
+        String result = formatter().formatKbContext(List.of(), Set.of(), chunks, 100);
 
         assertTrue(result.contains("第一块正文\n第二块正文"), "同文档块之间用单换行拼接");
     }
@@ -92,8 +95,61 @@ class DefaultContextFormatterTest {
         List<RetrievedChunk> chunks = List.of(
                 chunk("c1", "无标题正文", "docC", null, 0, 0.9f));
 
-        String result = formatter().formatKbContext(List.of(), Map.of("mc", chunks), 100);
+        String result = formatter().formatKbContext(List.of(), Set.of(), chunks, 100);
 
         assertTrue(result.contains("<content data-ragent-doc-id=\"docC\">"));
+    }
+
+    @Test
+    void keepsDifferentChunksWhenIdsAreBlank() {
+        List<RetrievedChunk> chunks = List.of(
+                chunk("", "第一块正文", "docC", null, 0, 0.9f),
+                chunk("", "第二块正文", "docC", null, 1, 0.8f));
+
+        String result = formatter().formatKbContext(List.of(), Set.of(), chunks, 100);
+
+        assertTrue(result.contains("第一块正文"));
+        assertTrue(result.contains("第二块正文"));
+    }
+
+    @Test
+    void onlyRetrievedIntentContributesSnippet() {
+        NodeScore intentA = intent("A", "SNIPPET_A");
+        NodeScore intentB = intent("B", "SNIPPET_B");
+        RetrievedChunk chunkA = chunk("chunk-a", "A的资料", "docA", null, 0, 0.9f);
+
+        String result = formatter().formatKbContext(
+                List.of(intentA, intentB),
+                Set.of("A"),
+                List.of(chunkA),
+                100
+        );
+
+        assertTrue(result.contains("SNIPPET_A"));
+        assertFalse(result.contains("SNIPPET_B"), "未召回 Chunk 的候选意图不得注入 snippet");
+        assertTrue(result.contains("A的资料"));
+    }
+
+    @Test
+    void globalEvidenceDoesNotActivateCandidateSnippet() {
+        NodeScore intentA = intent("A", "SNIPPET_A");
+        RetrievedChunk globalChunk = chunk("global", "全局资料", null, null, 0, 0.9f);
+
+        String result = formatter().formatKbContext(
+                List.of(intentA),
+                Set.of(),
+                List.of(globalChunk),
+                100
+        );
+
+        assertFalse(result.contains("SNIPPET_A"));
+        assertTrue(result.contains("全局资料"));
+    }
+
+    private NodeScore intent(String id, String snippet) {
+        return NodeScore.builder()
+                .node(IntentNode.builder().id(id).promptSnippet(snippet).build())
+                .score(0.9)
+                .build();
     }
 }

@@ -226,7 +226,7 @@ public class StreamChatPipeline {
                 .kbContext(ctx.getKbContext())
                 .mcpIntents(intentGroup.mcpIntents())
                 .kbIntents(intentGroup.kbIntents())
-                .intentChunks(ctx.getIntentChunks())
+                .retrievedIntentIds(ctx.getRetrievedIntentIds())
                 .build();
 
         List<ChatMessage> messages = promptBuilder.buildStructuredMessages(

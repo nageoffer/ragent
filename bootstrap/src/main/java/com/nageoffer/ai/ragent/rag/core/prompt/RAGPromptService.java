@@ -20,7 +20,6 @@ package com.nageoffer.ai.ragent.rag.core.prompt;
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
 import com.nageoffer.ai.ragent.framework.convention.ChatMessage;
-import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
 import com.nageoffer.ai.ragent.rag.config.RAGConfigProperties;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentNode;
 import com.nageoffer.ai.ragent.rag.core.intent.NodeScore;
@@ -29,9 +28,10 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -106,40 +106,33 @@ public class RAGPromptService {
         return messages;
     }
 
-    private PromptPlan planPrompt(List<NodeScore> intents, Map<String, List<RetrievedChunk>> intentChunks) {
+    private PromptPlan planPrompt(List<NodeScore> intents, Set<String> retrievedIntentIds) {
         List<NodeScore> safeIntents = intents == null ? Collections.emptyList() : intents;
+        Map<String, NodeScore> eligibleById = new LinkedHashMap<>();
+        for (NodeScore intent : safeIntents) {
+            if (intent == null || intent.getNode() == null) {
+                continue;
+            }
+            String intentId = intent.getNode().getId();
+            if (CollUtil.isNotEmpty(retrievedIntentIds) && !retrievedIntentIds.contains(intentId)) {
+                continue;
+            }
+            eligibleById.putIfAbsent(intentId, intent);
+        }
+        List<NodeScore> eligibleIntents = new ArrayList<>(eligibleById.values());
 
-        // 1) 先剔除“未命中检索”的意图
-        List<NodeScore> retained = safeIntents.stream()
-                .filter(ns -> {
-                    IntentNode node = ns.getNode();
-                    String key = nodeKey(node);
-                    List<RetrievedChunk> chunks = intentChunks == null ? null : intentChunks.get(key);
-                    return CollUtil.isNotEmpty(chunks);
-                })
-                .toList();
-
-        if (retained.isEmpty()) {
-            // 没有任何可用意图：无基模板（上层可根据业务选择 fallback）
+        if (eligibleIntents.isEmpty()) {
             return new PromptPlan(Collections.emptyList(), null);
         }
 
-        // 2) 单 / 多意图的模板与片段策略
-        if (retained.size() == 1) {
-            IntentNode only = retained.get(0).getNode();
+        if (eligibleIntents.size() == 1) {
+            IntentNode only = eligibleIntents.get(0).getNode();
             String tpl = StrUtil.emptyIfNull(only.getPromptTemplate()).trim();
-
             if (StrUtil.isNotBlank(tpl)) {
-                // 单意图 + 有模板：使用模板本身
-                return new PromptPlan(retained, tpl);
-            } else {
-                // 单意图 + 无模板：走默认模板
-                return new PromptPlan(retained, null);
+                return new PromptPlan(eligibleIntents, tpl);
             }
-        } else {
-            // 多意图：统一默认模板
-            return new PromptPlan(retained, null);
         }
+        return new PromptPlan(eligibleIntents, null);
     }
 
     private PromptBuildPlan plan(PromptContext context) {
@@ -156,7 +149,7 @@ public class RAGPromptService {
     }
 
     private PromptBuildPlan planKbOnly(PromptContext context) {
-        PromptPlan plan = planPrompt(context.getKbIntents(), context.getIntentChunks());
+        PromptPlan plan = planPrompt(context.getKbIntents(), context.getRetrievedIntentIds());
         return PromptBuildPlan.builder()
                 .scene(PromptScene.KB_ONLY)
                 .baseTemplate(plan.getBaseTemplate())
@@ -246,16 +239,5 @@ public class RAGPromptService {
 
     private String renderSection(String section, Map<String, String> slots) {
         return templateLoader.renderSection(CONTEXT_FORMAT_PATH, section, slots);
-    }
-
-    // === 工具方法 ===
-
-    /**
-     * 从意图节点提取用于映射检索结果的 key
-     */
-    private static String nodeKey(IntentNode node) {
-        if (node == null) return "";
-        if (StrUtil.isNotBlank(node.getId())) return node.getId();
-        return String.valueOf(node.getId());
     }
 }

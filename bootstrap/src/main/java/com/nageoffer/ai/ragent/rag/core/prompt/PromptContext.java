@@ -18,13 +18,12 @@
 package com.nageoffer.ai.ragent.rag.core.prompt;
 
 import cn.hutool.core.util.StrUtil;
-import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
 import com.nageoffer.ai.ragent.rag.core.intent.NodeScore;
 import lombok.Builder;
 import lombok.Data;
 
 import java.util.List;
-import java.util.Map;
+import java.util.Set;
 
 /**
  * Prompt 构建上下文，封装一次 RAG 请求中用于组装提示词的全部输入数据
@@ -59,9 +58,9 @@ public class PromptContext {
     private List<NodeScore> kbIntents;
 
     /**
-     * 意图 ID → 检索片段列表的映射，用于判断意图是否实际命中文档
+     * 有明确文档归属的意图 ID
      */
-    private Map<String, List<RetrievedChunk>> intentChunks;
+    private Set<String> retrievedIntentIds;
 
     /**
      * 是否包含 MCP 上下文

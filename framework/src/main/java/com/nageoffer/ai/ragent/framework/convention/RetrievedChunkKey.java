@@ -15,29 +15,19 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.rag.core.prompt;
+package com.nageoffer.ai.ragent.framework.convention;
 
-import com.nageoffer.ai.ragent.rag.core.intent.NodeScore;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.RequiredArgsConstructor;
+import cn.hutool.core.util.StrUtil;
+import cn.hutool.crypto.digest.DigestUtil;
 
-import java.util.List;
+public final class RetrievedChunkKey {
 
-@Data
-@RequiredArgsConstructor
-@AllArgsConstructor
-@Builder
-public class PromptPlan {
+    private RetrievedChunkKey() {
+    }
 
-    /**
-     * 用于选择模板的候选意图
-     */
-    private List<NodeScore> retainedIntents;
-
-    /**
-     * 选用的基模板（单意图且有模板才会有值，否则为 null 表示用默认模板）
-     */
-    private String baseTemplate;
+    public static String of(RetrievedChunk chunk) {
+        return StrUtil.isNotBlank(chunk.getId())
+                ? chunk.getId()
+                : DigestUtil.sha256Hex(chunk.getText() == null ? "" : chunk.getText());
+    }
 }

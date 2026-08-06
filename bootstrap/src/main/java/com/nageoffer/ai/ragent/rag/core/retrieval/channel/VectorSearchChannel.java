@@ -18,10 +18,10 @@
 package com.nageoffer.ai.ragent.rag.core.retrieval.channel;
 
 import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
+import com.nageoffer.ai.ragent.framework.convention.RetrievedChunkKey;
 import com.nageoffer.ai.ragent.rag.config.SearchChannelProperties;
 import com.nageoffer.ai.ragent.rag.core.retrieval.RetrievalBudget;
 import com.nageoffer.ai.ragent.rag.core.retrieval.RetrieveRequest;
-import com.nageoffer.ai.ragent.rag.core.retrieval.postprocessor.ChannelAttribution;
 import com.nageoffer.ai.ragent.rag.core.vector.VectorRetrieverService;
 import com.nageoffer.ai.ragent.rag.core.vector.strategy.CollectionParallelRetriever;
 import com.nageoffer.ai.ragent.rag.core.vector.strategy.IntentParallelRetriever;
@@ -33,6 +33,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 
@@ -84,9 +85,12 @@ public class VectorSearchChannel implements SearchChannel {
         try {
             RetrievalScope scope = context.getRetrievalScope();
             List<RetrievedChunk> chunks;
+            Map<String, Set<String>> intentIdsByChunkKey = Map.of();
             Map<String, Object> metadata;
             if (scope.directed()) {
-                chunks = retrieveDirected(context, scope);
+                DirectedRetrieval retrieval = retrieveDirected(context, scope);
+                chunks = retrieval.chunks();
+                intentIdsByChunkKey = retrieval.intentIdsByChunkKey();
                 metadata = Map.of("scope", "directed", "topScore", scope.topScore());
             } else {
                 chunks = retrieveGlobal(context, scope);
@@ -98,6 +102,7 @@ public class VectorSearchChannel implements SearchChannel {
                     .channelType(SearchChannelType.VECTOR)
                     .channelName(getName())
                     .chunks(chunks)
+                    .intentIdsByChunkKey(intentIdsByChunkKey)
                     .latencyMs(latency)
                     .metadata(metadata)
                     .build();
@@ -122,7 +127,7 @@ public class VectorSearchChannel implements SearchChannel {
      * 定向作用域：命中意图并行检索，同时并行补一路未命中库
      * 两路共用一次 embedding、同池并发，补充路不增加通道延迟
      */
-    private List<RetrievedChunk> retrieveDirected(SearchContext context, RetrievalScope scope) {
+    private DirectedRetrieval retrieveDirected(SearchContext context, RetrievalScope scope) {
         RetrievalBudget budget = context.getBudget();
         String question = context.getMainQuestion();
         float[] queryVector = retrieverService.embedAndNormalize(question);
@@ -146,8 +151,9 @@ public class VectorSearchChannel implements SearchChannel {
                 })
                 : CompletableFuture.completedFuture(List.of());
 
-        List<RetrievedChunk> directed = distinct(intentRetriever.retrieveByIntents(
-                question, scope.intents(), budget.recallBudget(), queryVector));
+        IntentParallelRetriever.IntentRetrievalResult intentResult = intentRetriever.retrieveByIntents(
+                question, scope.intents(), budget.recallBudget(), queryVector);
+        List<RetrievedChunk> directed = distinct(intentResult.chunks());
         List<RetrievedChunk> supplement = supplementTask.join();
         List<RetrievedChunk> capped = ScopeQuota.cap(directed, quota.primary());
 
@@ -156,7 +162,9 @@ public class VectorSearchChannel implements SearchChannel {
         log.info("向量检索完成（定向），意图 top1={}，定向召回 {} 取前 {} 条（最高余弦 {}），补充 {} 库 {} 条（最高余弦 {}）",
                 scope.topScore(), directed.size(), capped.size(), topScoreOf(directed),
                 scope.supplementCollections().size(), supplement.size(), topScoreOf(supplement));
-        return merge(capped, supplement);
+        Map<String, Set<String>> attribution = retainAttribution(
+                intentResult.intentIdsByChunkKey(), capped);
+        return new DirectedRetrieval(merge(capped, supplement), attribution);
     }
 
     /**
@@ -242,9 +250,23 @@ public class VectorSearchChannel implements SearchChannel {
     private static List<RetrievedChunk> distinct(List<RetrievedChunk> chunks) {
         Map<String, RetrievedChunk> unique = new LinkedHashMap<>();
         for (RetrievedChunk chunk : chunks) {
-            unique.putIfAbsent(ChannelAttribution.keyOf(chunk), chunk);
+            unique.putIfAbsent(RetrievedChunkKey.of(chunk), chunk);
         }
         return unique.size() == chunks.size() ? chunks : List.copyOf(unique.values());
+    }
+
+    private static Map<String, Set<String>> retainAttribution(
+            Map<String, Set<String>> attribution,
+            List<RetrievedChunk> retainedChunks) {
+        Map<String, Set<String>> retained = new LinkedHashMap<>();
+        for (RetrievedChunk chunk : retainedChunks) {
+            String key = RetrievedChunkKey.of(chunk);
+            Set<String> intentIds = attribution.get(key);
+            if (intentIds != null && !intentIds.isEmpty()) {
+                retained.put(key, intentIds);
+            }
+        }
+        return retained;
     }
 
     /**
@@ -276,5 +298,9 @@ public class VectorSearchChannel implements SearchChannel {
 
     private static float scoreOf(RetrievedChunk chunk) {
         return chunk.getScore() == null ? Float.NEGATIVE_INFINITY : chunk.getScore();
+    }
+
+    private record DirectedRetrieval(List<RetrievedChunk> chunks,
+                                     Map<String, Set<String>> intentIdsByChunkKey) {
     }
 }

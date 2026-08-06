@@ -18,6 +18,7 @@
 package com.nageoffer.ai.ragent.rag.core.vector.strategy;
 
 import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
+import com.nageoffer.ai.ragent.framework.convention.RetrievedChunkKey;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentNode;
 import com.nageoffer.ai.ragent.rag.core.intent.NodeScore;
 import com.nageoffer.ai.ragent.rag.core.retrieval.RetrieveRequest;
@@ -27,6 +28,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -77,9 +79,78 @@ class IntentParallelRetrieverTest {
         NodeScore nodeScore = NodeScore.builder().node(node).score(0.95).build();
 
         IntentParallelRetriever retriever = new IntentParallelRetriever(retrieverService, Runnable::run);
-        List<RetrievedChunk> chunks = retriever.retrieveByIntents("如何申请？", List.of(nodeScore), 20);
+        IntentParallelRetriever.IntentRetrievalResult result =
+                retriever.retrieveByIntents("如何申请？", List.of(nodeScore), 20);
 
-        assertTrue(chunks.isEmpty());
+        assertTrue(result.chunks().isEmpty());
+        assertTrue(result.intentIdsByChunkKey().isEmpty());
         verify(retrieverService, never()).retrieveByVector(any(float[].class), any(RetrieveRequest.class));
+    }
+
+    @Test
+    @DisplayName("意图定向检索只记录真实召回归属")
+    void recordsOnlyActualIntentMatches() {
+        VectorRetrieverService retrieverService = mock(VectorRetrieverService.class);
+        when(retrieverService.embedAndNormalize("问题")).thenReturn(new float[]{1F});
+        RetrievedChunk chunkA = RetrievedChunk.builder().id("chunk-a").text("A资料").score(0.9F).build();
+        when(retrieverService.retrieveByVector(any(float[].class), any(RetrieveRequest.class)))
+                .thenAnswer(invocation -> {
+                    RetrieveRequest request = invocation.getArgument(1);
+                    return request.getEffectiveCollectionNames().contains("collection-a")
+                            ? List.of(chunkA)
+                            : List.of();
+                });
+
+        IntentParallelRetriever.IntentRetrievalResult result = new IntentParallelRetriever(
+                retrieverService, Runnable::run).retrieveByIntents(
+                "问题", List.of(intent("A", "collection-a"), intent("B", "collection-b")), 10);
+
+        assertEquals(List.of(chunkA), result.chunks());
+        assertEquals(Set.of("A"), result.intentIdsByChunkKey().get(RetrievedChunkKey.of(chunkA)));
+    }
+
+    @Test
+    @DisplayName("共享 Chunk 保留全部召回意图")
+    void recordsAllIntentsForSharedChunk() {
+        VectorRetrieverService retrieverService = mock(VectorRetrieverService.class);
+        when(retrieverService.embedAndNormalize("问题")).thenReturn(new float[]{1F});
+        RetrievedChunk sharedChunk = RetrievedChunk.builder().id("shared").text("共享资料").score(0.9F).build();
+        when(retrieverService.retrieveByVector(any(float[].class), any(RetrieveRequest.class)))
+                .thenReturn(List.of(sharedChunk));
+
+        IntentParallelRetriever.IntentRetrievalResult result = new IntentParallelRetriever(
+                retrieverService, Runnable::run).retrieveByIntents(
+                "问题", List.of(intent("A", "collection-a"), intent("B", "collection-b")), 10);
+
+        assertEquals(Set.of("A", "B"), result.intentIdsByChunkKey().get(RetrievedChunkKey.of(sharedChunk)));
+    }
+
+    @Test
+    @DisplayName("相同查询只执行一次并保留全部意图归属")
+    void equivalentQueriesKeepAllIntentOwners() {
+        VectorRetrieverService retrieverService = mock(VectorRetrieverService.class);
+        when(retrieverService.embedAndNormalize("问题")).thenReturn(new float[]{1F});
+        RetrievedChunk sharedChunk = RetrievedChunk.builder().id("shared").text("共享资料").score(0.9F).build();
+        when(retrieverService.retrieveByVector(any(float[].class), any(RetrieveRequest.class)))
+                .thenReturn(List.of(sharedChunk));
+
+        IntentParallelRetriever.IntentRetrievalResult result = new IntentParallelRetriever(
+                retrieverService, Runnable::run).retrieveByIntents(
+                "问题", List.of(intent("A", "collection"), intent("B", "collection")), 10);
+
+        verify(retrieverService, times(1))
+                .retrieveByVector(any(float[].class), any(RetrieveRequest.class));
+        assertEquals(Set.of("A", "B"), result.intentIdsByChunkKey().get(RetrievedChunkKey.of(sharedChunk)));
+    }
+
+    private NodeScore intent(String id, String collectionName) {
+        return NodeScore.builder()
+                .node(IntentNode.builder()
+                        .id(id)
+                        .name(id)
+                        .collectionNames(List.of(collectionName))
+                        .build())
+                .score(0.95)
+                .build();
     }
 }

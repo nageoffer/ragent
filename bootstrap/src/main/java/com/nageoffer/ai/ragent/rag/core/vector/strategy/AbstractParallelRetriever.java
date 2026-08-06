@@ -78,6 +78,20 @@ public abstract class AbstractParallelRetriever<T> {
                                                                List<T> targets,
                                                                int topK,
                                                                float[] queryVector) {
+        return executeParallelRetrievalDetailed(question, targets, topK, queryVector).chunks();
+    }
+
+    protected final ParallelRetrievalResult<T> executeParallelRetrievalDetailed(String question,
+                                                                                 List<T> targets,
+                                                                                 int topK) {
+        return executeParallelRetrievalDetailed(
+                question, targets, topK, retrieverService.embedAndNormalize(question));
+    }
+
+    protected final ParallelRetrievalResult<T> executeParallelRetrievalDetailed(String question,
+                                                                                 List<T> targets,
+                                                                                 int topK,
+                                                                                 float[] queryVector) {
         // 1. 创建 Future 列表
         record RetrievalFuture<T>(T target, CompletableFuture<List<RetrievedChunk>> future) {
         }
@@ -94,6 +108,7 @@ public abstract class AbstractParallelRetriever<T> {
 
         // 2. 收集结果并统计成功/失败数
         List<RetrievedChunk> allChunks = new ArrayList<>();
+        List<TargetRetrievalResult<T>> targetResults = new ArrayList<>();
         int successCount = 0;
         int failureCount = 0;
 
@@ -101,9 +116,11 @@ public abstract class AbstractParallelRetriever<T> {
             try {
                 List<RetrievedChunk> chunks = future.future.join();
                 allChunks.addAll(chunks);
+                targetResults.add(new TargetRetrievalResult<>(future.target, chunks));
                 successCount++;
             } catch (Exception e) {
                 failureCount++;
+                targetResults.add(new TargetRetrievalResult<>(future.target, List.of()));
                 log.error("{} 获取检索结果失败 - 目标: {}", getStatisticsName(), getTargetIdentifier(future.target), e);
             }
         }
@@ -118,7 +135,14 @@ public abstract class AbstractParallelRetriever<T> {
         log.info("{} 检索统计 - 总目标数: {}, 成功: {}, 失败: {}, 检索到 Chunk 总数: {}",
                 getStatisticsName(), targets.size(), successCount, failureCount, allChunks.size());
 
-        return allChunks;
+        return new ParallelRetrievalResult<>(allChunks, targetResults);
+    }
+
+    protected record TargetRetrievalResult<T>(T target, List<RetrievedChunk> chunks) {
+    }
+
+    protected record ParallelRetrievalResult<T>(List<RetrievedChunk> chunks,
+                                                List<TargetRetrievalResult<T>> targetResults) {
     }
 
     /**

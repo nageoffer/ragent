@@ -17,7 +17,6 @@
 
 package com.nageoffer.ai.ragent.rag.core.prompt;
 
-import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
 import com.nageoffer.ai.ragent.rag.config.RAGConfigProperties;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentNode;
 import com.nageoffer.ai.ragent.rag.core.intent.NodeScore;
@@ -25,7 +24,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.core.io.DefaultResourceLoader;
 
 import java.util.List;
-import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -55,7 +54,7 @@ class RAGPromptServiceTest {
         return PromptContext.builder()
                 .kbContext("<content ref=\"1\">资料</content>")
                 .kbIntents(List.of())
-                .intentChunks(Map.of())
+                .retrievedIntentIds(Set.of())
                 .build();
     }
 
@@ -70,7 +69,8 @@ class RAGPromptServiceTest {
 
         // 引用只落在正文单元末尾，标题一律不带引用，示例本身也不能出现带引用的标题
         assertTrue(result.contains("标题与小标题一律不加引用"));
-        assertTrue(result.contains("## 二级标题\n\n第一部分包含要点 A 和要点 B。[1](#cite-1)"));
+        assertTrue(result.replace("\r\n", "\n")
+                .contains("## 二级标题\n\n第一部分包含要点 A 和要点 B。[1](#cite-1)"));
         assertFalse(result.contains("## 二级标题 ["));
 
         // 同一单元依据多份资料时连写编号
@@ -105,7 +105,7 @@ class RAGPromptServiceTest {
         PromptContext context = PromptContext.builder()
                 .kbContext("<content>资料</content>")
                 .kbIntents(List.of(intentWithTemplate("# 自定义意图模板")))
-                .intentChunks(Map.of("intent-1", List.of(RetrievedChunk.builder().text("资料").build())))
+                .retrievedIntentIds(Set.of("intent-1"))
                 .build();
 
         String result = service(true).buildSystemPrompt(context);
@@ -117,13 +117,90 @@ class RAGPromptServiceTest {
     }
 
     @Test
+    void usesSingleCandidateTemplateForGlobalEvidence() {
+        PromptContext context = PromptContext.builder()
+                .kbContext("<content>全局资料</content>")
+                .kbIntents(List.of(intentWithTemplate("intent-1", "# 单意图模板")))
+                .retrievedIntentIds(Set.of())
+                .build();
+
+        String result = service(false).buildSystemPrompt(context);
+
+        assertTrue(result.startsWith("# 单意图模板"));
+        assertFalse(result.contains(STUB_BASE_TEMPLATE));
+    }
+
+    @Test
+    void usesExactRetrievedIntentTemplateAmongCandidates() {
+        PromptContext context = PromptContext.builder()
+                .kbContext("<content>意图资料</content>")
+                .kbIntents(List.of(
+                        intentWithTemplate("intent-1", "# 未命中模板"),
+                        intentWithTemplate("intent-2", "# 命中模板")))
+                .retrievedIntentIds(Set.of("intent-2"))
+                .build();
+
+        String result = service(false).buildSystemPrompt(context);
+
+        assertTrue(result.startsWith("# 命中模板"));
+        assertFalse(result.contains("# 未命中模板"));
+    }
+
+    @Test
+    void usesDefaultTemplateForMultipleCandidatesWithGlobalEvidence() {
+        PromptContext context = PromptContext.builder()
+                .kbContext("<content>全局资料</content>")
+                .kbIntents(List.of(
+                        intentWithTemplate("intent-1", "# 候选模板一"),
+                        intentWithTemplate("intent-2", "# 候选模板二")))
+                .retrievedIntentIds(Set.of())
+                .build();
+
+        String result = service(false).buildSystemPrompt(context);
+
+        assertTrue(result.startsWith(STUB_BASE_TEMPLATE));
+        assertFalse(result.contains("# 候选模板一"));
+        assertFalse(result.contains("# 候选模板二"));
+    }
+
+    @Test
+    void usesTemplateForDuplicateExactIntentCandidates() {
+        PromptContext context = PromptContext.builder()
+                .kbContext("<content>意图资料</content>")
+                .kbIntents(List.of(
+                        intentWithTemplate("intent-1", "# 单意图模板"),
+                        intentWithTemplate("intent-1", "# 单意图模板")))
+                .retrievedIntentIds(Set.of("intent-1"))
+                .build();
+
+        String result = service(false).buildSystemPrompt(context);
+
+        assertTrue(result.startsWith("# 单意图模板"));
+    }
+
+    @Test
+    void usesTemplateForDuplicateGlobalIntentCandidates() {
+        PromptContext context = PromptContext.builder()
+                .kbContext("<content>全局资料</content>")
+                .kbIntents(List.of(
+                        intentWithTemplate("intent-1", "# 单意图模板"),
+                        intentWithTemplate("intent-1", "# 单意图模板")))
+                .retrievedIntentIds(Set.of())
+                .build();
+
+        String result = service(false).buildSystemPrompt(context);
+
+        assertTrue(result.startsWith("# 单意图模板"));
+    }
+
+    @Test
     void includesCitationRulesFromMixedPrompt() {
         PromptContext context = PromptContext.builder()
                 .mcpContext("<data>动态数据</data>")
                 .kbContext("<content ref=\"1\">资料</content>")
                 .mcpIntents(List.of())
                 .kbIntents(List.of())
-                .intentChunks(Map.of())
+                .retrievedIntentIds(Set.of())
                 .build();
 
         String result = service(true).buildSystemPrompt(context);
@@ -146,8 +223,12 @@ class RAGPromptServiceTest {
     }
 
     private static NodeScore intentWithTemplate(String template) {
+        return intentWithTemplate("intent-1", template);
+    }
+
+    private static NodeScore intentWithTemplate(String id, String template) {
         IntentNode node = IntentNode.builder()
-                .id("intent-1")
+                .id(id)
                 .promptTemplate(template)
                 .build();
         return NodeScore.builder().node(node).build();

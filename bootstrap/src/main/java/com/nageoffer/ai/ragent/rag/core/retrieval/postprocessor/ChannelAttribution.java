@@ -17,9 +17,8 @@
 
 package com.nageoffer.ai.ragent.rag.core.retrieval.postprocessor;
 
-import cn.hutool.core.util.StrUtil;
-import cn.hutool.crypto.digest.DigestUtil;
 import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
+import com.nageoffer.ai.ragent.framework.convention.RetrievedChunkKey;
 import com.nageoffer.ai.ragent.rag.core.retrieval.channel.SearchChannelResult;
 import com.nageoffer.ai.ragent.rag.core.retrieval.channel.SearchChannelType;
 
@@ -36,21 +35,11 @@ import java.util.Set;
  * {@link RetrievedChunk} 不携带来源通道字段（框架层 DTO 保持纯净），故按 chunk key 从不可变的
  * {@link SearchChannelResult} 反查每条证据来自哪些通道，供融合 / Rerank 打印「各通道贡献 / 存活率」的可观测日志
  * <p>
- * key 规则：优先 id，缺失时退化为文本 SHA-256，保证同一 chunk 在通道去重 / 融合 / 归因各处 key 相同；
- * 不能用 String.hashCode()——32 位哈希碰撞会把内容不同的 chunk 误判为同一来源
+ * 归因键统一由 {@link RetrievedChunkKey} 生成，避免通道去重、融合和归因采用不同的身份规则
  */
-public final class ChannelAttribution {
+final class ChannelAttribution {
 
     private ChannelAttribution() {
-    }
-
-    /**
-     * 生成 chunk 归因键，是全链路唯一的一处 chunk 身份定义
-     */
-    public static String keyOf(RetrievedChunk chunk) {
-        return StrUtil.isNotBlank(chunk.getId())
-                ? chunk.getId()
-                : DigestUtil.sha256Hex(chunk.getText() == null ? "" : chunk.getText());
     }
 
     /**
@@ -66,7 +55,7 @@ public final class ChannelAttribution {
                 continue;
             }
             for (RetrievedChunk chunk : result.getChunks()) {
-                index.computeIfAbsent(keyOf(chunk), k -> EnumSet.noneOf(SearchChannelType.class))
+                index.computeIfAbsent(RetrievedChunkKey.of(chunk), k -> EnumSet.noneOf(SearchChannelType.class))
                         .add(result.getChannelType());
             }
         }
@@ -80,7 +69,7 @@ public final class ChannelAttribution {
                                                           Map<String, Set<SearchChannelType>> index) {
         Map<SearchChannelType, Integer> counts = new EnumMap<>(SearchChannelType.class);
         for (RetrievedChunk chunk : chunks) {
-            Set<SearchChannelType> channels = index.get(keyOf(chunk));
+            Set<SearchChannelType> channels = index.get(RetrievedChunkKey.of(chunk));
             if (channels == null) {
                 continue;
             }
@@ -98,7 +87,7 @@ public final class ChannelAttribution {
                                Map<String, Set<SearchChannelType>> index,
                                SearchChannelType channel) {
         return chunks.stream()
-                .map(ChannelAttribution::keyOf)
+                .map(RetrievedChunkKey::of)
                 .map(index::get)
                 .filter(set -> set != null && set.contains(channel))
                 .count();
