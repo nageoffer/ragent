@@ -71,6 +71,7 @@ import com.nageoffer.ai.ragent.knowledge.enums.SourceType;
 import com.nageoffer.ai.ragent.knowledge.handler.RemoteFileFetcher;
 import com.nageoffer.ai.ragent.knowledge.mq.event.KnowledgeDocumentChunkEvent;
 import com.nageoffer.ai.ragent.knowledge.schedule.CronScheduleHelper;
+import com.nageoffer.ai.ragent.knowledge.schedule.DocumentStatusHelper;
 import com.nageoffer.ai.ragent.knowledge.service.KnowledgeChunkService;
 import com.nageoffer.ai.ragent.knowledge.service.KnowledgeDocumentScheduleService;
 import com.nageoffer.ai.ragent.knowledge.service.KnowledgeDocumentService;
@@ -127,6 +128,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
     private final RemoteFileFetcher remoteFileFetcher;
     private final VectorTargetResolver vectorTargetResolver;
     private final BizChangeLogContext bizChangeLogContext;
+    private final DocumentStatusHelper documentStatusHelper;
 
     @Value("knowledge-document-chunk_topic${unique-name:}")
     private String chunkTopic;
@@ -210,19 +212,10 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
                 "文档分块",
                 event,
                 arg -> {
-                    // Wrapper 更新不触发 updateTime 自动填充, 显式刷新, 使卡死恢复以分块开始时刻为基准
-                    int updated = documentMapper.update(
-                            new LambdaUpdateWrapper<KnowledgeDocumentDO>()
-                                    .set(KnowledgeDocumentDO::getStatus, DocumentStatus.RUNNING.getCode())
-                                    .set(KnowledgeDocumentDO::getUpdatedBy, event.getOperator())
-                                    .set(KnowledgeDocumentDO::getUpdateTime, new Date())
-                                    .eq(KnowledgeDocumentDO::getId, docId)
-                                    .ne(KnowledgeDocumentDO::getStatus, DocumentStatus.RUNNING.getCode())
-                    );
-                    if (updated == 0) {
+                    if (!documentStatusHelper.tryStartChunk(docId, event.getOperator())) {
                         KnowledgeDocumentDO documentDO = documentMapper.selectById(docId);
                         Assert.notNull(documentDO, () -> new ClientException("文档不存在"));
-                        throw new ClientException("文档分块操作正在进行中，请稍后再试");
+                        throw new ClientException("文档状态已变更，无法开始分块");
                     }
                     KnowledgeDocumentDO documentDO = documentMapper.selectById(docId);
                     event.setKbId(documentDO.getKbId());
@@ -237,6 +230,10 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
         KnowledgeDocumentDO documentDO = documentMapper.selectById(docId);
         if (documentDO == null) {
             log.warn("文档不存在，跳过分块任务, docId={}", docId);
+            return;
+        }
+        if (!DocumentStatus.RUNNING.getCode().equals(documentDO.getStatus())) {
+            log.warn("文档已非运行状态，跳过分块任务, docId={}, status={}", docId, documentDO.getStatus());
             return;
         }
 
@@ -282,16 +279,23 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
                 throw new ClientException("管道模式重构中，暂不可用，请改用直接分块：docId=" + docId);
             }
 
-            IngestionOutcome outcome = ingestionKernel.run(doc, readFileBytes(documentDO), spec, target);
+            IngestionOutcome outcome = ingestionKernel.run(
+                    doc,
+                    readFileBytes(documentDO),
+                    spec,
+                    target,
+                    // 所有落点成功后、释放行锁前回填 MIME、块数和 SUCCESS，避免超时恢复抢占提交窗口，
+                    // 导致 chunk 和向量已经写入成功，但文档状态被改为 FAILED。
+                    (detectedMimeType, savedCount) -> {
+                        refreshMimeType(docId, detectedMimeType);
+                        markChunkSucceeded(docId, savedCount);
+                    }
+            );
             extractDuration = outcome.timings().parseMillis();
             chunkDuration = outcome.timings().chunkMillis();
             embedDuration = outcome.timings().embedMillis();
             persistDuration = outcome.timings().indexMillis();
             int savedCount = outcome.chunkCount();
-            // 回填字节探测出的真实 MIME；展示用的 file_type 仍由扩展名决定，两者互不导出
-            refreshMimeType(docId, outcome.mimeType());
-
-            markChunkSucceeded(docId, savedCount);
             long totalDuration = System.currentTimeMillis() - totalStartTime;
             updateChunkLog(chunkLog.getId(), DocumentStatus.SUCCESS.getCode(), savedCount,
                     extractDuration, chunkDuration, embedDuration, persistDuration, totalDuration, null);
@@ -309,12 +313,9 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
     }
 
     private void markChunkSucceeded(String docId, int chunkCount) {
-        documentMapper.updateById(KnowledgeDocumentDO.builder()
-                .id(docId)
-                .chunkCount(chunkCount)
-                .status(DocumentStatus.SUCCESS.getCode())
-                .updatedBy(UserContext.getUsername())
-                .build());
+        if (!documentStatusHelper.tryMarkSuccess(docId, chunkCount, UserContext.getUsername())) {
+            throw new IllegalStateException("文档运行权已失效，无法写回分块成功状态: docId=" + docId);
+        }
     }
 
     private void refreshMimeType(String docId, String mimeType) {
@@ -404,11 +405,9 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
 
     private void markChunkFailed(String docId) {
         transactionOperations.executeWithoutResult(status -> {
-            KnowledgeDocumentDO update = new KnowledgeDocumentDO();
-            update.setId(docId);
-            update.setStatus(DocumentStatus.FAILED.getCode());
-            update.setUpdatedBy(UserContext.getUsername());
-            documentMapper.updateById(update);
+            if (!documentStatusHelper.tryMarkFailed(docId, UserContext.getUsername())) {
+                log.warn("文档运行权已失效，跳过分块失败状态写回: docId={}", docId);
+            }
         });
     }
 
@@ -429,9 +428,14 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
         bizChangeLogContext.putName(documentDO.getDocName());
         KnowledgeDocumentDO before = BeanUtil.copyProperties(documentDO, KnowledgeDocumentDO.class);
 
-        // 禁止在文档分块运行时删除
+        // 常见路径快速失败，避免分块写入持有文档行锁时，删除请求等待写入事务结束后才失败。
         if (DocumentStatus.RUNNING.getCode().equals(documentDO.getStatus())) {
             throw new ClientException("文档正在分块中，无法删除");
+        }
+
+        // 原子抢占删除权；分块或其它删除流程已抢占时立即失败。
+        if (!documentStatusHelper.tryMarkDeleting(docId, UserContext.getUsername())) {
+            throw new ClientException("文档正在分块或已被处理，无法删除");
         }
 
         scheduleService.deleteByDocId(docId);

@@ -47,7 +47,12 @@ public enum DocumentStatus {
     /**
      * 文档处理成功
      */
-    SUCCESS("success");
+    SUCCESS("success"),
+
+    /**
+     * 文档删除中
+     */
+    DELETING("deleting");
 
     /**
      * 状态码

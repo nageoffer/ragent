@@ -36,6 +36,16 @@ import java.util.List;
 public class DocumentStatusHelper {
 
     private static final String SYSTEM_USER = "system";
+    private static final List<String> CHUNKABLE_STATUSES = List.of(
+            DocumentStatus.PENDING.getCode(),
+            DocumentStatus.FAILED.getCode(),
+            DocumentStatus.SUCCESS.getCode()
+    );
+    private static final List<String> DELETABLE_STATUSES = List.of(
+            DocumentStatus.PENDING.getCode(),
+            DocumentStatus.FAILED.getCode(),
+            DocumentStatus.SUCCESS.getCode()
+    );
 
     private final KnowledgeDocumentMapper documentMapper;
 
@@ -49,18 +59,49 @@ public class DocumentStatusHelper {
                         .eq(KnowledgeDocumentDO::getId, docId)
                         .eq(KnowledgeDocumentDO::getDeleted, 0)
                         .eq(KnowledgeDocumentDO::getEnabled, 1)
-                        .ne(KnowledgeDocumentDO::getStatus, DocumentStatus.RUNNING.getCode())
+                        .in(KnowledgeDocumentDO::getStatus, CHUNKABLE_STATUSES)
+        ) > 0;
+    }
+
+    public boolean tryStartChunk(String docId, String updatedBy) {
+        return documentMapper.casStatus(
+                docId,
+                CHUNKABLE_STATUSES,
+                DocumentStatus.RUNNING.getCode(),
+                updatedBy
+        ) > 0;
+    }
+
+    public boolean tryMarkDeleting(String docId, String updatedBy) {
+        return documentMapper.casStatus(
+                docId,
+                DELETABLE_STATUSES,
+                DocumentStatus.DELETING.getCode(),
+                updatedBy
+        ) > 0;
+    }
+
+    public boolean tryMarkSuccess(String docId, int chunkCount, String updatedBy) {
+        return documentMapper.markSuccessIfRunning(
+                docId,
+                chunkCount,
+                updatedBy,
+                DocumentStatus.RUNNING.getCode(),
+                DocumentStatus.SUCCESS.getCode()
+        ) > 0;
+    }
+
+    public boolean tryMarkFailed(String docId, String updatedBy) {
+        return documentMapper.casStatus(
+                docId,
+                List.of(DocumentStatus.RUNNING.getCode()),
+                DocumentStatus.FAILED.getCode(),
+                updatedBy
         ) > 0;
     }
 
     public void markFailedIfRunning(String docId) {
-        documentMapper.update(
-                Wrappers.lambdaUpdate(KnowledgeDocumentDO.class)
-                        .set(KnowledgeDocumentDO::getStatus, DocumentStatus.FAILED.getCode())
-                        .set(KnowledgeDocumentDO::getUpdatedBy, SYSTEM_USER)
-                        .eq(KnowledgeDocumentDO::getId, docId)
-                        .eq(KnowledgeDocumentDO::getStatus, DocumentStatus.RUNNING.getCode())
-        );
+        tryMarkFailed(docId, SYSTEM_USER);
     }
 
     public void applyRefreshedFileMetadata(String docId, StoredFileDTO stored) {
