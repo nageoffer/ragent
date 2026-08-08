@@ -113,7 +113,7 @@ class DefaultContextFormatterTest {
     }
 
     @Test
-    void onlyRetrievedIntentContributesSnippet() {
+    void onlyEligibleIntentContributesSnippet() {
         NodeScore intentA = intent("A", "SNIPPET_A");
         NodeScore intentB = intent("B", "SNIPPET_B");
         RetrievedChunk chunkA = chunk("chunk-a", "A的资料", "docA", null, 0, 0.9f);
@@ -126,23 +126,39 @@ class DefaultContextFormatterTest {
         );
 
         assertTrue(result.contains("SNIPPET_A"));
-        assertFalse(result.contains("SNIPPET_B"), "未召回 Chunk 的候选意图不得注入 snippet");
+        assertFalse(result.contains("SNIPPET_B"), "未进入提示词规划的意图不应注入回答规则");
         assertTrue(result.contains("A的资料"));
     }
 
     @Test
-    void globalEvidenceDoesNotActivateCandidateSnippet() {
+    void directedMissKeepsEvidenceWithoutCandidateSnippet() {
+        NodeScore intentA = intent("A", "SNIPPET_A");
+        RetrievedChunk supplement = chunk("supplement", "补充资料", null, null, 0, 0.9f);
+
+        String result = formatter().formatKbContext(
+                List.of(intentA),
+                Set.of(),
+                List.of(supplement),
+                100
+        );
+
+        assertFalse(result.contains("SNIPPET_A"));
+        assertTrue(result.contains("补充资料"));
+    }
+
+    @Test
+    void globalEvidenceKeepsUnevaluatedCandidateSnippet() {
         NodeScore intentA = intent("A", "SNIPPET_A");
         RetrievedChunk globalChunk = chunk("global", "全局资料", null, null, 0, 0.9f);
 
         String result = formatter().formatKbContext(
                 List.of(intentA),
-                Set.of(),
+                Set.of("A"),
                 List.of(globalChunk),
                 100
         );
 
-        assertFalse(result.contains("SNIPPET_A"));
+        assertTrue(result.contains("SNIPPET_A"));
         assertTrue(result.contains("全局资料"));
     }
 

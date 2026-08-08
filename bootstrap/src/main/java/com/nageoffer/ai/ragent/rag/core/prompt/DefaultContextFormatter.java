@@ -49,35 +49,34 @@ public class DefaultContextFormatter implements ContextFormatter {
 
     @Override
     public String formatKbContext(List<NodeScore> kbIntents,
-                                  Set<String> retrievedIntentIds,
+                                  Set<String> eligibleIntentIds,
                                   List<RetrievedChunk> rerankedChunks,
                                   int contextTopK) {
         if (CollUtil.isEmpty(rerankedChunks)) {
             return "";
         }
 
-        List<NodeScore> retrievedIntents = retrievedIntents(kbIntents, retrievedIntentIds);
-        // 归因链路的出口观测：提示词「没生效」时靠这一行区分是归属为空还是模板/片段本身未配置
-        log.info("检索归因 - 提示词分支: {}, 归属意图: {}",
-                retrievedIntents.isEmpty() ? "无归属" : retrievedIntents.size() > 1 ? "多意图" : "单意图",
-                retrievedIntents.stream().map(ns -> ns.getNode().getName()).toList());
-        if (retrievedIntents.isEmpty()) {
+        List<NodeScore> eligibleIntents = eligibleIntents(kbIntents, eligibleIntentIds);
+        log.info("提示词规划 - 提示词分支: {}, 可用意图: {}",
+                eligibleIntents.isEmpty() ? "无可用意图" : eligibleIntents.size() > 1 ? "多意图" : "单意图",
+                eligibleIntents.stream().map(ns -> ns.getNode().getName()).toList());
+        if (eligibleIntents.isEmpty()) {
             return formatChunksWithoutIntent(rerankedChunks, contextTopK);
         }
-        if (retrievedIntents.size() > 1) {
-            return formatMultiIntentContext(retrievedIntents, rerankedChunks, contextTopK);
+        if (eligibleIntents.size() > 1) {
+            return formatMultiIntentContext(eligibleIntents, rerankedChunks, contextTopK);
         }
-        return formatSingleIntentContext(retrievedIntents.get(0), rerankedChunks, contextTopK);
+        return formatSingleIntentContext(eligibleIntents.get(0), rerankedChunks, contextTopK);
     }
 
-    private List<NodeScore> retrievedIntents(List<NodeScore> kbIntents,
-                                             Set<String> retrievedIntentIds) {
-        if (CollUtil.isEmpty(kbIntents) || CollUtil.isEmpty(retrievedIntentIds)) {
+    private List<NodeScore> eligibleIntents(List<NodeScore> kbIntents,
+                                            Set<String> eligibleIntentIds) {
+        if (CollUtil.isEmpty(kbIntents) || CollUtil.isEmpty(eligibleIntentIds)) {
             return List.of();
         }
         return kbIntents.stream()
                 .filter(nodeScore -> nodeScore != null && nodeScore.getNode() != null)
-                .filter(nodeScore -> retrievedIntentIds.contains(nodeScore.getNode().getId()))
+                .filter(nodeScore -> eligibleIntentIds.contains(nodeScore.getNode().getId()))
                 .toList();
     }
 

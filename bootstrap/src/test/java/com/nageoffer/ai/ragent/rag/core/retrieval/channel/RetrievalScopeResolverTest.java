@@ -25,6 +25,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Set;
 import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -43,6 +44,7 @@ class RetrievalScopeResolverTest {
         RetrievalScope scope = resolve(intent("kb-finance", 0.9));
 
         assertTrue(scope.directed());
+        assertEquals(Set.of("intent-kb-finance"), scope.directedIntentIds());
         assertEquals(List.of("kb-finance"), scope.targetCollections());
         assertEquals(List.of("kb-hr", "kb-tech"), scope.supplementCollections());
     }
@@ -53,6 +55,7 @@ class RetrievalScopeResolverTest {
         RetrievalScope scope = resolve(intent("kb-finance", 0.5));
 
         assertFalse(scope.directed());
+        assertTrue(scope.directedIntentIds().isEmpty());
         assertEquals(ACTIVE, scope.targetCollections());
         assertTrue(scope.supplementCollections().isEmpty());
     }

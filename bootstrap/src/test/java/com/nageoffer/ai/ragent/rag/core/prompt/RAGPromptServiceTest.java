@@ -54,7 +54,7 @@ class RAGPromptServiceTest {
         return PromptContext.builder()
                 .kbContext("<content ref=\"1\">资料</content>")
                 .kbIntents(List.of())
-                .retrievedIntentIds(Set.of())
+                .eligibleIntentIds(Set.of())
                 .build();
     }
 
@@ -105,7 +105,7 @@ class RAGPromptServiceTest {
         PromptContext context = PromptContext.builder()
                 .kbContext("<content>资料</content>")
                 .kbIntents(List.of(intentWithTemplate("# 自定义意图模板")))
-                .retrievedIntentIds(Set.of("intent-1"))
+                .eligibleIntentIds(Set.of("intent-1"))
                 .build();
 
         String result = service(true).buildSystemPrompt(context);
@@ -121,7 +121,7 @@ class RAGPromptServiceTest {
         PromptContext context = PromptContext.builder()
                 .kbContext("<content>全局资料</content>")
                 .kbIntents(List.of(intentWithTemplate("intent-1", "# 单意图模板")))
-                .retrievedIntentIds(Set.of())
+                .eligibleIntentIds(Set.of("intent-1"))
                 .build();
 
         String result = service(false).buildSystemPrompt(context);
@@ -131,13 +131,27 @@ class RAGPromptServiceTest {
     }
 
     @Test
-    void usesExactRetrievedIntentTemplateAmongCandidates() {
+    void directedMissUsesDefaultTemplate() {
+        PromptContext context = PromptContext.builder()
+                .kbContext("<content>补充资料</content>")
+                .kbIntents(List.of(intentWithTemplate("intent-1", "# 未命中模板")))
+                .eligibleIntentIds(Set.of())
+                .build();
+
+        String result = service(false).buildSystemPrompt(context);
+
+        assertTrue(result.startsWith(STUB_BASE_TEMPLATE));
+        assertFalse(result.contains("# 未命中模板"));
+    }
+
+    @Test
+    void usesOnlyEligibleIntentTemplateAmongCandidates() {
         PromptContext context = PromptContext.builder()
                 .kbContext("<content>意图资料</content>")
                 .kbIntents(List.of(
                         intentWithTemplate("intent-1", "# 未命中模板"),
                         intentWithTemplate("intent-2", "# 命中模板")))
-                .retrievedIntentIds(Set.of("intent-2"))
+                .eligibleIntentIds(Set.of("intent-2"))
                 .build();
 
         String result = service(false).buildSystemPrompt(context);
@@ -153,7 +167,7 @@ class RAGPromptServiceTest {
                 .kbIntents(List.of(
                         intentWithTemplate("intent-1", "# 候选模板一"),
                         intentWithTemplate("intent-2", "# 候选模板二")))
-                .retrievedIntentIds(Set.of())
+                .eligibleIntentIds(Set.of("intent-1", "intent-2"))
                 .build();
 
         String result = service(false).buildSystemPrompt(context);
@@ -170,7 +184,7 @@ class RAGPromptServiceTest {
                 .kbIntents(List.of(
                         intentWithTemplate("intent-1", "# 单意图模板"),
                         intentWithTemplate("intent-1", "# 单意图模板")))
-                .retrievedIntentIds(Set.of("intent-1"))
+                .eligibleIntentIds(Set.of("intent-1"))
                 .build();
 
         String result = service(false).buildSystemPrompt(context);
@@ -185,7 +199,7 @@ class RAGPromptServiceTest {
                 .kbIntents(List.of(
                         intentWithTemplate("intent-1", "# 单意图模板"),
                         intentWithTemplate("intent-1", "# 单意图模板")))
-                .retrievedIntentIds(Set.of())
+                .eligibleIntentIds(Set.of("intent-1"))
                 .build();
 
         String result = service(false).buildSystemPrompt(context);
@@ -200,7 +214,7 @@ class RAGPromptServiceTest {
                 .kbContext("<content ref=\"1\">资料</content>")
                 .mcpIntents(List.of())
                 .kbIntents(List.of())
-                .retrievedIntentIds(Set.of())
+                .eligibleIntentIds(Set.of())
                 .build();
 
         String result = service(true).buildSystemPrompt(context);

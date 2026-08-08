@@ -44,10 +44,12 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.stream.Collectors;
@@ -99,7 +101,10 @@ public class RetrievalEngine {
                                 return buildSubQuestionContext(si, budget);
                             } catch (Exception e) {
                                 log.error("子问题上下文构建失败，降级为空上下文，question：{}", si.subQuestion(), e);
-                                return new SubQuestionContext(si.subQuestion(), "", "", Map.of());
+                                return new SubQuestionContext(
+                                        si.subQuestion(), "", "", Map.of(),
+                                        KnowledgeRetrievalResult.empty().eligibleIntentIds(
+                                                NodeScoreFilters.kb(si.nodeScores())));
                             }
                         },
                         ragContextExecutor
@@ -110,7 +115,9 @@ public class RetrievalEngine {
                 .toList();
 
         Map<String, List<RetrievedChunk>> mergedIntentChunks = new LinkedHashMap<>();
+        Set<String> eligibleIntentIds = new LinkedHashSet<>();
         for (SubQuestionContext context : contexts) {
+            eligibleIntentIds.addAll(context.eligibleIntentIds());
             if (CollUtil.isNotEmpty(context.intentChunks())) {
                 context.intentChunks().forEach((intentId, chunks) -> {
                     if (CollUtil.isEmpty(chunks)) {
@@ -156,6 +163,7 @@ public class RetrievalEngine {
                 .mcpContext(mcpContext)
                 .kbContext(kbContext)
                 .intentChunks(mergedIntentChunks)
+                .eligibleIntentIds(Set.copyOf(eligibleIntentIds))
                 .build();
     }
 
@@ -169,7 +177,8 @@ public class RetrievalEngine {
                 ? executeMcpAndMerge(intent.subQuestion(), mcpIntents)
                 : "";
 
-        return new SubQuestionContext(intent.subQuestion(), kbResult.groupedContext(), mcpContext, kbResult.intentChunks());
+        return new SubQuestionContext(intent.subQuestion(), kbResult.groupedContext(), mcpContext,
+                kbResult.intentChunks(), kbResult.eligibleIntentIds());
     }
 
     private void appendSection(StringBuilder builder, String section, int index, String question, String context) {
@@ -201,16 +210,17 @@ public class RetrievalEngine {
         KnowledgeRetrievalResult retrievalResult =
                 multiChannelRetrievalEngine.retrieveKnowledgeChannels(intent, budget);
         List<RetrievedChunk> chunks = retrievalResult.chunks();
+        Set<String> eligibleIntentIds = retrievalResult.eligibleIntentIds(kbIntents);
 
         if (CollUtil.isEmpty(chunks)) {
-            return KbResult.empty();
+            return new KbResult("", Map.of(), eligibleIntentIds);
         }
 
         Map<String, List<RetrievedChunk>> intentChunks = retrievalResult.groupByIntent(MULTI_CHANNEL_KEY);
 
         String groupedContext = contextFormatter.formatKbContext(
-                kbIntents, retrievalResult.retrievedIntentIds(), chunks, budget.contextTopK());
-        return new KbResult(groupedContext, intentChunks);
+                kbIntents, eligibleIntentIds, chunks, budget.contextTopK());
+        return new KbResult(groupedContext, intentChunks, eligibleIntentIds);
     }
 
     /**
@@ -306,6 +316,7 @@ public class RetrievalEngine {
     private record SubQuestionContext(String question,
                                       String kbContext,
                                       String mcpContext,
-                                      Map<String, List<RetrievedChunk>> intentChunks) {
+                                      Map<String, List<RetrievedChunk>> intentChunks,
+                                      Set<String> eligibleIntentIds) {
     }
 }

@@ -87,7 +87,10 @@ public class MultiChannelRetrievalEngine {
         }
 
         List<RetrievedChunk> chunks = executePostProcessors(channelResults, context);
-        return new KnowledgeRetrievalResult(chunks, deriveAttribution(chunks, context.getRetrievalScope()));
+        return new KnowledgeRetrievalResult(
+                chunks,
+                deriveAttribution(chunks, context.getRetrievalScope()),
+                context.getRetrievalScope().directedIntentIds());
     }
 
     /**
