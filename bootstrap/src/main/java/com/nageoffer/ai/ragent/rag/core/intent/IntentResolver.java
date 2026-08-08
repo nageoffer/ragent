@@ -34,6 +34,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.HashMap;
 import java.util.concurrent.Executor;
+import java.util.PriorityQueue;
 
 import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.INTENT_MIN_SCORE;
 import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.MAX_INTENT_COUNT;
@@ -63,8 +64,7 @@ public class IntentResolver {
                                 return new SubQuestionIntent(q, List.of());
                             }
                         },
-                        intentClassifyExecutor
-                ))
+                        intentClassifyExecutor))
                 .toList();
         List<SubQuestionIntent> subIntents = tasks.stream()
                 .map(CompletableFuture::join)
@@ -97,109 +97,111 @@ public class IntentResolver {
     }
 
     /**
-     * 限制总意图数量不超过 MAX_INTENT_COUNT
-     * <p>
-     * 策略：
-     * 1. 如果总数未超限，直接返回
-     * 2. 如果超限，每个子问题至少保留 1 个最高分意图
-     * 3. 剩余配额按分数从高到低分配给其他意图
+     * 限制总意图数量不超过 MAX_INTENT_COUNT。
+     *
+     * 每个非空子问题保留一个最高分意图；其余配额分配给全局分数最高的候选。
      */
     private List<SubQuestionIntent> capTotalIntents(List<SubQuestionIntent> subIntents) {
-        int totalIntents = subIntents.stream()
-                .mapToInt(si -> si.nodeScores().size())
-                .sum();
+        List<RankedIntentCandidate> guaranteedIntents = new ArrayList<>();
+        PriorityQueue<RankedIntentCandidate> additionalIntents = new PriorityQueue<>(this::compareAdditionalPriority);
 
-        // 未超限，直接返回
+        int totalIntents = 0;
+        int remaining = MAX_INTENT_COUNT;
+        int order = 0;
+
+        for (int i = 0; i < subIntents.size(); i++) {
+            RankedIntentCandidate topIntent = null;
+
+            for (NodeScore nodeScore : subIntents.get(i).nodeScores()) {
+                totalIntents++;
+
+                RankedIntentCandidate candidate = new RankedIntentCandidate(new IntentCandidate(i, nodeScore), order++);
+
+                if (topIntent == null || compareScore(candidate, topIntent) > 0) {
+                    if (topIntent != null) {
+                        retainAdditionalIntent(additionalIntents, topIntent, remaining);
+                    }
+                    topIntent = candidate;
+                } else {
+                    retainAdditionalIntent(additionalIntents, candidate, remaining);
+                }
+            }
+
+            if (topIntent != null) {
+                guaranteedIntents.add(topIntent);
+                remaining = Math.max(0, MAX_INTENT_COUNT - guaranteedIntents.size());
+                trimAdditionalIntents(additionalIntents, remaining);
+            }
+        }
+
         if (totalIntents <= MAX_INTENT_COUNT) {
             return subIntents;
         }
 
-        // 步骤1：收集所有意图，按子问题索引分组
-        List<IntentCandidate> allCandidates = collectAllCandidates(subIntents);
+        List<IntentCandidate> guaranteed = guaranteedIntents.stream()
+                .map(RankedIntentCandidate::candidate)
+                .toList();
 
-        // 步骤2：每个子问题保留最高分意图
-        List<IntentCandidate> guaranteedIntents = selectTopIntentPerSubQuestion(allCandidates, subIntents.size());
+        List<IntentCandidate> additional = additionalIntents.stream()
+                .sorted((left, right) -> compareAdditionalPriority(right, left))
+                .map(RankedIntentCandidate::candidate)
+                .toList();
 
-        // 步骤3：计算剩余配额
-        int remaining = MAX_INTENT_COUNT - guaranteedIntents.size();
+        return rebuildSubIntents(subIntents, guaranteed, additional);
+    }
 
-        // 步骤4：从剩余候选中按分数选择
-        List<IntentCandidate> additionalIntents = selectAdditionalIntents(allCandidates, guaranteedIntents, remaining);
+    private void retainAdditionalIntent(PriorityQueue<RankedIntentCandidate> candidates,
+            RankedIntentCandidate candidate,
+            int limit) {
+        if (limit <= 0) {
+            return;
+        }
 
-        // 步骤5：合并并重建结果
-        return rebuildSubIntents(subIntents, guaranteedIntents, additionalIntents);
+        if (candidates.size() < limit) {
+            candidates.offer(candidate);
+            return;
+        }
+
+        if (compareAdditionalPriority(candidate, candidates.peek()) > 0) {
+            candidates.poll();
+            candidates.offer(candidate);
+        }
+    }
+
+    private void trimAdditionalIntents(PriorityQueue<RankedIntentCandidate> candidates, int limit) {
+        while (candidates.size() > limit) {
+            candidates.poll();
+        }
     }
 
     /**
-     * 收集所有意图候选，标记所属子问题索引
+     * 分数高者优先；同分时保持原始遍历顺序优先。
      */
-    private List<IntentCandidate> collectAllCandidates(List<SubQuestionIntent> subIntents) {
-        List<IntentCandidate> candidates = new ArrayList<>();
-        for (int i = 0; i < subIntents.size(); i++) {
-            List<NodeScore> nodeScores = subIntents.get(i).nodeScores();
-            if (CollUtil.isEmpty(nodeScores)) {
-                continue;
-            }
-            for (NodeScore ns : nodeScores) {
-                candidates.add(new IntentCandidate(i, ns));
-            }
-        }
-        // 按分数降序排序
-        candidates.sort((a, b) -> Double.compare(b.nodeScore().getScore(), a.nodeScore().getScore()));
-        return candidates;
+    private int compareScore(RankedIntentCandidate left, RankedIntentCandidate right) {
+        int scoreComparison = Double.compare(
+                left.candidate().nodeScore().getScore(),
+                right.candidate().nodeScore().getScore());
+        return scoreComparison != 0
+                ? scoreComparison
+                : Integer.compare(right.order(), left.order());
     }
 
     /**
-     * 每个子问题选择最高分意图（保底策略）
+     * 小顶堆比较器：堆顶始终是当前额外候选中最应被淘汰的条目。
      */
-    private List<IntentCandidate> selectTopIntentPerSubQuestion(List<IntentCandidate> allCandidates, int subQuestionCount) {
-        List<IntentCandidate> topIntents = new ArrayList<>();
-        boolean[] selected = new boolean[subQuestionCount];
-
-        for (IntentCandidate candidate : allCandidates) {
-            int index = candidate.subQuestionIndex();
-            if (!selected[index]) {
-                topIntents.add(candidate);
-                selected[index] = true;
-            }
-            // 所有子问题都有了保底意图，提前退出
-            if (topIntents.size() == subQuestionCount) {
-                break;
-            }
-        }
-        return topIntents;
+    private int compareAdditionalPriority(RankedIntentCandidate left, RankedIntentCandidate right) {
+        return compareScore(left, right);
     }
 
-    /**
-     * 从剩余候选中选择额外意图
-     */
-    private List<IntentCandidate> selectAdditionalIntents(List<IntentCandidate> allCandidates,
-                                                          List<IntentCandidate> guaranteedIntents,
-                                                          int remaining) {
-        if (remaining <= 0) {
-            return List.of();
-        }
-
-        List<IntentCandidate> additional = new ArrayList<>();
-        for (IntentCandidate candidate : allCandidates) {
-            // 跳过已经被选为保底的意图
-            if (guaranteedIntents.contains(candidate)) {
-                continue;
-            }
-            additional.add(candidate);
-            if (additional.size() >= remaining) {
-                break;
-            }
-        }
-        return additional;
+    private record RankedIntentCandidate(IntentCandidate candidate, int order) {
     }
 
     /**
      * 根据选中的意图重建 SubQuestionIntent 列表
      */
     private List<SubQuestionIntent> rebuildSubIntents(List<SubQuestionIntent> originalSubIntents,
-                                                      List<IntentCandidate> guaranteedIntents,
-                                                      List<IntentCandidate> additionalIntents) {
+            List<IntentCandidate> guaranteedIntents,
+            List<IntentCandidate> additionalIntents) {
         // 合并所有选中的意图
         List<IntentCandidate> allSelected = new ArrayList<>(guaranteedIntents);
         allSelected.addAll(additionalIntents);
