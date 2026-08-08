@@ -27,6 +27,8 @@ import com.nageoffer.ai.ragent.framework.context.UserContext;
 import com.nageoffer.ai.ragent.infra.token.TokenCounterService;
 import com.nageoffer.ai.ragent.knowledge.dao.entity.KnowledgeChunkDO;
 import com.nageoffer.ai.ragent.knowledge.dao.mapper.KnowledgeChunkMapper;
+import com.nageoffer.ai.ragent.knowledge.dao.mapper.KnowledgeDocumentMapper;
+import com.nageoffer.ai.ragent.knowledge.enums.DocumentStatus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.Ordered;
@@ -51,9 +53,19 @@ public class RelationalChunkSink implements ChunkSink {
 
     private final KnowledgeChunkMapper chunkMapper;
     private final TokenCounterService tokenCounterService;
+    private final KnowledgeDocumentMapper documentMapper;
 
     @Override
     public void replaceDocument(VectorTarget target, DocumentRef doc, List<EmbeddedChunk> chunks) {
+        // 分块可能执行超过恢复阈值：恢复任务将 RUNNING 改为 FAILED 后，用户可以取得删除权；
+        // 此时原分块任务仍可能在执行，并在完成 Embedding 后重新写入数据。
+        // 这里通过持有文档行锁，使删除状态 CAS 等待到分块写入事务结束，避免删除过程中被旧任务重新写入数据。
+        String status = documentMapper.selectStatusForUpdate(doc.docId());
+        if (!DocumentStatus.RUNNING.getCode().equals(status)) {
+            throw new IllegalStateException(
+                    "文档状态已变更，放弃分块写入: docId=" + doc.docId() + ", status=" + status
+            );
+        }
         deleteDocument(target, doc);
         if (chunks.isEmpty()) {
             return;

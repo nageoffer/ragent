@@ -136,6 +136,7 @@ public class KnowledgeDocumentDO {
      * - running：向量化中
      * - failed：向量化失败
      * - success：向量化完成
+     * - deleting：删除中
      */
     private String status;
 

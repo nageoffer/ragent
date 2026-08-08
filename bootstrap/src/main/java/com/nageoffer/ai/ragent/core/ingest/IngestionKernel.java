@@ -17,6 +17,8 @@
 
 package com.nageoffer.ai.ragent.core.ingest;
 
+import java.util.function.BiConsumer;
+
 /**
  * 摄取内核：固定五步骨架，调用方不可跳过、不可换序、不可替换
  * <pre>
@@ -37,10 +39,12 @@ public interface IngestionKernel {
      * @param bytes 文件字节
      * @param spec  文档级配置：解析档位 + 分块预算
      * @param target 向量落点：逻辑分区 + 嵌入模型 + 维度
+     * @param beforeIndexCommit 全部落点写入成功后、索引事务提交前执行的回调，入参为 MIME 和块数
      * @return 摄取结果
      */
     IngestionOutcome run(DocumentRef doc,
                          byte[] bytes,
                          IngestionSpec spec,
-                         VectorTarget target);
+                         VectorTarget target,
+                         BiConsumer<String, Integer> beforeIndexCommit);
 }
