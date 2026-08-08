@@ -120,6 +120,8 @@ const NODE_NAME_DISPLAY: Record<string, string> = {
   "siliconflow-stream-chat": "硅基流动 · 流式",
   "aihubmix-chat": "AIHubMix · 同步",
   "aihubmix-stream-chat": "AIHubMix · 流式",
+  "atlascloud-chat": "Atlas Cloud · 同步",
+  "atlascloud-stream-chat": "Atlas Cloud · 流式",
   "query-rewrite-and-split": "问题改写与拆分",
   "intent-resolve": "意图识别",
   "guidance-detect": "歧义引导",
