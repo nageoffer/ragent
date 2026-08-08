@@ -39,12 +39,23 @@ public class RedisKeySerializer implements RedisSerializer<String> {
 
     @Override
     public byte[] serialize(String key) throws SerializationException {
-        String builderKey = keyPrefix + key;
-        return builderKey.getBytes();
+        if (key == null) {
+            return null;
+        }
+        String actualKey = hasPrefix(key) ? key : keyPrefix + key;
+        return actualKey.getBytes(StandardCharsets.UTF_8);
     }
 
     @Override
     public String deserialize(byte[] bytes) throws SerializationException {
-        return new String(bytes, StandardCharsets.UTF_8);
+        if (bytes == null) {
+            return null;
+        }
+        String actualKey = new String(bytes, StandardCharsets.UTF_8);
+        return hasPrefix(actualKey) ? actualKey.substring(keyPrefix.length()) : actualKey;
+    }
+
+    private boolean hasPrefix(String key) {
+        return keyPrefix != null && !keyPrefix.isEmpty() && key.startsWith(keyPrefix);
     }
 }
