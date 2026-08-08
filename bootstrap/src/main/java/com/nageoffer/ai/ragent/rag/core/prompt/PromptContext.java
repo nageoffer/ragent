@@ -58,9 +58,10 @@ public class PromptContext {
     private List<NodeScore> kbIntents;
 
     /**
-     * 有明确文档归属的意图 ID
+     * 允许参与模板选择和规则注入的意图 ID
      */
-    private Set<String> retrievedIntentIds;
+    @Builder.Default
+    private Set<String> eligibleIntentIds = Set.of();
 
     /**
      * 是否包含 MCP 上下文

@@ -19,7 +19,9 @@ package com.nageoffer.ai.ragent.rag.core.retrieval.channel;
 
 import com.nageoffer.ai.ragent.rag.core.intent.NodeScore;
 
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * 检索作用域
@@ -38,6 +40,24 @@ public record RetrievalScope(boolean directed,
                              List<NodeScore> intents,
                              List<String> targetCollections,
                              List<String> supplementCollections) {
+
+    public Set<String> directedIntentIds() {
+        if (!directed) {
+            return Set.of();
+        }
+        Set<String> intentIds = new LinkedHashSet<>();
+        for (NodeScore intent : intents) {
+            if (intent == null || intent.getNode() == null) {
+                continue;
+            }
+            String intentId = intent.getNode().getId();
+            if (intentId == null || intentId.isBlank()) {
+                continue;
+            }
+            intentIds.add(intentId);
+        }
+        return Set.copyOf(intentIds);
+    }
 
     /**
      * 全局作用域：不收窄，无补充路

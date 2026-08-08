@@ -106,7 +106,7 @@ public class RAGPromptService {
         return messages;
     }
 
-    private PromptPlan planPrompt(List<NodeScore> intents, Set<String> retrievedIntentIds) {
+    private PromptPlan planPrompt(List<NodeScore> intents, Set<String> eligibleIntentIds) {
         List<NodeScore> safeIntents = intents == null ? Collections.emptyList() : intents;
         Map<String, NodeScore> eligibleById = new LinkedHashMap<>();
         for (NodeScore intent : safeIntents) {
@@ -114,7 +114,7 @@ public class RAGPromptService {
                 continue;
             }
             String intentId = intent.getNode().getId();
-            if (CollUtil.isNotEmpty(retrievedIntentIds) && !retrievedIntentIds.contains(intentId)) {
+            if (!eligibleIntentIds.contains(intentId)) {
                 continue;
             }
             eligibleById.putIfAbsent(intentId, intent);
@@ -149,7 +149,7 @@ public class RAGPromptService {
     }
 
     private PromptBuildPlan planKbOnly(PromptContext context) {
-        PromptPlan plan = planPrompt(context.getKbIntents(), context.getRetrievedIntentIds());
+        PromptPlan plan = planPrompt(context.getKbIntents(), context.getEligibleIntentIds());
         return PromptBuildPlan.builder()
                 .scene(PromptScene.KB_ONLY)
                 .baseTemplate(plan.getBaseTemplate())

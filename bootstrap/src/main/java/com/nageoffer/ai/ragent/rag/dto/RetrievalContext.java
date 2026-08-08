@@ -52,6 +52,12 @@ public class RetrievalContext {
     private Map<String, List<RetrievedChunk>> intentChunks;
 
     /**
+     * 允许参与模板选择和规则注入的意图 ID
+     */
+    @Builder.Default
+    private Set<String> eligibleIntentIds = Set.of();
+
+    /**
      * 是否存在 MCP 上下文
      */
     public boolean hasMcp() {

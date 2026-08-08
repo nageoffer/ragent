@@ -79,6 +79,7 @@ class MultiChannelRetrievalEngineTest {
         assertEquals(List.of(keywordChunk), grouped.get("B"), "关键词证据按库获得归属");
         assertEquals(List.of(supplementChunk), grouped.get("multi_channel"));
         assertEquals(Set.of("A", "B"), result.retrievedIntentIds());
+        assertEquals(Set.of("A", "B"), result.directedIntentIds());
         assertFalse(result.intentIdsByChunkKey().containsKey(RetrievedChunkKey.of(discarded)));
     }
 
@@ -96,6 +97,7 @@ class MultiChannelRetrievalEngineTest {
 
         assertEquals(Set.of("报销", "发票"),
                 result.intentIdsByChunkKey().get(RetrievedChunkKey.of(sharedChunk)));
+        assertEquals(Set.of("报销", "发票"), result.directedIntentIds());
     }
 
     @Test
@@ -109,6 +111,7 @@ class MultiChannelRetrievalEngineTest {
                 .retrieveKnowledgeChannels(new SubQuestionIntent("问题", List.of()), RetrievalBudget.uniform(10));
 
         assertTrue(result.intentIdsByChunkKey().isEmpty());
+        assertTrue(result.directedIntentIds().isEmpty());
         assertEquals(List.of(globalChunk), result.groupByIntent("multi_channel").get("multi_channel"));
     }
 
@@ -140,6 +143,8 @@ class MultiChannelRetrievalEngineTest {
 
         SearchChannelProperties properties = new SearchChannelProperties();
         properties.getChannels().setTimeoutMs(200);
+        RetrievalScopeResolver resolver = mock(RetrievalScopeResolver.class);
+        when(resolver.resolve(anyList())).thenReturn(RetrievalScope.global(0.0, List.of("kb-a")));
 
         ExecutorService pool = Executors.newFixedThreadPool(2);
         try {
@@ -147,7 +152,7 @@ class MultiChannelRetrievalEngineTest {
             KnowledgeRetrievalResult result = new MultiChannelRetrievalEngine(
                     List.of(fast, slow),
                     List.of(),
-                    mock(RetrievalScopeResolver.class),
+                    resolver,
                     pool,
                     properties)
                     .retrieveKnowledgeChannels(
