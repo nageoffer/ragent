@@ -178,24 +178,9 @@ class RAGPromptServiceTest {
     }
 
     @Test
-    void usesTemplateForDuplicateExactIntentCandidates() {
+    void usesTemplateWhenDuplicateCandidatesShareEligibleId() {
         PromptContext context = PromptContext.builder()
                 .kbContext("<content>意图资料</content>")
-                .kbIntents(List.of(
-                        intentWithTemplate("intent-1", "# 单意图模板"),
-                        intentWithTemplate("intent-1", "# 单意图模板")))
-                .eligibleIntentIds(Set.of("intent-1"))
-                .build();
-
-        String result = service(false).buildSystemPrompt(context);
-
-        assertTrue(result.startsWith("# 单意图模板"));
-    }
-
-    @Test
-    void usesTemplateForDuplicateGlobalIntentCandidates() {
-        PromptContext context = PromptContext.builder()
-                .kbContext("<content>全局资料</content>")
                 .kbIntents(List.of(
                         intentWithTemplate("intent-1", "# 单意图模板"),
                         intentWithTemplate("intent-1", "# 单意图模板")))

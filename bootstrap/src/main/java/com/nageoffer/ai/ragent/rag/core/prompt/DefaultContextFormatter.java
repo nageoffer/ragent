@@ -57,8 +57,13 @@ public class DefaultContextFormatter implements ContextFormatter {
         }
 
         List<NodeScore> eligibleIntents = eligibleIntents(kbIntents, eligibleIntentIds);
-        log.info("提示词规划 - 提示词分支: {}, 可用意图: {}",
-                eligibleIntents.isEmpty() ? "无可用意图" : eligibleIntents.size() > 1 ? "多意图" : "单意图",
+        String branch = switch (eligibleIntents.size()) {
+            case 0 -> "无可用意图";
+            case 1 -> "单意图";
+            default -> "多意图";
+        };
+        log.info("检索归因 - 提示词分支: {}, 可用意图: {}",
+                branch,
                 eligibleIntents.stream().map(ns -> ns.getNode().getName()).toList());
         if (eligibleIntents.isEmpty()) {
             return formatChunksWithoutIntent(rerankedChunks, contextTopK);

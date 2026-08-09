@@ -87,6 +87,7 @@ public class MultiChannelRetrievalEngine {
         }
 
         List<RetrievedChunk> chunks = executePostProcessors(channelResults, context);
+        // 异常或超时导致定向证据为空时，保留的定向范围会使其按未命中处理
         return new KnowledgeRetrievalResult(
                 chunks,
                 deriveAttribution(chunks, context.getRetrievalScope()),

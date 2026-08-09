@@ -25,10 +25,12 @@ import com.nageoffer.ai.ragent.rag.core.intent.NodeScore;
 import com.nageoffer.ai.ragent.rag.core.mcp.McpParameterExtractor;
 import com.nageoffer.ai.ragent.rag.core.mcp.McpToolRegistry;
 import com.nageoffer.ai.ragent.rag.core.prompt.ContextFormatter;
+import com.nageoffer.ai.ragent.rag.core.prompt.DefaultContextFormatter;
 import com.nageoffer.ai.ragent.rag.core.prompt.PromptTemplateLoader;
 import com.nageoffer.ai.ragent.rag.dto.RetrievalContext;
 import com.nageoffer.ai.ragent.rag.dto.SubQuestionIntent;
 import org.junit.jupiter.api.Test;
+import org.springframework.core.io.DefaultResourceLoader;
 
 import java.util.List;
 import java.util.Map;
@@ -69,7 +71,6 @@ class RetrievalEngineTest {
                 "A", List.of(chunkA),
                 MULTI_CHANNEL_KEY, List.of(globalChunk)
         ), result.getIntentChunks());
-        assertEquals(Set.of("A"), result.getRetrievedIntentIds());
         assertEquals(Set.of("A"), result.getEligibleIntentIds());
         verify(contextFormatter).formatKbContext(anyList(), eq(Set.of("A")), eq(List.of(chunkA, globalChunk)), anyInt());
     }
@@ -90,6 +91,28 @@ class RetrievalEngineTest {
         assertEquals(Set.of("A", "B"), result.getEligibleIntentIds());
         verify(contextFormatter).formatKbContext(
                 anyList(), eq(Set.of("A", "B")), eq(List.of(globalChunk)), anyInt());
+    }
+
+    @Test
+    void globalFallbackInjectsBothLowConfidenceCandidateSnippets() {
+        RetrievedChunk globalChunk = chunk("global", "全局资料");
+        MultiChannelRetrievalEngine multiChannel = mock(MultiChannelRetrievalEngine.class);
+        when(multiChannel.retrieveKnowledgeChannels(
+                any(SubQuestionIntent.class), any(RetrievalBudget.class)))
+                .thenReturn(new KnowledgeRetrievalResult(List.of(globalChunk), Map.of(), Set.of()));
+        ContextFormatter contextFormatter = new DefaultContextFormatter(
+                new PromptTemplateLoader(new DefaultResourceLoader()));
+
+        RetrievalContext result = engine(multiChannel, contextFormatter).retrieve(List.of(
+                new SubQuestionIntent("问题", List.of(
+                        lowConfidenceIntentWithSnippet("A", "SNIPPET_A"),
+                        lowConfidenceIntentWithSnippet("B", "SNIPPET_B")))
+        ));
+
+        assertEquals(Set.of("A", "B"), result.getEligibleIntentIds());
+        assertTrue(result.getKbContext().contains("SNIPPET_A"));
+        assertTrue(result.getKbContext().contains("SNIPPET_B"));
+        assertTrue(result.getKbContext().contains("全局资料"));
     }
 
     @Test
@@ -173,6 +196,13 @@ class RetrievalEngineTest {
 
     private NodeScore intent(String id) {
         return NodeScore.builder().node(IntentNode.builder().id(id).build()).score(0.9).build();
+    }
+
+    private NodeScore lowConfidenceIntentWithSnippet(String id, String snippet) {
+        return NodeScore.builder()
+                .node(IntentNode.builder().id(id).promptSnippet(snippet).build())
+                .score(0.5)
+                .build();
     }
 
     private RetrievedChunk chunk(String id, String text) {

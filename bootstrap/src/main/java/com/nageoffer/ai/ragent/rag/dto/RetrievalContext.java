@@ -25,9 +25,6 @@ import lombok.Data;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
-
-import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.MULTI_CHANNEL_KEY;
 
 /**
  * 检索上下文（MCP + KB 结果的统一承载）
@@ -69,15 +66,6 @@ public class RetrievalContext {
      */
     public boolean hasKb() {
         return StrUtil.isNotBlank(kbContext);
-    }
-
-    public Set<String> getRetrievedIntentIds() {
-        if (intentChunks == null || intentChunks.isEmpty()) {
-            return Set.of();
-        }
-        return intentChunks.keySet().stream()
-                .filter(intentId -> !MULTI_CHANNEL_KEY.equals(intentId))
-                .collect(Collectors.toUnmodifiableSet());
     }
 
     /**

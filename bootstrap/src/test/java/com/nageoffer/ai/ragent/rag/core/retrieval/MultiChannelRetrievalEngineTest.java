@@ -116,9 +116,9 @@ class MultiChannelRetrievalEngineTest {
     }
 
     @Test
-    void slowChannelDegradesToEmptyAfterChannelTimeout() {
+    void directedTimeoutKeepsScopeAndDegradesToMiss() {
         // 慢通道模拟卡死的后端：超时只丢它自己的结果，不钳制同一子问题里其余通道
-        RetrievedChunk fastChunk = chunk("fast", "快通道资料", 0.9F);
+        RetrievedChunk fastChunk = chunk("fast", "补充库资料", "kb-supplement", 0.9F);
         SearchChannel fast = channel(
                 "vector",
                 SearchChannelType.VECTOR,
@@ -144,7 +144,9 @@ class MultiChannelRetrievalEngineTest {
         SearchChannelProperties properties = new SearchChannelProperties();
         properties.getChannels().setTimeoutMs(200);
         RetrievalScopeResolver resolver = mock(RetrievalScopeResolver.class);
-        when(resolver.resolve(anyList())).thenReturn(RetrievalScope.global(0.0, List.of("kb-a")));
+        NodeScore candidate = intent("A", "kb-a");
+        when(resolver.resolve(anyList())).thenReturn(directedScope(
+                List.of(candidate), List.of("kb-a"), List.of("kb-supplement")));
 
         ExecutorService pool = Executors.newFixedThreadPool(2);
         try {
@@ -163,6 +165,9 @@ class MultiChannelRetrievalEngineTest {
 
             assertEquals(List.of("fast"), result.chunks().stream().map(RetrievedChunk::getId).toList(),
                     "慢通道超时按空结果降级，快通道证据保留");
+            assertEquals(Set.of("A"), result.directedIntentIds());
+            assertTrue(result.retrievedIntentIds().isEmpty());
+            assertTrue(result.eligibleIntentIds(List.of(candidate)).isEmpty());
             assertTrue(elapsedMs < 800, "慢通道不得钳制整次检索，实际耗时 " + elapsedMs + "ms");
         } finally {
             pool.shutdownNow();
