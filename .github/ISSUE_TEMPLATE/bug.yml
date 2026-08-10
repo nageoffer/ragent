@@ -1,0 +1,48 @@
+name: Bug 报告
+description: 提交缺陷，帮助改进平台
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: 问题描述
+      description: 清晰、完整地描述问题现象
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 复现步骤
+      description: 一步步如何触发
+      placeholder: |
+        1. 打开/调用 …
+        2. 输入/点击 …
+        3. 观察到 …
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期行为
+      description: 本应发生什么
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际行为
+      description: 实际发生了什么
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: 环境
+      description: 操作系统 / 浏览器 / Java / Node 版本等
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志与截图
+      description: 相关日志、堆栈或截图
+      render: text

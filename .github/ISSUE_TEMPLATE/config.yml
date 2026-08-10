@@ -1,0 +1,4 @@
+# 允许用户创建空白 issue。
+# 本仓库为私有 fork，不启用 GitHub Discussions 作为兜底渠道，
+# 因此保守保留 blank issue（而不是禁用），便于自由提问与协作。
+blank_issues_enabled: true

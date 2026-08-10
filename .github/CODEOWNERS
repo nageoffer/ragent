@@ -1,0 +1,25 @@
+# 默认 owner：整个仓库由 KDB-Wind 负责
+# 后续模块引入专职维护者时，可把对应行替换为团队/个人。
+# 规则最长路径优先匹配，细化的路径规则会覆盖默认 owner。
+* @KDB-Wind
+
+# 后端业务模块
+/bootstrap/rag/ @KDB-Wind
+/bootstrap/ingestion/ @KDB-Wind
+/bootstrap/knowledge/ @KDB-Wind
+/bootstrap/user/ @KDB-Wind
+/bootstrap/admin/ @KDB-Wind
+
+# 基础设施模块
+/infra-ai/ @KDB-Wind
+/framework/ @KDB-Wind
+
+# 独立应用
+/mcp-server/ @KDB-Wind
+
+# 前端
+/frontend/ @KDB-Wind
+
+# 协作契约与文档
+/.github/ @KDB-Wind
+/docs/ @KDB-Wind

@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-maven:
+    name: backend-maven
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: maven
+
+      - name: Spotless check
+        # spotless apply 已绑定 compile 阶段，CI 必须显式跑 check 做门禁，
+        # 避免 apply 静默改写工作树后混入流程。
+        run: ./mvnw -B -ntp spotless:check
+
+      - name: Build
+        # 集成测试依赖 Milvus/MySQL/Redis 等外部服务（InvoiceIndexDocumentTests 等
+        # SpringBootTest），CI 不执行全量 test，门禁为格式检查 + 编译构建；
+        # 测试隔离接入见后续 4.4。
+        run: ./mvnw -B -ntp -DskipTests package
+
+      - name: Upload surefire reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: "**/target/surefire-reports"
+          if-no-files-found: ignore
+
+  frontend-build-lint:
+    name: frontend-build-lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build

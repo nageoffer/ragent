@@ -1,0 +1,31 @@
+name: 功能请求
+description: 提出新能力或改进
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: motivation
+    attributes:
+      label: 动机
+      description: 想解决什么问题，在什么场景下需要
+    validations:
+      required: true
+  - type: textarea
+    id: capability
+    attributes:
+      label: 期望能力
+      description: 期望的行为或接口形态
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 验收标准
+      description: 满足什么条件可以认为需求完成
+    validations:
+      required: true
+  - type: textarea
+    id: out_of_scope
+    attributes:
+      label: 范围外
+      description: 明确不属于本次需求的内容
