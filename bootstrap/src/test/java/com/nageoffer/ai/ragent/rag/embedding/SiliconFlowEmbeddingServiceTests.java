@@ -20,6 +20,7 @@ package com.nageoffer.ai.ragent.rag.embedding;
 import com.nageoffer.ai.ragent.infra.embedding.EmbeddingService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -28,6 +29,7 @@ import java.util.List;
 
 @Slf4j
 @SpringBootTest
+@Tag("integration")
 @RequiredArgsConstructor(onConstructor = @__(@Autowired))
 public class SiliconFlowEmbeddingServiceTests {
 

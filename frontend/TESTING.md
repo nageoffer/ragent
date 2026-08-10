@@ -1,5 +1,19 @@
 # 快速测试指南
 
+## 自动化测试（Vitest + Testing Library）
+
+```bash
+cd frontend
+npm ci
+npm run test        # 单次运行全部单元测试
+npm run test:watch  # 监听模式
+```
+
+- 测试文件位置：与源码同目录的 `__tests__/` 下（`src/hooks/__tests__/`、`src/stores/__tests__/`、`src/components/chat/__tests__/` 等）。
+- 环境：Vitest + jsdom，配置在 `vite.config.ts` 的 `test` 段；`src/test/setupTests.ts` 负责 jest-dom 断言与 RTL cleanup。
+- 断言风格：显式 import（`describe/it/expect` 来自 `vitest`），不依赖 globals。
+- 集成测试 opt-in：依赖真实后端/外部服务的测试不在此基线内；后端集成测试通过 `./mvnw -B -ntp test -P integration` 显式运行（默认被 `@Tag("integration")` 排除）。
+
 ## 问题：No static resource api/ragent/knowledge-base
 
 ### 原因

@@ -35,6 +35,8 @@
         <bizlog-sdk.version>3.0.6</bizlog-sdk.version>
         <javax-validation-api.version>2.0.1.Final</javax-validation-api.version>
         <spotless-maven-plugin.version>2.22.1</spotless-maven-plugin.version>
+        <!-- 默认排除集成测试（@Tag("integration")）；integration profile 将其置空以启用 -->
+        <surefire.excludedGroups>integration</surefire.excludedGroups>
     </properties>
 
     <modules>
@@ -250,6 +252,9 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
                     <argLine>@{argLine} -javaagent:${org.mockito:mockito-core:jar}</argLine>
+                    <!-- 默认只跑单元测试集合；依赖外部服务（MySQL/Redis/Milvus/模型 API）的
+                         测试类标 @Tag("integration")，通过 -P integration 显式启用 -->
+                    <excludedGroups>${surefire.excludedGroups}</excludedGroups>
                 </configuration>
             </plugin>
 
@@ -276,4 +281,26 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <!-- opt-in 集成测试：需要 MySQL/Redis/Milvus/模型 API 等外部服务，
+             默认 CI 不触碰（见 surefire excludedGroups），本地或专用 CI job 显式启用 -->
+        <profile>
+            <id>integration</id>
+            <properties>
+                <surefire.excludedGroups></surefire.excludedGroups>
+            </properties>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <groups>integration</groups>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

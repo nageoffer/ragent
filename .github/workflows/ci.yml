@@ -33,11 +33,11 @@ jobs:
         # 避免 apply 静默改写工作树后混入流程。
         run: ./mvnw -B -ntp spotless:check
 
-      - name: Build
-        # 集成测试依赖 Milvus/MySQL/Redis 等外部服务（InvoiceIndexDocumentTests 等
-        # SpringBootTest），CI 不执行全量 test，门禁为格式检查 + 编译构建；
-        # 测试隔离接入见后续 4.4。
-        run: ./mvnw -B -ntp -DskipTests package
+      - name: Build and test
+        # verify 包含默认单元测试集合（集成测试已用 @Tag("integration") 隔离，
+        # 不依赖 Milvus/MySQL/Redis/模型 API，见根 pom surefire excludedGroups），
+        # 同时完成打包；集成测试通过 -P integration 显式运行。
+        run: ./mvnw -B -ntp verify
 
       - name: Upload surefire reports
         if: always()
@@ -71,6 +71,10 @@ jobs:
       - name: Build
         # 硬门禁：代码必须可编译。
         run: npm run build
+
+      - name: Test
+        # 硬门禁：Vitest 单元测试必须全绿。
+        run: npm run test
 
       - name: Lint
         # 仓库既有代码存在 21 个存量 lint error（配置加载原就崩溃，从未跑通过），

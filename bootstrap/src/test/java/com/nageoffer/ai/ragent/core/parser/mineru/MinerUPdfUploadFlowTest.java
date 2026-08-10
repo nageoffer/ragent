@@ -21,6 +21,7 @@ import com.nageoffer.ai.ragent.RagentApplication;
 import com.nageoffer.ai.ragent.core.parser.BlockTextRenderer;
 import com.nageoffer.ai.ragent.core.parser.model.ParsedDocument;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -64,6 +65,7 @@ import java.util.zip.ZipInputStream;
  * MinerU 返回的 zip 会自动解压到仓库根目录下的 {@code .mineru-output/}(临时目录,已加入 .gitignore)
  */
 @SpringBootTest(classes = RagentApplication.class, webEnvironment = WebEnvironment.NONE)
+@Tag("integration")
 @EnabledIfSystemProperty(named = "mineru.test.pdf", matches = ".+")
 @DisplayName("MinerU PDF 上传解析全流程(真实环境)")
 class MinerUPdfUploadFlowTest {
