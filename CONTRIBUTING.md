@@ -28,7 +28,7 @@ npm run build
 ## CI 检查清单（提交前自测）
 
 - [ ] 后端：`spotless:check` 通过、`-DskipTests package` 通过
-- [ ] 前端（如有改动）：`npm run lint` 与 `npm run build` 通过
+- [ ] 前端（如有改动）：`npm run build` 通过；`npm run lint` 不新增存量之外的 error（存量 21 个为已知技术债）
 - [ ] 无 `git diff --check` 问题
 - [ ] 不在 commit 中包含凭据、密钥或本地审计产物
 

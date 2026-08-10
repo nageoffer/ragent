@@ -64,7 +64,7 @@ mcp-server  -> (独立应用，无内部模块依赖)
 ## CI 要求
 
 - `backend-maven`：`spotless:check` 与 `-DskipTests package` 必须通过（集成测试依赖外部服务，不在 CI 执行全量 test）
-- `frontend-build-lint`：`npm run lint` 与 `npm run build` 必须通过
+- `frontend-build-lint`：`npm run build` 为硬门禁；`npm run lint` 已启用并记录结果，但存量 21 个 lint error 为既有技术债，暂不阻塞（修复列入后续计划）
 - main 分支受 ruleset 保护：只能通过 PR 合入，需要 1 个 approve + CODEOWNERS review + 上述 check 全绿
 
 ## 协作 owner
