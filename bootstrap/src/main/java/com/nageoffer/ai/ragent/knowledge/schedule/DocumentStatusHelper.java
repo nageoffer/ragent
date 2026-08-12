@@ -17,8 +17,8 @@
 
 package com.nageoffer.ai.ragent.knowledge.schedule;
 
+import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
-import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.knowledge.dao.entity.KnowledgeDocumentDO;
 import com.nageoffer.ai.ragent.knowledge.dao.mapper.KnowledgeDocumentMapper;
 import com.nageoffer.ai.ragent.knowledge.enums.DocumentStatus;
@@ -39,75 +39,151 @@ public class DocumentStatusHelper {
 
     private final KnowledgeDocumentMapper documentMapper;
 
-    public boolean tryMarkRunning(String docId) {
-        // Wrapper 更新不触发 updateTime 自动填充, 显式刷新, 使卡死恢复以分块开始时刻为基准
+    public String tryMarkRunning(String docId, String oldVersion) {
+        String ownerVersion = nextVersion();
+        return tryStartChunk(docId, oldVersion, ownerVersion, SYSTEM_USER)
+                ? ownerVersion : null;
+    }
+
+    public boolean tryStartChunk(String docId, String oldVersion, String ownerVersion, String updatedBy) {
         return documentMapper.update(
                 Wrappers.lambdaUpdate(KnowledgeDocumentDO.class)
                         .set(KnowledgeDocumentDO::getStatus, DocumentStatus.RUNNING.getCode())
-                        .set(KnowledgeDocumentDO::getUpdatedBy, SYSTEM_USER)
+                        .set(KnowledgeDocumentDO::getDocumentVersion, ownerVersion)
+                        .set(KnowledgeDocumentDO::getUpdatedBy, updatedBy)
                         .set(KnowledgeDocumentDO::getUpdateTime, new Date())
                         .eq(KnowledgeDocumentDO::getId, docId)
                         .eq(KnowledgeDocumentDO::getDeleted, 0)
                         .eq(KnowledgeDocumentDO::getEnabled, 1)
-                        .ne(KnowledgeDocumentDO::getStatus, DocumentStatus.RUNNING.getCode())
-        ) > 0;
+                        .eq(KnowledgeDocumentDO::getDocumentVersion, oldVersion)
+                        .in(KnowledgeDocumentDO::getStatus,
+                                DocumentStatus.PENDING.getCode(),
+                                DocumentStatus.FAILED.getCode(),
+                                DocumentStatus.SUCCESS.getCode())) == 1;
     }
 
-    public void markFailedIfRunning(String docId) {
-        documentMapper.update(
+    public String tryMarkDeleting(String docId, String oldVersion, String updatedBy) {
+        String ownerVersion = nextVersion();
+        int updated = documentMapper.update(
+                Wrappers.lambdaUpdate(KnowledgeDocumentDO.class)
+                        .set(KnowledgeDocumentDO::getStatus, DocumentStatus.DELETING.getCode())
+                        .set(KnowledgeDocumentDO::getDocumentVersion, ownerVersion)
+                        .set(KnowledgeDocumentDO::getUpdatedBy, updatedBy)
+                        .set(KnowledgeDocumentDO::getUpdateTime, new Date())
+                        .eq(KnowledgeDocumentDO::getId, docId)
+                        .eq(KnowledgeDocumentDO::getDeleted, 0)
+                        .eq(KnowledgeDocumentDO::getDocumentVersion, oldVersion)
+                        .in(KnowledgeDocumentDO::getStatus,
+                                DocumentStatus.PENDING.getCode(),
+                                DocumentStatus.FAILED.getCode(),
+                                DocumentStatus.SUCCESS.getCode()));
+        return updated == 1
+                ? ownerVersion : null;
+    }
+
+    public boolean advanceStableVersion(String docId, String oldVersion, String newVersion, String updatedBy) {
+        return documentMapper.update(
+                Wrappers.lambdaUpdate(KnowledgeDocumentDO.class)
+                        .set(KnowledgeDocumentDO::getDocumentVersion, newVersion)
+                        .set(KnowledgeDocumentDO::getUpdatedBy, updatedBy)
+                        .set(KnowledgeDocumentDO::getUpdateTime, new Date())
+                        .eq(KnowledgeDocumentDO::getId, docId)
+                        .eq(KnowledgeDocumentDO::getDeleted, 0)
+                        .eq(KnowledgeDocumentDO::getDocumentVersion, oldVersion)
+                        .in(KnowledgeDocumentDO::getStatus,
+                                DocumentStatus.PENDING.getCode(),
+                                DocumentStatus.FAILED.getCode(),
+                                DocumentStatus.SUCCESS.getCode())) == 1;
+    }
+
+    public KnowledgeDocumentDO lockRunning(String docId, String ownerVersion) {
+        // 状态检查后可能发生超时恢复并启动新一轮分块
+        // 锁定当前版本直到所有 Sink 和成功状态一起提交，避免旧任务覆盖新任务
+        KnowledgeDocumentDO document = documentMapper.selectRunningForUpdate(docId, ownerVersion);
+        if (document == null) {
+            throw new RuntimeException(
+                    "文档操作版本已失效: docId=" + docId + ", documentVersion=" + ownerVersion);
+        }
+        return document;
+    }
+
+    public boolean markSucceeded(String docId, String ownerVersion, int chunkCount, String mimeType,
+                                 StoredFileDTO refreshedFile, String updatedBy) {
+        return documentMapper.update(
+                Wrappers.lambdaUpdate(KnowledgeDocumentDO.class)
+                        .set(KnowledgeDocumentDO::getStatus, DocumentStatus.SUCCESS.getCode())
+                        .set(KnowledgeDocumentDO::getChunkCount, chunkCount)
+                        .set(KnowledgeDocumentDO::getMimeType, mimeType)
+                        .set(refreshedFile != null && refreshedFile.getOriginalFilename() != null,
+                                KnowledgeDocumentDO::getDocName,
+                                refreshedFile != null ? refreshedFile.getOriginalFilename() : null)
+                        .set(refreshedFile != null && refreshedFile.getUrl() != null,
+                                KnowledgeDocumentDO::getFileUrl,
+                                refreshedFile != null ? refreshedFile.getUrl() : null)
+                        .set(refreshedFile != null && refreshedFile.getDetectedType() != null,
+                                KnowledgeDocumentDO::getFileType,
+                                refreshedFile != null ? refreshedFile.getDetectedType() : null)
+                        .set(refreshedFile != null && refreshedFile.getSize() != null,
+                                KnowledgeDocumentDO::getFileSize,
+                                refreshedFile != null ? refreshedFile.getSize() : null)
+                        .set(KnowledgeDocumentDO::getUpdatedBy, updatedBy)
+                        .set(KnowledgeDocumentDO::getUpdateTime, new Date())
+                        .eq(KnowledgeDocumentDO::getId, docId)
+                        .eq(KnowledgeDocumentDO::getDeleted, 0)
+                        .eq(KnowledgeDocumentDO::getStatus, DocumentStatus.RUNNING.getCode())
+                        .eq(KnowledgeDocumentDO::getDocumentVersion, ownerVersion)) == 1;
+    }
+
+    public boolean markFailedIfRunning(String docId, String ownerVersion) {
+        return markFailedIfRunning(docId, ownerVersion, SYSTEM_USER);
+    }
+
+    public boolean markFailedIfRunning(String docId, String ownerVersion, String updatedBy) {
+        return documentMapper.update(
                 Wrappers.lambdaUpdate(KnowledgeDocumentDO.class)
                         .set(KnowledgeDocumentDO::getStatus, DocumentStatus.FAILED.getCode())
-                        .set(KnowledgeDocumentDO::getUpdatedBy, SYSTEM_USER)
+                        .set(KnowledgeDocumentDO::getUpdatedBy, updatedBy)
+                        .set(KnowledgeDocumentDO::getUpdateTime, new Date())
                         .eq(KnowledgeDocumentDO::getId, docId)
+                        .eq(KnowledgeDocumentDO::getDeleted, 0)
                         .eq(KnowledgeDocumentDO::getStatus, DocumentStatus.RUNNING.getCode())
-        );
-    }
-
-    public void applyRefreshedFileMetadata(String docId, StoredFileDTO stored) {
-        KnowledgeDocumentDO update = KnowledgeDocumentDO.builder()
-                .id(docId)
-                .docName(stored.getOriginalFilename())
-                .fileUrl(stored.getUrl())
-                .fileType(stored.getDetectedType())
-                .fileSize(stored.getSize())
-                .updatedBy(SYSTEM_USER)
-                .build();
-        int updated = documentMapper.updateById(update);
-        if (updated == 0) {
-            throw new ClientException("文档不存在");
-        }
+                        .eq(KnowledgeDocumentDO::getDocumentVersion, ownerVersion)) == 1;
     }
 
     public StuckRecoveryResult recoverStuckRunning(long timeoutMinutes) {
         long safeTimeout = Math.max(timeoutMinutes, 10);
         Date threshold = new Date(System.currentTimeMillis() - safeTimeout * 60 * 1000);
 
-        List<String> stuckDocIds = documentMapper.selectList(
+        List<KnowledgeDocumentDO> stuck = documentMapper.selectList(
                 Wrappers.lambdaQuery(KnowledgeDocumentDO.class)
-                        .select(KnowledgeDocumentDO::getId)
+                        .select(KnowledgeDocumentDO::getId, KnowledgeDocumentDO::getDocumentVersion)
                         .eq(KnowledgeDocumentDO::getStatus, DocumentStatus.RUNNING.getCode())
+                        .eq(KnowledgeDocumentDO::getDeleted, 0)
                         .eq(KnowledgeDocumentDO::getEnabled, 1)
                         .lt(KnowledgeDocumentDO::getUpdateTime, threshold)
-        ).stream().map(KnowledgeDocumentDO::getId).toList();
-
-        if (stuckDocIds.isEmpty()) {
-            return new StuckRecoveryResult(List.of(), 0);
-        }
-
-        int updated = documentMapper.update(
-                Wrappers.lambdaUpdate(KnowledgeDocumentDO.class)
-                        .set(KnowledgeDocumentDO::getStatus, DocumentStatus.FAILED.getCode())
-                        .set(KnowledgeDocumentDO::getUpdatedBy, SYSTEM_USER)
-                        .in(KnowledgeDocumentDO::getId, stuckDocIds)
-                        .eq(KnowledgeDocumentDO::getStatus, DocumentStatus.RUNNING.getCode())
         );
 
-        if (updated != stuckDocIds.size()) {
-            log.warn("卡死文档恢复时部分候选状态已变化: 候选 {} 个, 实际重置 {} 个",
-                    stuckDocIds.size(), updated);
+        int updated = 0;
+        for (KnowledgeDocumentDO candidate : stuck) {
+            updated += documentMapper.update(
+                    Wrappers.lambdaUpdate(KnowledgeDocumentDO.class)
+                            .set(KnowledgeDocumentDO::getStatus, DocumentStatus.FAILED.getCode())
+                            .set(KnowledgeDocumentDO::getDocumentVersion, nextVersion())
+                            .set(KnowledgeDocumentDO::getUpdatedBy, SYSTEM_USER)
+                            .set(KnowledgeDocumentDO::getUpdateTime, new Date())
+                            .eq(KnowledgeDocumentDO::getId, candidate.getId())
+                            .eq(KnowledgeDocumentDO::getDeleted, 0)
+                            .eq(KnowledgeDocumentDO::getStatus, DocumentStatus.RUNNING.getCode())
+                            .eq(KnowledgeDocumentDO::getDocumentVersion, candidate.getDocumentVersion()));
         }
+        if (updated != stuck.size()) {
+            log.warn("卡死文档恢复时部分候选状态或版本已变化: 候选 {} 个, 实际重置 {} 个", stuck.size(), updated);
+        }
+        return new StuckRecoveryResult(stuck.stream().map(KnowledgeDocumentDO::getId).toList(), updated);
+    }
 
-        return new StuckRecoveryResult(stuckDocIds, updated);
+    public String nextVersion() {
+        return IdWorker.getIdStr();
     }
 
     public record StuckRecoveryResult(List<String> stuckDocIds, int actualRecovered) {

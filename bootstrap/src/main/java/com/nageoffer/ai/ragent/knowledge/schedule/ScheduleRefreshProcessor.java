@@ -170,10 +170,14 @@ public class ScheduleRefreshProcessor {
                     stateManager.markLeaseLost(state.ctx, "领取文档运行权");
                     return;
                 }
-                if (!documentStatusHelper.tryMarkRunning(state.document.getId())) {
-                    markSkippedIfOwnedOrMarkLeaseLost(lease, state, "文档正在分块中，跳过本次调度", "文档运行权争抢失败");
+                String ownerVersion = documentStatusHelper.tryMarkRunning(
+                        state.document.getId(), state.document.getDocumentVersion());
+                if (ownerVersion == null) {
+                    markSkippedIfOwnedOrMarkLeaseLost(
+                            lease, state, "文档状态或版本已变化，跳过本次调度", "文档运行权领取条件已变化");
                     return;
                 }
+                state.ownerVersion = ownerVersion;
                 state.phase = Phase.DOC_OCCUPIED;
 
                 KnowledgeBaseDO kbDO = kbMapper.selectById(state.document.getKbId());
@@ -201,6 +205,7 @@ public class ScheduleRefreshProcessor {
                 runtimeDoc.setFileType(state.stored.getDetectedType());
                 runtimeDoc.setFileSize(state.stored.getSize());
                 runtimeDoc.setUpdatedBy(SYSTEM_USER);
+                runtimeDoc.setDocumentVersion(ownerVersion);
 
                 if (shouldAbortForLeaseLoss(lease, heartbeat, "执行文档分块")) {
                     state.leaseLost = true;
@@ -222,7 +227,6 @@ public class ScheduleRefreshProcessor {
                 }
 
                 state.phase = Phase.CHUNK_COMPLETED;
-                documentStatusHelper.applyRefreshedFileMetadata(state.document.getId(), state.stored);
                 state.phase = Phase.FILE_SWITCHED;
 
                 markSuccessIfOwnedOrMarkLeaseLost(lease, state, fetchResult, "刷新成功写回调度状态");
@@ -235,7 +239,7 @@ public class ScheduleRefreshProcessor {
                     e);
             if (state.phase != Phase.FILE_SWITCHED) {
                 if (state.hasDocumentOccupied()) {
-                    documentStatusHelper.markFailedIfRunning(state.document.getId());
+                    documentStatusHelper.markFailedIfRunning(state.document.getId(), state.ownerVersion);
                 }
                 if (state.ctx != null) {
                     markFailedIfOwnedOrMarkLeaseLost(lease, state, e.getMessage(), "异常失败写回调度状态");
@@ -255,7 +259,7 @@ public class ScheduleRefreshProcessor {
         } finally {
             heartbeat.close();
             if (state.leaseLost && state.phase == Phase.DOC_OCCUPIED && state.document != null) {
-                documentStatusHelper.markFailedIfRunning(state.document.getId());
+                documentStatusHelper.markFailedIfRunning(state.document.getId(), state.ownerVersion);
             }
             if (state.phase == Phase.FILE_SWITCHED) {
                 deleteOldFileQuietly(state.oldFileUrl, state.stored != null ? state.stored.getUrl() : null);
@@ -378,6 +382,7 @@ public class ScheduleRefreshProcessor {
         private boolean leaseLost;
         private Phase phase = Phase.INIT;
         private FetchSnapshot fetch;
+        private String ownerVersion;
 
         private boolean hasDocumentOccupied() {
             return phase.ordinal() >= Phase.DOC_OCCUPIED.ordinal();

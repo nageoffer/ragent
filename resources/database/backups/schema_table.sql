@@ -186,6 +186,7 @@ CREATE TABLE `t_knowledge_document`
     `file_size`        bigint(20) DEFAULT NULL COMMENT '文件大小（单位字节）',
     `process_mode`     varchar(32) COLLATE utf8mb4_unicode_ci            DEFAULT 'chunk' COMMENT '处理模式',
     `status`           varchar(32) COLLATE utf8mb4_unicode_ci   NOT NULL DEFAULT 'pending' COMMENT '状态',
+    `document_version` varchar(20) COLLATE utf8mb4_unicode_ci   NOT NULL COMMENT '当前文档操作版本及写入 fencing token',
     `source_type`      varchar(32) COLLATE utf8mb4_unicode_ci            DEFAULT NULL COMMENT '来源类型：file/url',
     `source_location`  varchar(1024) COLLATE utf8mb4_unicode_ci          DEFAULT NULL COMMENT '来源位置（URL）',
     `schedule_enabled` tinyint(1) DEFAULT NULL COMMENT '定时拉取 0：否 1：是',

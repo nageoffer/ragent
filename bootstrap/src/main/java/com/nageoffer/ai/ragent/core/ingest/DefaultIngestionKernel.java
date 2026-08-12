@@ -36,6 +36,7 @@ import org.springframework.util.StringUtils;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BiConsumer;
 
 /**
  * 摄取内核默认实现：固定五步骨架，全文唯一一条摄取执行序列
@@ -66,7 +67,9 @@ public class DefaultIngestionKernel implements IngestionKernel {
     public IngestionOutcome run(DocumentRef doc,
                                 byte[] bytes,
                                 IngestionSpec spec,
-                                VectorTarget target) {
+                                VectorTarget target,
+                                Runnable beforeWrite,
+                                BiConsumer<String, Integer> beforeCommit) {
         if (bytes == null || bytes.length == 0) {
             throw new ClientException("文件内容为空：docId=" + doc.docId());
         }
@@ -103,7 +106,8 @@ public class DefaultIngestionKernel implements IngestionKernel {
 
         // ⑤ index：扇出到全部落点，事务边界在写入器内
         long indexStart = System.currentTimeMillis();
-        chunkIndexWriter.replaceDocument(target, doc, embedded);
+        chunkIndexWriter.replaceDocument(target, doc, embedded, beforeWrite,
+                () -> beforeCommit.accept(mimeType, embedded.size()));
         long indexMillis = System.currentTimeMillis() - indexStart;
 
         return new IngestionOutcome(mimeType, parser.getParserType(), blocks.size(), chunks,

@@ -17,6 +17,7 @@
 
 package com.nageoffer.ai.ragent.framework.mq.producer;
 
+import com.nageoffer.ai.ragent.framework.exception.ServiceException;
 import org.apache.rocketmq.client.producer.SendResult;
 
 import java.util.function.Consumer;
@@ -50,6 +51,7 @@ public interface MessageQueueProducer {
      * @param bizDesc          业务描述
      * @param body             业务载荷
      * @param localTransaction 本地事务逻辑，在 half 消息发送成功后执行；抛异常则回滚消息
+     * @throws ServiceException RocketMQ 发送失败或本地事务未提交
      */
     void sendInTransaction(String topic, String keys, String bizDesc, Object body,
                            Consumer<Object> localTransaction);

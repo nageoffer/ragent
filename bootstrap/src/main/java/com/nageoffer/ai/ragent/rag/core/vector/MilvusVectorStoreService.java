@@ -137,6 +137,16 @@ public class MilvusVectorStoreService implements VectorStoreService {
     }
 
     @Override
+    public void deleteDocumentVectorsInTransaction(String collectionName, String docId) {
+        // 当 Milvus 作为向量数据库时，不直接在数据库事务中调用
+    }
+
+    @Override
+    public void deleteDocumentVectorsAfterCommit(String collectionName, String docId) {
+        deleteDocumentVectors(collectionName, docId);
+    }
+
+    @Override
     public void deleteChunkById(String collectionName, String chunkId) {
         // id 为雪花主键，全局唯一，直接按主键删除
         String filter = "id == \"" + chunkId + "\"";

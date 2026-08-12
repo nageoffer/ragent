@@ -65,6 +65,16 @@ public class GraphSyncingVectorStoreService implements VectorStoreService {
     }
 
     @Override
+    public void deleteDocumentVectorsInTransaction(String collectionName, String docId) {
+        delegate.deleteDocumentVectorsInTransaction(collectionName, docId);
+    }
+
+    @Override
+    public void deleteDocumentVectorsAfterCommit(String collectionName, String docId) {
+        delegate.deleteDocumentVectorsAfterCommit(collectionName, docId);
+    }
+
+    @Override
     public void deleteChunkById(String collectionName, String chunkId) {
         delegate.deleteChunkById(collectionName, chunkId);
         // 子文档粒度，Phase1 不单独同步图谱（见类注释）

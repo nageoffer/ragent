@@ -17,6 +17,8 @@
 
 package com.nageoffer.ai.ragent.framework.mq.producer;
 
+import com.nageoffer.ai.ragent.framework.exception.ServiceException;
+import org.apache.rocketmq.client.producer.LocalTransactionState;
 import org.apache.rocketmq.client.producer.SendStatus;
 import org.apache.rocketmq.client.producer.TransactionSendResult;
 import org.apache.rocketmq.spring.core.RocketMQLocalTransactionState;
@@ -93,19 +95,31 @@ class RocketMQProducerAdapterTest {
         AtomicReference<Message<?>> sentMessage = new AtomicReference<>();
         TransactionSendResult sendResult = mock(TransactionSendResult.class);
         when(sendResult.getSendStatus()).thenReturn(SendStatus.FLUSH_DISK_TIMEOUT);
+        when(sendResult.getLocalTransactionState()).thenReturn(LocalTransactionState.COMMIT_MESSAGE);
         doAnswer(invocation -> {
             sentMessage.set(invocation.getArgument(1));
             return sendResult;
         }).when(rocketMQTemplate).sendMessageInTransaction(eq(TOPIC), any(Message.class), isNull());
 
-        producerAdapter.sendInTransaction(
-                TOPIC, "message-key", "document chunk", "payload",
-                ignored -> localTransactionInvoked.set(true));
+        assertThrows(ServiceException.class,
+                () -> producerAdapter.sendInTransaction(
+                        TOPIC, "message-key", "document chunk", "payload",
+                        ignored -> localTransactionInvoked.set(true)));
 
         assertEquals(
                 RocketMQLocalTransactionState.ROLLBACK,
                 transactionListener.executeLocalTransaction(sentMessage.get(), null));
         assertFalse(localTransactionInvoked.get());
+    }
+
+    @Test
+    void rollbackLocalTransactionThrowsAndRemovesCallback() {
+        assertUncommittedTransactionFails(LocalTransactionState.ROLLBACK_MESSAGE);
+    }
+
+    @Test
+    void unknownLocalTransactionThrowsAndRemovesCallback() {
+        assertUncommittedTransactionFails(LocalTransactionState.UNKNOW);
     }
 
     @Test
@@ -140,6 +154,7 @@ class RocketMQProducerAdapterTest {
         AtomicReference<Message<?>> sentMessage = new AtomicReference<>();
         TransactionSendResult sendResult = mock(TransactionSendResult.class);
         when(sendResult.getSendStatus()).thenReturn(SendStatus.SEND_OK);
+        when(sendResult.getLocalTransactionState()).thenReturn(LocalTransactionState.COMMIT_MESSAGE);
         doAnswer(invocation -> {
             Message<?> message = invocation.getArgument(1);
             sentMessage.set(message);
@@ -157,5 +172,27 @@ class RocketMQProducerAdapterTest {
         assertEquals(
                 RocketMQLocalTransactionState.ROLLBACK,
                 transactionListener.executeLocalTransaction(sentMessage.get(), null));
+    }
+
+    private void assertUncommittedTransactionFails(LocalTransactionState localTransactionState) {
+        AtomicBoolean localTransactionInvoked = new AtomicBoolean();
+        AtomicReference<Message<?>> sentMessage = new AtomicReference<>();
+        TransactionSendResult sendResult = mock(TransactionSendResult.class);
+        when(sendResult.getSendStatus()).thenReturn(SendStatus.SEND_OK);
+        when(sendResult.getLocalTransactionState()).thenReturn(localTransactionState);
+        doAnswer(invocation -> {
+            sentMessage.set(invocation.getArgument(1));
+            return sendResult;
+        }).when(rocketMQTemplate).sendMessageInTransaction(eq(TOPIC), any(Message.class), isNull());
+
+        assertThrows(ServiceException.class,
+                () -> producerAdapter.sendInTransaction(
+                        TOPIC, "message-key", "document chunk", "payload",
+                        ignored -> localTransactionInvoked.set(true)));
+
+        assertEquals(
+                RocketMQLocalTransactionState.ROLLBACK,
+                transactionListener.executeLocalTransaction(sentMessage.get(), null));
+        assertFalse(localTransactionInvoked.get());
     }
 }

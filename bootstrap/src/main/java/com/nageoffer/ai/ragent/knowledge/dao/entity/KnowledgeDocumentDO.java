@@ -136,8 +136,14 @@ public class KnowledgeDocumentDO {
      * - running：向量化中
      * - failed：向量化失败
      * - success：向量化完成
+     * - deleting：删除中
      */
     private String status;
+
+    /**
+     * 当前文档操作版本及写入 fencing token
+     */
+    private String documentVersion;
 
     /**
      * 创建人

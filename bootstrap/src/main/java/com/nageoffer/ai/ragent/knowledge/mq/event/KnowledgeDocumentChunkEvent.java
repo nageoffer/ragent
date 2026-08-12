@@ -48,6 +48,11 @@ public class KnowledgeDocumentChunkEvent implements Serializable {
     private String kbId;
 
     /**
+     * 本次分块持有的文档版本
+     */
+    private String documentVersion;
+
+    /**
      * 操作人
      */
     private String operator;

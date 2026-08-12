@@ -191,6 +191,7 @@ CREATE TABLE t_knowledge_document (
     file_size        BIGINT,
     process_mode     VARCHAR(16)   DEFAULT 'chunk',
     status           VARCHAR(16)   NOT NULL DEFAULT 'pending',
+    document_version VARCHAR(20)   NOT NULL,
     source_type      VARCHAR(16),
     source_location  VARCHAR(1024),
     schedule_enabled SMALLINT,
@@ -600,7 +601,8 @@ COMMENT ON COLUMN t_knowledge_document.file_type IS '文件类型';
 COMMENT ON COLUMN t_knowledge_document.mime_type IS '真实MIME类型';
 COMMENT ON COLUMN t_knowledge_document.file_size IS '文件大小（字节）';
 COMMENT ON COLUMN t_knowledge_document.process_mode IS '处理模式：chunk/pipeline';
-COMMENT ON COLUMN t_knowledge_document.status IS '状态：pending/running/success/failed';
+COMMENT ON COLUMN t_knowledge_document.status IS '状态：pending/running/failed/success/deleting';
+COMMENT ON COLUMN t_knowledge_document.document_version IS '当前文档操作版本及写入 fencing token';
 COMMENT ON COLUMN t_knowledge_document.source_type IS '来源类型：file/url';
 COMMENT ON COLUMN t_knowledge_document.source_location IS '来源地址';
 COMMENT ON COLUMN t_knowledge_document.schedule_enabled IS '是否启用定时刷新';

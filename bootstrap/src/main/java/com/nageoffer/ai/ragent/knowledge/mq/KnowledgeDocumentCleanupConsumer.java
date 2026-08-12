@@ -19,10 +19,10 @@ package com.nageoffer.ai.ragent.knowledge.mq;
 
 import com.nageoffer.ai.ragent.framework.exception.ServiceException;
 import com.nageoffer.ai.ragent.framework.mq.MessageWrapper;
-import com.nageoffer.ai.ragent.knowledge.mq.event.KnowledgeBaseCleanupEvent;
+import com.nageoffer.ai.ragent.knowledge.mq.event.KnowledgeDocumentCleanupEvent;
 import com.nageoffer.ai.ragent.rag.core.graph.LightRagClient;
 import com.nageoffer.ai.ragent.rag.core.keyword.KeywordIndexService;
-import com.nageoffer.ai.ragent.rag.core.vector.VectorStoreAdmin;
+import com.nageoffer.ai.ragent.rag.core.vector.VectorStoreService;
 import com.nageoffer.ai.ragent.rag.service.FileStorageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -30,78 +30,76 @@ import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 /**
- * 知识库删除清理 MQ 消费者
- * 负责异步回收知识库独占的底层物理资源：向量数据、bucket、ES 关键词索引、知识图谱数据
+ * 文档删除清理消费者
  * <p>
- * 各清理项 best-effort 互不影响，存在失败项则抛异常触发重试；所有操作均幂等，重试安全
+ * 每个外部资源独立尝试，全部尝试结束后只要存在真实失败就抛错触发 MQ 重试。所有删除操作均须幂等
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 @RocketMQMessageListener(
-        topic = "knowledge-base-cleanup_topic${unique-name:}",
-        consumerGroup = "knowledge-base-cleanup_cg${unique-name:}"
+        topic = "knowledge-document-cleanup_topic${unique-name:}",
+        consumerGroup = "knowledge-document-cleanup_cg${unique-name:}"
 )
-public class KnowledgeBaseCleanupConsumer implements RocketMQListener<MessageWrapper<KnowledgeBaseCleanupEvent>> {
+public class KnowledgeDocumentCleanupConsumer
+        implements RocketMQListener<MessageWrapper<KnowledgeDocumentCleanupEvent>> {
 
-    private final VectorStoreAdmin vectorStoreAdmin;
+    private final VectorStoreService vectorStoreService;
     private final FileStorageService fileStorageService;
-    /**
-     * 关键词索引实现惰性解析：rag.keyword.type=none 时无该 bean，getIfAvailable() 返回 null 即跳过 ES 清理
-     */
     private final ObjectProvider<KeywordIndexService> keywordIndexServiceProvider;
-    /**
-     * 图谱客户端惰性解析：rag.graph.type=none 时无该 bean，getIfAvailable() 返回 null 即跳过图谱清理
-     */
     private final ObjectProvider<LightRagClient> lightRagClientProvider;
 
     @Override
-    public void onMessage(MessageWrapper<KnowledgeBaseCleanupEvent> message) {
-        KnowledgeBaseCleanupEvent event = message.getBody();
+    public void onMessage(MessageWrapper<KnowledgeDocumentCleanupEvent> message) {
+        KnowledgeDocumentCleanupEvent event = message.getBody();
+        String docId = event.getDocId();
         String collectionName = event.getCollectionName();
 
-        log.info("[消费者] 开始清理知识库物理资源，kbId={}, collectionName={}", event.getKbId(), collectionName);
-
+        log.info("[消费者] 开始清理文档外部资源，docId={}, collectionName={}", docId, collectionName);
         boolean allSucceeded = true;
 
         try {
-            vectorStoreAdmin.dropVectorSpace(collectionName);
+            // 此阶段仅会让外部向量数据库 Milvus 执行清理(若使用)
+            vectorStoreService.deleteDocumentVectorsAfterCommit(collectionName, docId);
         } catch (Exception e) {
             allSucceeded = false;
-            log.error("清理向量空间失败，collectionName={}", collectionName, e);
-        }
-
-        try {
-            fileStorageService.deleteKnowledgeSpace(collectionName);
-        } catch (Exception e) {
-            allSucceeded = false;
-            log.error("删除知识库存储目录失败，namespace={}", collectionName, e);
+            log.error("删除文档主向量失败，collectionName={}, docId={}", collectionName, docId, e);
         }
 
         KeywordIndexService keywordIndexService = keywordIndexServiceProvider.getIfAvailable();
         if (keywordIndexService != null) {
             try {
-                keywordIndexService.deleteByCollection(collectionName);
+                keywordIndexService.deleteDocumentIndex(collectionName, docId);
             } catch (Exception e) {
                 allSucceeded = false;
-                log.error("删除 ES 关键词索引失败，collectionName={}", collectionName, e);
+                log.error("删除文档 ES 索引失败，collectionName={}, docId={}", collectionName, docId, e);
             }
         }
 
         LightRagClient lightRagClient = lightRagClientProvider.getIfAvailable();
         if (lightRagClient != null) {
             try {
-                lightRagClient.deleteByCollectionOrThrow(collectionName);
+                lightRagClient.deleteByDocOrThrow(docId);
             } catch (Exception e) {
                 allSucceeded = false;
-                log.error("删除 LightRAG 图谱数据失败，collectionName={}", collectionName, e);
+                log.error("删除文档 LightRAG 数据失败，docId={}", docId, e);
+            }
+        }
+
+        if (StringUtils.hasText(event.getFileUrl())) {
+            try {
+                fileStorageService.deleteByUrl(event.getFileUrl());
+            } catch (Exception e) {
+                allSucceeded = false;
+                log.error("删除文档对象文件失败，docId={}, fileUrl={}", docId, event.getFileUrl(), e);
             }
         }
 
         if (!allSucceeded) {
-            throw new ServiceException("知识库物理资源清理存在失败项，触发重试");
+            throw new ServiceException("文档外部资源清理存在失败项，触发重试");
         }
     }
 }

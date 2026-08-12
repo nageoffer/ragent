@@ -53,6 +53,20 @@ public interface VectorStoreService {
     void deleteDocumentVectors(String collectionName, String docId);
 
     /**
+     * 在文档删除的数据库事务内清理主向量存储
+     * <p>
+     * PgVector 与业务表使用同一数据源，应在此执行；外部向量存储在此阶段必须为空操作
+     */
+    void deleteDocumentVectorsInTransaction(String collectionName, String docId);
+
+    /**
+     * 文档删除事务提交后清理外部主向量存储
+     * <p>
+     * Milvus 在此执行；PgVector 已在本地事务完成，应为空操作
+     */
+    void deleteDocumentVectorsAfterCommit(String collectionName, String docId);
+
+    /**
      * 删除指定的单个 chunk 向量索引
      *
      * @param collectionName 向量空间名称（知识库 collectionName）

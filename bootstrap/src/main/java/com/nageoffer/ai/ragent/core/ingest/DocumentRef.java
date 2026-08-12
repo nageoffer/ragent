@@ -25,8 +25,9 @@ package com.nageoffer.ai.ragent.core.ingest;
  * @param docId    文档 ID，决定资产归属与落库归属
  * @param kbId     所属知识库 ID，决定关系库归属
  * @param filename 原始文件名，供类型识别与溯源，可为空（删除路径不需要）
+ * @param documentVersion 当前操作持有的文档版本
  */
-public record DocumentRef(String docId, String kbId, String filename) {
+public record DocumentRef(String docId, String kbId, String filename, String documentVersion) {
 
     public DocumentRef {
         if (docId == null || docId.isBlank()) {
@@ -35,12 +36,15 @@ public record DocumentRef(String docId, String kbId, String filename) {
         if (kbId == null || kbId.isBlank()) {
             throw new IllegalArgumentException("kbId 不能为空，docId=" + docId);
         }
+        if (documentVersion == null || documentVersion.isBlank()) {
+            throw new IllegalArgumentException("documentVersion 不能为空，docId=" + docId);
+        }
     }
 
     /**
      * 删除路径用：不需要文件名
      */
-    public static DocumentRef of(String docId, String kbId) {
-        return new DocumentRef(docId, kbId, null);
+    public static DocumentRef of(String docId, String kbId, String documentVersion) {
+        return new DocumentRef(docId, kbId, null, documentVersion);
     }
 }

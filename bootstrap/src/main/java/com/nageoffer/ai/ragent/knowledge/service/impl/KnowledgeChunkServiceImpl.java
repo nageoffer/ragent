@@ -20,8 +20,6 @@ package com.nageoffer.ai.ragent.knowledge.service.impl;
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.lang.Assert;
-import cn.hutool.core.util.IdUtil;
-import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
@@ -52,6 +50,7 @@ import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.framework.exception.ServiceException;
 import com.nageoffer.ai.ragent.infra.token.TokenCounterService;
 import com.nageoffer.ai.ragent.knowledge.enums.DocumentStatus;
+import com.nageoffer.ai.ragent.knowledge.schedule.DocumentStatusHelper;
 import com.nageoffer.ai.ragent.rag.core.vector.VectorStoreService;
 import com.nageoffer.ai.ragent.knowledge.service.KnowledgeChunkService;
 import lombok.RequiredArgsConstructor;
@@ -83,6 +82,7 @@ public class KnowledgeChunkServiceImpl implements KnowledgeChunkService {
     private final VectorStoreService vectorStoreService;
     private final TransactionOperations transactionOperations;
     private final BizChangeLogContext bizChangeLogContext;
+    private final DocumentStatusHelper documentStatusHelper;
 
     @Override
     public IPage<KnowledgeChunkVO> pageQuery(String docId, KnowledgeChunkPageRequest requestParam) {
@@ -139,6 +139,8 @@ public class KnowledgeChunkServiceImpl implements KnowledgeChunkService {
         String embeddingModel = kbDO.getEmbeddingModel();
         String collectionName = kbDO.getCollectionName();
         Integer tokenCount = resolveTokenCount(content);
+        // 避免 Chunk 新增和分块等操作并发导致错误
+        claimDocumentMutation(documentDO, "新增 Chunk");
 
         KnowledgeChunkDO chunkDO = KnowledgeChunkDO.builder()
                 .id(requestParam.getChunkId())
@@ -200,6 +202,7 @@ public class KnowledgeChunkServiceImpl implements KnowledgeChunkService {
             bizChangeLogContext.skip();
             return;
         }
+        claimDocumentMutation(documentDO, "修改 Chunk");
 
         chunkDO.setContent(newContent);
         chunkDO.setContentHash(SecureUtil.sha256(newContent));
@@ -244,6 +247,7 @@ public class KnowledgeChunkServiceImpl implements KnowledgeChunkService {
         Assert.notNull(chunkDO, () -> new ClientException("Chunk 不存在"));
         Assert.isTrue(chunkDO.getDocId().equals(docId), () -> new ClientException("Chunk 不属于该文档"));
         KnowledgeChunkDO before = BeanUtil.copyProperties(chunkDO, KnowledgeChunkDO.class);
+        claimDocumentMutation(documentDO, "删除 Chunk");
 
         KnowledgeBaseDO kbDO = knowledgeBaseMapper.selectById(documentDO.getKbId());
         Assert.notNull(kbDO, () -> new ServiceException("知识库不存在"));
@@ -291,6 +295,7 @@ public class KnowledgeChunkServiceImpl implements KnowledgeChunkService {
             bizChangeLogContext.skip();
             return;
         }
+        claimDocumentMutation(documentDO, "修改 Chunk 状态");
 
         chunkDO.setEnabled(enabledValue);
         chunkDO.setUpdatedBy(UserContext.getUsername());
@@ -373,6 +378,7 @@ public class KnowledgeChunkServiceImpl implements KnowledgeChunkService {
             List<EmbeddedChunk> vectorChunks = embedPersisted(needUpdateChunks, vectorTargetResolver.resolve(kbDO));
 
             transactionOperations.executeWithoutResult(status -> {
+                claimDocumentMutation(documentDO, "批量修改 Chunk 状态");
                 chunkMapper.update(
                         Wrappers.lambdaUpdate(KnowledgeChunkDO.class)
                                 .in(KnowledgeChunkDO::getId, needUpdateIds)
@@ -383,6 +389,7 @@ public class KnowledgeChunkServiceImpl implements KnowledgeChunkService {
             });
         } else {
             transactionOperations.executeWithoutResult(status -> {
+                claimDocumentMutation(documentDO, "批量修改 Chunk 状态");
                 chunkMapper.update(
                         Wrappers.lambdaUpdate(KnowledgeChunkDO.class)
                                 .in(KnowledgeChunkDO::getId, needUpdateIds)
@@ -427,15 +434,6 @@ public class KnowledgeChunkServiceImpl implements KnowledgeChunkService {
         return embedPersisted(chunkDOList, target);
     }
 
-    @Override
-    @Transactional(rollbackFor = Exception.class)
-    public void deleteByDocId(String docId) {
-        if (docId == null) {
-            return;
-        }
-        chunkMapper.delete(new LambdaQueryWrapper<KnowledgeChunkDO>().eq(KnowledgeChunkDO::getDocId, docId));
-    }
-
     // ==================== 私有方法 ====================
 
     /**
@@ -448,6 +446,16 @@ public class KnowledgeChunkServiceImpl implements KnowledgeChunkService {
         if (!Integer.valueOf(1).equals(documentDO.getEnabled())) {
             throw new ClientException("文档未启用，无法启用Chunk，请先启用文档");
         }
+    }
+
+    private void claimDocumentMutation(KnowledgeDocumentDO documentDO, String operation) {
+        String oldVersion = documentDO.getDocumentVersion();
+        String newVersion = documentStatusHelper.nextVersion();
+        if (!documentStatusHelper.advanceStableVersion(
+                documentDO.getId(), oldVersion, newVersion, UserContext.getUsername())) {
+            throw new ClientException("文档状态或版本已变更，无法" + operation);
+        }
+        documentDO.setDocumentVersion(newVersion);
     }
 
     /**

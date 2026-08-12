@@ -68,6 +68,16 @@ public class PgVectorStoreService implements VectorStoreService {
     }
 
     @Override
+    public void deleteDocumentVectorsInTransaction(String collectionName, String docId) {
+        deleteDocumentVectors(collectionName, docId);
+    }
+
+    @Override
+    public void deleteDocumentVectorsAfterCommit(String collectionName, String docId) {
+        // PgVector 与业务表同库，已在本地事务中原子删除
+    }
+
+    @Override
     public void deleteChunkById(String collectionName, String chunkId) {
         // noinspection SqlDialectInspection,SqlNoDataSourceInspection
         jdbcTemplate.update("DELETE FROM t_knowledge_vector WHERE id = ?", chunkId);

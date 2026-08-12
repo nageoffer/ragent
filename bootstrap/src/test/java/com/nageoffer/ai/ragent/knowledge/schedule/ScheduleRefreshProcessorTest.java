@@ -107,6 +107,7 @@ class ScheduleRefreshProcessorTest {
         when(lockManager.release(lease)).thenReturn(true);
     }
 
+    // 验证心跳无法启动时释放已领取的调度锁
     @Test
     void shouldReleaseLeaseWhenHeartbeatCannotStart() {
         when(lockManager.startHeartbeat(lease)).thenThrow(new RuntimeException("heartbeat rejected"));
@@ -117,6 +118,7 @@ class ScheduleRefreshProcessorTest {
         verifyNoInteractions(scheduleMapper, documentMapper, kbMapper, execMapper, remoteFileFetcher, documentService, documentStatusHelper, stateManager);
     }
 
+    // 验证远程文件未变化时跳过刷新且不领取文档运行权
     @Test
     void shouldMarkSkippedWhenRemoteFileUnchanged() {
         KnowledgeDocumentScheduleDO schedule = schedule();
@@ -147,6 +149,7 @@ class ScheduleRefreshProcessorTest {
         verify(lockManager).release(lease);
     }
 
+    // 验证分块未完成时删除本次上传的新文件
     @Test
     void shouldDeleteUploadedFileWhenChunkDoesNotComplete() throws IOException {
         KnowledgeDocumentScheduleDO schedule = schedule();
@@ -161,7 +164,7 @@ class ScheduleRefreshProcessorTest {
         when(documentMapper.selectById("doc-1")).thenReturn(document, runtimeDoc, latestDoc);
         mockExecInsert();
         when(remoteFileFetcher.fetchIfChanged(anyString(), anyString(), anyString(), anyString(), anyString())).thenReturn(fetchResult);
-        when(documentStatusHelper.tryMarkRunning("doc-1")).thenReturn(true);
+        when(documentStatusHelper.tryMarkRunning("doc-1", "version-1")).thenReturn("owner-version");
         when(kbMapper.selectById("kb-1")).thenReturn(kb);
         when(fileStorageService.upload(eq("kb-collection"), any(InputStream.class), anyLong(), eq("remote.pdf"), eq("application/pdf")))
                 .thenReturn(stored);
@@ -171,11 +174,11 @@ class ScheduleRefreshProcessorTest {
 
         verify(documentService).chunkDocument(any(KnowledgeDocumentDO.class));
         verify(stateManager).markFailedIfOwned(eq(lease), any(ScheduleStateContext.class), eq("分块失败"));
-        verify(documentStatusHelper, never()).applyRefreshedFileMetadata(anyString(), any(StoredFileDTO.class));
-        verify(documentStatusHelper, never()).markFailedIfRunning(anyString());
+        verify(documentStatusHelper, never()).markFailedIfRunning(anyString(), anyString());
         verify(fileStorageService).deleteByUrl("https://new-file");
     }
 
+    // 验证分块开始前丢失调度锁时仅按 ownerVersion 写回失败
     @Test
     void shouldRecoverRunningStatusWhenLeaseLostBeforeChunkStarts() throws IOException {
         KnowledgeDocumentScheduleDO schedule = schedule();
@@ -190,7 +193,7 @@ class ScheduleRefreshProcessorTest {
         when(documentMapper.selectById("doc-1")).thenReturn(document, runtimeDoc);
         mockExecInsert();
         when(remoteFileFetcher.fetchIfChanged(anyString(), anyString(), anyString(), anyString(), anyString())).thenReturn(fetchResult);
-        when(documentStatusHelper.tryMarkRunning("doc-1")).thenReturn(true);
+        when(documentStatusHelper.tryMarkRunning("doc-1", "version-1")).thenReturn("owner-version");
         when(kbMapper.selectById("kb-1")).thenReturn(kb);
         when(fileStorageService.upload(eq("kb-collection"), any(InputStream.class), anyLong(), eq("remote.pdf"), eq("application/pdf")))
                 .thenReturn(stored);
@@ -198,11 +201,12 @@ class ScheduleRefreshProcessorTest {
         processor.process(lease);
 
         verify(stateManager).markLeaseLost(any(ScheduleStateContext.class), eq("执行文档分块"));
-        verify(documentStatusHelper).markFailedIfRunning("doc-1");
+        verify(documentStatusHelper).markFailedIfRunning("doc-1", "owner-version");
         verify(documentService, never()).chunkDocument(any(KnowledgeDocumentDO.class));
         verify(fileStorageService).deleteByUrl("https://new-file");
     }
 
+    // 验证文件切换完成后调度状态写回失败只修正执行记录
     @Test
     void shouldMarkExecSuccessOnlyWhenStateWriteFailsAfterFileSwitch() throws IOException {
         KnowledgeDocumentScheduleDO schedule = schedule();
@@ -217,17 +221,15 @@ class ScheduleRefreshProcessorTest {
         when(documentMapper.selectById("doc-1")).thenReturn(document, runtimeDoc, latestDoc);
         mockExecInsert();
         when(remoteFileFetcher.fetchIfChanged(anyString(), anyString(), anyString(), anyString(), anyString())).thenReturn(fetchResult);
-        when(documentStatusHelper.tryMarkRunning("doc-1")).thenReturn(true);
+        when(documentStatusHelper.tryMarkRunning("doc-1", "version-1")).thenReturn("owner-version");
         when(kbMapper.selectById("kb-1")).thenReturn(kb);
         when(fileStorageService.upload(eq("kb-collection"), any(InputStream.class), anyLong(), eq("remote.pdf"), eq("application/pdf")))
                 .thenReturn(stored);
-        doNothing().when(documentStatusHelper).applyRefreshedFileMetadata("doc-1", stored);
         when(stateManager.markSuccessIfOwned(eq(lease), any(ScheduleStateContext.class), same(fetchResult), same(stored)))
                 .thenThrow(new RuntimeException("boom"));
 
         processor.process(lease);
 
-        verify(documentStatusHelper).applyRefreshedFileMetadata("doc-1", stored);
         verify(stateManager).markSuccessExecOnly(
                 any(ScheduleStateContext.class),
                 same(stored),
@@ -236,7 +238,7 @@ class ScheduleRefreshProcessorTest {
                 eq("last-modified-1"),
                 eq("刷新成功（调度状态写回失败）")
         );
-        verify(documentStatusHelper, never()).markFailedIfRunning(anyString());
+        verify(documentStatusHelper, never()).markFailedIfRunning(anyString(), anyString());
         verify(fileStorageService).deleteByUrl("https://old-file");
     }
 
@@ -271,6 +273,7 @@ class ScheduleRefreshProcessorTest {
                 .enabled(1)
                 .deleted(0)
                 .status(status)
+                .documentVersion("version-1")
                 .fileUrl(fileUrl)
                 .build();
     }

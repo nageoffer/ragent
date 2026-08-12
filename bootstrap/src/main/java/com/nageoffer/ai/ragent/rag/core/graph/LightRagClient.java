@@ -45,7 +45,7 @@ import java.util.function.Predicate;
  * LightRAG 微服务 HTTP 客户端
  * <p>
  * 封装对 LightRAG server（默认 :9621）的调用：检索取上下文、文档写入
- * 仅当 rag.graph.type=lightrag 时注册；任何调用失败都降级（检索返回空、写入记 warn），绝不阻断主链路
+ * 仅当 rag.graph.type=lightrag 时注册；检索与普通摄取失败会降级，清理失败则向上抛出以支持 MQ 重试
  * <p>
  * 重要：LightRAG /query 无 per-request workspace 参数——workspace 为实例级（由服务端 env 固定）
  * 故单实例即单图，KB 归属只能在结果侧按 file_path 判定（见 retrieveByScope）；真正的子图隔离需多实例，属后续阶段
@@ -220,6 +220,16 @@ public class LightRagClient {
     }
 
     /**
+     * 删除某文档的图谱数据，失败向上抛出，供可靠清理消费者触发重试
+     */
+    public void deleteByDocOrThrow(String docId) {
+        if (StrUtil.isBlank(docId)) {
+            return;
+        }
+        deleteMatchingOrThrow(filePath -> filePath.contains(docId), "docId=" + docId);
+    }
+
+    /**
      * 删除某知识库的全部图谱数据
      * <p>
      * 按 {@link GraphFileSource#parse} 解析出的库名等值匹配：库名可互为前缀（kb 与 kb_hr 合法共存），
@@ -230,6 +240,19 @@ public class LightRagClient {
             return;
         }
         deleteMatching(filePath -> {
+            GraphFileSource source = GraphFileSource.parse(filePath);
+            return source != null && collectionName.equals(source.collectionName());
+        }, "collection=" + collectionName);
+    }
+
+    /**
+     * 删除某知识库的全部图谱数据，失败向上抛出，供可靠清理消费者触发重试
+     */
+    public void deleteByCollectionOrThrow(String collectionName) {
+        if (StrUtil.isBlank(collectionName)) {
+            return;
+        }
+        deleteMatchingOrThrow(filePath -> {
             GraphFileSource source = GraphFileSource.parse(filePath);
             return source != null && collectionName.equals(source.collectionName());
         }, "collection=" + collectionName);
@@ -247,23 +270,7 @@ public class LightRagClient {
             if (docs == null) {
                 return;
             }
-            List<String> docIds = new ArrayList<>();
-            JsonNode statuses = docs.path("statuses");
-            if (statuses.isObject()) {
-                statuses.forEach(group -> {
-                    if (group.isArray()) {
-                        for (JsonNode d : group) {
-                            String filePath = d.path("file_path").asText("");
-                            if (StrUtil.isNotBlank(filePath) && filePathMatch.test(filePath)) {
-                                String id = d.path("id").asText("");
-                                if (StrUtil.isNotBlank(id)) {
-                                    docIds.add(id);
-                                }
-                            }
-                        }
-                    }
-                });
-            }
+            List<String> docIds = matchingDocIds(docs, filePathMatch);
             if (docIds.isEmpty()) {
                 return;
             }
@@ -273,6 +280,48 @@ public class LightRagClient {
         } catch (Exception e) {
             log.warn("LightRAG 文档删除失败 {}: {}", logKey, e.getMessage());
         }
+    }
+
+    /**
+     * 可靠清理版本：非 2xx 与调用异常均向上抛出，交由 MQ 重试
+     */
+    private void deleteMatchingOrThrow(Predicate<String> filePathMatch, String logKey) {
+        try {
+            JsonNode docs = getForCleanup("/documents");
+            if (docs == null) {
+                return;
+            }
+            List<String> docIds = matchingDocIds(docs, filePathMatch);
+            if (docIds.isEmpty()) {
+                return;
+            }
+            ObjectNode body = objectMapper.createObjectNode();
+            body.set("doc_ids", objectMapper.valueToTree(docIds));
+            deleteForCleanup("/documents/delete_document", body);
+        } catch (Exception e) {
+            throw new IllegalStateException("LightRAG 文档删除失败 " + logKey, e);
+        }
+    }
+
+    private List<String> matchingDocIds(JsonNode docs, Predicate<String> filePathMatch) {
+        List<String> docIds = new ArrayList<>();
+        JsonNode statuses = docs.path("statuses");
+        if (statuses.isObject()) {
+            statuses.forEach(group -> {
+                if (group.isArray()) {
+                    for (JsonNode document : group) {
+                        String filePath = document.path("file_path").asText("");
+                        if (StrUtil.isNotBlank(filePath) && filePathMatch.test(filePath)) {
+                            String id = document.path("id").asText("");
+                            if (StrUtil.isNotBlank(id)) {
+                                docIds.add(id);
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        return docIds;
     }
 
     /**
@@ -303,6 +352,15 @@ public class LightRagClient {
                 .delete(RequestBody.create(objectMapper.writeValueAsString(body), JSON))), path);
     }
 
+    private JsonNode getForCleanup(String path) throws Exception {
+        return executeForCleanup(auth(new Request.Builder().url(url(path)).get()), path);
+    }
+
+    private JsonNode deleteForCleanup(String path, JsonNode body) throws Exception {
+        return executeForCleanup(auth(new Request.Builder().url(url(path))
+                .delete(RequestBody.create(objectMapper.writeValueAsString(body), JSON))), path);
+    }
+
     private String url(String path) {
         return StrUtil.removeSuffix(properties.getLightrag().getBaseUrl(), "/") + path;
     }
@@ -330,6 +388,19 @@ public class LightRagClient {
             if (!response.isSuccessful()) {
                 log.warn("LightRAG 请求失败 path={}, code={}", path, response.code());
                 return null;
+            }
+            String bodyStr = response.body() != null ? response.body().string() : "";
+            return StrUtil.isNotBlank(bodyStr) ? objectMapper.readTree(bodyStr) : null;
+        }
+    }
+
+    /**
+     * 清理调用不能把非 2xx 静默降级为 null，否则 MQ 会错误确认并永久留下残留数据
+     */
+    private JsonNode executeForCleanup(Request.Builder builder, String path) throws Exception {
+        try (Response response = httpClient.newCall(builder.build()).execute()) {
+            if (!response.isSuccessful()) {
+                throw new IllegalStateException("LightRAG 请求失败 path=" + path + ", code=" + response.code());
             }
             String bodyStr = response.body() != null ? response.body().string() : "";
             return StrUtil.isNotBlank(bodyStr) ? objectMapper.readTree(bodyStr) : null;

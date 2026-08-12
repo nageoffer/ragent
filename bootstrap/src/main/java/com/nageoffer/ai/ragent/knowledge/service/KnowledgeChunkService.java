@@ -108,10 +108,4 @@ public interface KnowledgeChunkService {
      */
     List<EmbeddedChunk> embedPersistedChunks(String docId, VectorTarget target);
 
-    /**
-     * 删除指定文档的所有分片
-     *
-     * @param docId 文档 ID
-     */
-    void deleteByDocId(String docId);
 }

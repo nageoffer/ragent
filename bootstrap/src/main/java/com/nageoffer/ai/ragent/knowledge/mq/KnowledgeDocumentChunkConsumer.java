@@ -51,7 +51,7 @@ public class KnowledgeDocumentChunkConsumer implements RocketMQListener<MessageW
 
         UserContext.set(LoginUser.builder().username(event.getOperator()).build());
         try {
-            documentService.executeChunk(event.getDocId());
+            documentService.executeChunk(event.getDocId(), event.getDocumentVersion());
         } finally {
             UserContext.clear();
         }

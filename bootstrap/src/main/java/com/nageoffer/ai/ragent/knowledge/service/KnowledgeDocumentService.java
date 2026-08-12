@@ -53,11 +53,12 @@ public interface KnowledgeDocumentService {
 
     /**
      * 执行文档分块（由 MQ 消费者调用）
-     * 获取分布式锁 → 清理历史分块和向量 → 执行完整分块流程
+     * 校验状态与版本 → 解析和向量化 → 持行锁替换全部索引
      *
      * @param docId 文档 ID
+     * @param documentVersion MQ 任务持有的文档版本
      */
-    void executeChunk(String docId);
+    void executeChunk(String docId, String documentVersion);
 
     /**
      * 删除文档

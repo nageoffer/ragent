@@ -17,22 +17,23 @@
 
 package com.nageoffer.ai.ragent.knowledge.dao.mapper;
 
-import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import com.nageoffer.ai.ragent.knowledge.dao.entity.KnowledgeDocumentDO;
-import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+import org.junit.jupiter.api.Test;
 
-public interface KnowledgeDocumentMapper extends BaseMapper<KnowledgeDocumentDO> {
+import java.lang.reflect.Method;
+import java.util.Locale;
 
-    @Select("""
-            SELECT *
-            FROM t_knowledge_document
-            WHERE id = #{docId}
-              AND deleted = 0
-              AND status = 'running'
-              AND document_version = #{ownerVersion}
-            FOR UPDATE
-            """)
-    KnowledgeDocumentDO selectRunningForUpdate(@Param("docId") String docId,
-                                                @Param("ownerVersion") String ownerVersion);
+import static org.assertj.core.api.Assertions.assertThat;
+
+class KnowledgeDocumentMapperSqlTest {
+
+    // 验证写入锁 SQL 同时检查 deleted、status、document_version 并使用 FOR UPDATE
+    @Test
+    void writeFenceSqlContainsAllOwnershipPredicates() throws Exception {
+        Method method = KnowledgeDocumentMapper.class.getMethod(
+                "selectRunningForUpdate", String.class, String.class);
+        String sql = String.join(" ", method.getAnnotation(Select.class).value()).toLowerCase(Locale.ROOT);
+
+        assertThat(sql).contains("deleted = 0", "status = 'running'", "document_version", "for update");
+    }
 }

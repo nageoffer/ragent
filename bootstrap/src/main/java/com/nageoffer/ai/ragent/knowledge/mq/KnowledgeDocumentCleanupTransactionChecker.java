@@ -23,8 +23,7 @@ import com.nageoffer.ai.ragent.framework.mq.producer.DelegatingTransactionListen
 import com.nageoffer.ai.ragent.framework.mq.producer.TransactionChecker;
 import com.nageoffer.ai.ragent.knowledge.dao.entity.KnowledgeDocumentDO;
 import com.nageoffer.ai.ragent.knowledge.dao.mapper.KnowledgeDocumentMapper;
-import com.nageoffer.ai.ragent.knowledge.enums.DocumentStatus;
-import com.nageoffer.ai.ragent.knowledge.mq.event.KnowledgeDocumentChunkEvent;
+import com.nageoffer.ai.ragent.knowledge.mq.event.KnowledgeDocumentCleanupEvent;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,37 +31,33 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 /**
- * 文档分块事务消息回查器
+ * 文档删除清理事务消息回查器
  * <p>
- * 按 topic 注册，Broker 回查时可路由到任意实例，通过查询 DB 中文档状态判断本地事务是否已提交
+ * 只以文档是否已逻辑删除作为本地事务提交凭据
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class KnowledgeDocumentChunkTransactionChecker implements TransactionChecker {
+public class KnowledgeDocumentCleanupTransactionChecker implements TransactionChecker {
 
     private final KnowledgeDocumentMapper documentMapper;
     private final DelegatingTransactionListener transactionListener;
 
-    @Value("knowledge-document-chunk_topic${unique-name:}")
-    private String chunkTopic;
+    @Value("knowledge-document-cleanup_topic${unique-name:}")
+    private String cleanupTopic;
 
     @PostConstruct
     public void init() {
-        transactionListener.registerChecker(chunkTopic, this);
+        transactionListener.registerChecker(cleanupTopic, this);
     }
 
     @Override
     public boolean check(MessageWrapper<?> message) {
-        log.info("[事务回查] 文档分块，消息体：{}", JSONUtil.toJsonStr(message));
+        log.info("[事务回查] 文档删除清理，消息体：{}", JSONUtil.toJsonStr(message));
 
-        KnowledgeDocumentChunkEvent event = (KnowledgeDocumentChunkEvent) message.getBody();
-        String docId = event.getDocId();
-        KnowledgeDocumentDO documentDO = documentMapper.selectById(docId);
-
-        return documentDO != null
-                && DocumentStatus.RUNNING.getCode().equals(documentDO.getStatus())
-                && event.getDocumentVersion() != null
-                && event.getDocumentVersion().equals(documentDO.getDocumentVersion());
+        KnowledgeDocumentCleanupEvent event = (KnowledgeDocumentCleanupEvent) message.getBody();
+        // @TableLogic 会让已删除行对 selectById 不可见,删除事务消息只会在确认文档存在后发送
+        KnowledgeDocumentDO document = documentMapper.selectById(event.getDocId());
+        return document == null || Integer.valueOf(1).equals(document.getDeleted());
     }
 }

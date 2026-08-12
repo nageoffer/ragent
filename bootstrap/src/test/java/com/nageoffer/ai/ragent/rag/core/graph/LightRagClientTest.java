@@ -36,7 +36,9 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class LightRagClientTest {
@@ -134,6 +136,22 @@ class LightRagClientTest {
         RecordedRequest deleteRequest = server.takeRequest(2, TimeUnit.SECONDS);
         assertNotNull(deleteRequest, "删除请求应照常发出，不被 200ms 检索预算掐断");
         assertEquals(List.of("doc-kb"), docIdsOf(deleteRequest));
+    }
+
+    @Test
+    @DisplayName("删除失败向上抛出以便清理消息重试")
+    void deletionFailureIsPropagated() {
+        server.enqueue(new MockResponse().setResponseCode(503));
+
+        assertThrows(IllegalStateException.class, () -> client.deleteByDocOrThrow("doc-1"));
+    }
+
+    @Test
+    @DisplayName("原删除方法继续保持 best-effort")
+    void originalDeletionMethodStillSwallowsFailure() {
+        server.enqueue(new MockResponse().setResponseCode(503));
+
+        assertDoesNotThrow(() -> client.deleteByDoc("doc-1"));
     }
 
     @Test

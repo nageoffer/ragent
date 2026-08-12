@@ -17,6 +17,8 @@
 
 package com.nageoffer.ai.ragent.core.ingest;
 
+import java.util.function.BiConsumer;
+
 /**
  * 摄取内核：固定五步骨架，调用方不可跳过、不可换序、不可替换
  * <pre>
@@ -42,5 +44,7 @@ public interface IngestionKernel {
     IngestionOutcome run(DocumentRef doc,
                          byte[] bytes,
                          IngestionSpec spec,
-                         VectorTarget target);
+                         VectorTarget target,
+                         Runnable beforeWrite,
+                         BiConsumer<String, Integer> beforeCommit);
 }

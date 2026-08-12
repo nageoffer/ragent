@@ -18,9 +18,11 @@
 package com.nageoffer.ai.ragent.framework.mq.producer;
 
 import cn.hutool.core.util.StrUtil;
+import com.nageoffer.ai.ragent.framework.exception.ServiceException;
 import com.nageoffer.ai.ragent.framework.mq.MessageWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.client.producer.LocalTransactionState;
 import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.client.producer.SendStatus;
 import org.apache.rocketmq.client.producer.TransactionSendResult;
@@ -86,8 +88,12 @@ public class RocketMQProducerAdapter implements MessageQueueProducer {
             log.error("[生产者] {} - 事务消息发送失败，topic: {}, keys: {}", bizDesc, topic, keys, ex);
             throw ex;
         }
-        if (sendResult.getSendStatus() != SendStatus.SEND_OK) {
+        if (sendResult.getSendStatus() != SendStatus.SEND_OK
+                || sendResult.getLocalTransactionState() != LocalTransactionState.COMMIT_MESSAGE) {
             transactionListener.unregisterLocalTransaction(txId);
+            throw new ServiceException(String.format(
+                    "%s - 事务消息发送失败，发送结果: %s，本地事务状态: %s",
+                    bizDesc, sendResult.getSendStatus(), sendResult.getLocalTransactionState()));
         }
 
         log.info("[生产者] {} - 事务消息发送结果: {}, 本地事务状态: {}, 消息ID: {}, Keys: {}",

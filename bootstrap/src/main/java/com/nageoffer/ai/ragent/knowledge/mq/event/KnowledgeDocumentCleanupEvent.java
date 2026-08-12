@@ -15,47 +15,33 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.knowledge.enums;
+package com.nageoffer.ai.ragent.knowledge.mq.event;
 
-import lombok.Getter;
-import lombok.RequiredArgsConstructor;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.io.Serial;
+import java.io.Serializable;
 
 /**
- * 文档处理状态枚举
- *
- * <p>表示文档在处理过程中可能处于的各种状态
+ * 文档删除后的外部资源清理事件
+ * <p>
+ * 文档 ID 永不复用，逻辑删除不可恢复，因此不可变资源标识足以支持幂等重试，无需携带操作版本
  */
-@Getter
-@RequiredArgsConstructor
-public enum DocumentStatus {
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class KnowledgeDocumentCleanupEvent implements Serializable {
 
-    /**
-     * 文档待处理
-     */
-    PENDING("pending"),
+    @Serial
+    private static final long serialVersionUID = 1L;
 
-    /**
-     * 文档处理中
-     */
-    RUNNING("running"),
+    private String docId;
 
-    /**
-     * 文档处理失败
-     */
-    FAILED("failed"),
+    private String collectionName;
 
-    /**
-     * 文档处理成功
-     */
-    SUCCESS("success"),
-
-    /**
-     * 文档删除中
-     */
-    DELETING("deleting");
-
-    /**
-     * 状态码
-     */
-    private final String code;
+    private String fileUrl;
 }

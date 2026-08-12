@@ -62,6 +62,16 @@ public class KeywordSyncingVectorStoreService implements VectorStoreService {
     }
 
     @Override
+    public void deleteDocumentVectorsInTransaction(String collectionName, String docId) {
+        delegate.deleteDocumentVectorsInTransaction(collectionName, docId);
+    }
+
+    @Override
+    public void deleteDocumentVectorsAfterCommit(String collectionName, String docId) {
+        delegate.deleteDocumentVectorsAfterCommit(collectionName, docId);
+    }
+
+    @Override
     public void deleteChunkById(String collectionName, String chunkId) {
         delegate.deleteChunkById(collectionName, chunkId);
         syncKeyword(chunkId, () -> keywordIndexService.deleteChunkById(collectionName, chunkId));
