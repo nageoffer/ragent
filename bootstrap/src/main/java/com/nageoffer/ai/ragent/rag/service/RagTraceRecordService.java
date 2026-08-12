@@ -31,6 +31,19 @@ public interface RagTraceRecordService {
 
     void finishRun(String traceId, String status, String errorMessage, Date endTime, long durationMs);
 
+    /**
+     * 将指定任务仍处于 RUNNING 的 trace run 收尾为 CANCELLED
+     * <p>
+     * 取消信号在 provider client 层被拦截（{@code ForwardingStreamCallback} 对外部取消不透传 delegate，
+     * 否则流式 failover 切换候选时会终止用户 SSE），run 级终态无法由回调链驱动，只能按 taskId 单独上报
+     * </p>
+     *
+     * @param taskId  流式任务 ID
+     * @param endTime 取消发生的时间
+     * @return 是否确实有一行由 RUNNING 翻转为 CANCELLED
+     */
+    boolean cancelRunByTaskId(String taskId, Date endTime);
+
     void startNode(RagTraceNodeDO node);
 
     void finishNode(String traceId, String nodeId, String status, String errorMessage, Date endTime, long durationMs);

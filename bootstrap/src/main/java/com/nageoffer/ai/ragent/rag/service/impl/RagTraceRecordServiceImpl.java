@@ -35,6 +35,9 @@ import java.util.Date;
 @RequiredArgsConstructor
 public class RagTraceRecordServiceImpl implements RagTraceRecordService {
 
+    private static final String STATUS_RUNNING = "RUNNING";
+    private static final String STATUS_CANCELLED = "CANCELLED";
+
     private final RagTraceRunMapper runMapper;
     private final RagTraceNodeMapper nodeMapper;
 
@@ -53,6 +56,28 @@ public class RagTraceRecordServiceImpl implements RagTraceRecordService {
                 .build();
         runMapper.update(update, Wrappers.lambdaUpdate(RagTraceRunDO.class)
                 .eq(RagTraceRunDO::getTraceId, traceId));
+    }
+
+    @Override
+    public boolean cancelRunByTaskId(String taskId, Date endTime) {
+        RagTraceRunDO running = runMapper.selectOne(Wrappers.lambdaQuery(RagTraceRunDO.class)
+                .eq(RagTraceRunDO::getTaskId, taskId)
+                .eq(RagTraceRunDO::getStatus, STATUS_RUNNING)
+                .orderByDesc(RagTraceRunDO::getStartTime)
+                .last("LIMIT 1"));
+        if (running == null) {
+            return false;
+        }
+
+        RagTraceRunDO update = RagTraceRunDO.builder()
+                .status(STATUS_CANCELLED)
+                .endTime(endTime)
+                .durationMs(Math.max(0, endTime.getTime() - running.getStartTime().getTime()))
+                .build();
+        // 带 status 的条件更新：与正常终态（onComplete / onError）竞争时只有一方能生效
+        return runMapper.update(update, Wrappers.lambdaUpdate(RagTraceRunDO.class)
+                .eq(RagTraceRunDO::getTraceId, running.getTraceId())
+                .eq(RagTraceRunDO::getStatus, STATUS_RUNNING)) > 0;
     }
 
     @Override

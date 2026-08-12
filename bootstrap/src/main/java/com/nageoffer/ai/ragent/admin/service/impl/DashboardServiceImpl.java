@@ -58,6 +58,7 @@ public class DashboardServiceImpl implements DashboardService {
 
     private static final String STATUS_SUCCESS = "SUCCESS";
     private static final String STATUS_ERROR = "ERROR";
+    private static final String STATUS_CANCELLED = "CANCELLED";
     private static final String ROLE_ASSISTANT = "assistant";
     private static final String NO_DOC_REPLY = "未检索到与问题相关的文档内容。";
     private static final String GRANULARITY_DAY = "day";
@@ -114,7 +115,9 @@ public class DashboardServiceImpl implements DashboardService {
 
         long success = countTraceRuns(range.start, range.end, STATUS_SUCCESS);
         long error = countTraceRuns(range.start, range.end, STATUS_ERROR);
-        long total = success + error;
+        // 被用户取消的会话同样是一次真实请求，必须计入分母，否则「用户等不及点了停止」这一负面信号会被系统性剔除
+        long cancelled = countTraceRuns(range.start, range.end, STATUS_CANCELLED);
+        long total = success + error + cancelled;
         long assistantCount = countAssistantMessages(range.start, range.end);
         long noDocCount = countNoDocMessages(range.start, range.end);
         long slowCount = durations.stream().filter(duration -> duration > SLOW_LATENCY_THRESHOLD_MS).count();
