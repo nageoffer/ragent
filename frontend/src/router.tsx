@@ -21,6 +21,8 @@ import { RagTraceDetailPage } from "@/pages/admin/traces/RagTraceDetailPage";
 import { SystemSettingsPage } from "@/pages/admin/settings/SystemSettingsPage";
 import { SampleQuestionPage } from "@/pages/admin/sample-questions/SampleQuestionPage";
 import { QueryTermMappingPage } from "@/pages/admin/query-term-mapping/QueryTermMappingPage";
+import { AgentProfilePage } from "@/pages/admin/agents/AgentProfilePage";
+import { AgentPromptPage } from "@/pages/admin/agents/AgentPromptPage";
 import { UserListPage } from "@/pages/admin/users/UserListPage";
 import { useAuthStore } from "@/stores/authStore";
 
@@ -176,6 +178,14 @@ export const router = createBrowserRouter([
       {
         path: "mappings",
         element: <QueryTermMappingPage />
+      },
+      {
+        path: "agents",
+        element: <AgentProfilePage />
+      },
+      {
+        path: "agents/:agentId",
+        element: <AgentPromptPage />
       },
       {
         path: "users",

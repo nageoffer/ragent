@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
+  Bot,
   ChevronDown,
   ChevronRight,
   ChevronsLeft,
@@ -59,6 +60,8 @@ type MenuItem = {
   path: string;
   label: string;
   icon: any;
+  /** 字形本身偏小的图标在这里补一个视觉尺寸修正，跟同栏其余图标找齐 */
+  iconClass?: string;
   search?: string;
   children?: MenuChild[];
 };
@@ -76,6 +79,12 @@ const menuGroups: MenuGroup[] = [
         path: "/admin/dashboard",
         label: "Dashboard",
         icon: LayoutDashboard
+      },
+      {
+        path: "/admin/agents",
+        label: "智能体管理",
+        icon: Bot,
+        iconClass: "admin-sidebar__item-icon--optical-lg"
       },
       {
         path: "/admin/knowledge",
@@ -166,6 +175,7 @@ const menuGroups: MenuGroup[] = [
 
 const breadcrumbMap: Record<string, string> = {
   dashboard: "Dashboard",
+  agents: "智能体管理",
   knowledge: "知识库管理",
   "knowledge-graph": "知识图谱",
   "intent-tree": "意图树配置",
@@ -326,6 +336,10 @@ export function AdminLayout() {
       items.push({ label: "链路详情" });
     }
 
+    if (section === "agents" && segments.length > 2) {
+      items.push({ label: "提示词配置" });
+    }
+
     return items;
   }, [location.pathname, location.search]);
 
@@ -453,7 +467,9 @@ export function AdminLayout() {
       <aside className={cn("admin-sidebar", collapsed && "admin-sidebar--collapsed")}>
         <div className="admin-sidebar__brand">
           <div className={cn("flex items-center gap-3", collapsed && "justify-center")}>
-            <div className="admin-sidebar__logo">R</div>
+            <div className="admin-sidebar__logo">
+              <Bot className="h-[22px] w-[22px]" />
+            </div>
             {!collapsed && (
               <div className="min-w-0">
                 <h1 className="admin-sidebar__title">Ragent AI 管理后台</h1>
@@ -491,7 +507,7 @@ export function AdminLayout() {
                             isActive && "is-active"
                           )}
                         />
-                        <Icon className="admin-sidebar__item-icon" />
+                        <Icon className={cn("admin-sidebar__item-icon", item.iconClass)} />
                         {collapsed ? <span className="sr-only">{item.label}</span> : <span>{item.label}</span>}
                       </Link>
                     );
@@ -545,7 +561,7 @@ export function AdminLayout() {
                                 isGroupActive && "is-group-active"
                               )}
                             />
-                        <item.icon className="admin-sidebar__item-icon" />
+                        <item.icon className={cn("admin-sidebar__item-icon", item.iconClass)} />
                         <span className="flex-1 text-left">{item.label}</span>
                         {isOpen ? (
                           <ChevronDown className="h-4 w-4 text-white/60" />

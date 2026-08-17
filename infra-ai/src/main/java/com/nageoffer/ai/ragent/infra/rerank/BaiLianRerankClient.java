@@ -160,14 +160,10 @@ public class BaiLianRerankClient implements RerankClient {
                 score = item.get("relevance_score").getAsFloat();
             }
 
+            // 整体拷贝仅覆盖分数：逐字段白名单在 RetrievedChunk 新增字段时会静默漏拷（collectionName 曾因此丢失、意图归属整体失效）
             RetrievedChunk hit = score != null
-                    ? RetrievedChunk.builder()
-                    .id(src.getId())
-                    .text(src.getText())
+                    ? src.toBuilder()
                     .score(score)
-                    .docId(src.getDocId())
-                    .chunkIndex(src.getChunkIndex())
-                    .docName(src.getDocName())
                     .build()
                     : src;
             reranked.add(hit);

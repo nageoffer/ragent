@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { Check, FileUp, FileImage, PlayCircle, RefreshCw, Trash2, Pencil, FileBarChart, X, Eye, MoreHorizontal, FileText, FileSpreadsheet, Link as LinkIcon, Download } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, FileUp, FileImage, Info, PlayCircle, RefreshCw, Trash2, Pencil, FileBarChart, X, Eye, MoreHorizontal, FileText, FileSpreadsheet, Link as LinkIcon, Download } from "lucide-react";
 import { toast } from "sonner";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -21,7 +21,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { RelativeTime } from "@/components/RelativeTime";
 import { formatFullDateTime } from "@/utils/time";
 
-import type { KnowledgeBase, KnowledgeDocument, KnowledgeDocumentUploadPayload, KnowledgeDocumentChunkLog, PageResult, ChunkStrategyOption } from "@/services/knowledgeService";
+import type { BudgetFieldSchema, KnowledgeBase, KnowledgeDocument, KnowledgeDocumentUploadPayload, KnowledgeDocumentChunkLog, PageResult, IngestionSpecSchema } from "@/services/knowledgeService";
 import {
   deleteDocument,
   enableDocument,
@@ -31,13 +31,13 @@ import {
   updateDocument,
   startDocumentChunk,
   uploadDocument,
-  getChunkStrategies,
+  getIngestionSpecSchema,
   getChunkLogsPage,
   fetchDocumentFile
 } from "@/services/knowledgeService";
 import { getIngestionPipelines, type IngestionPipeline } from "@/services/ingestionService";
 import { getSystemSettings } from "@/services/settingsService";
-import { DocumentPreview, isImageType, isSpreadsheetType } from "@/components/document/DocumentPreview";
+import { DocumentPreview, isDocxType, isImageType, isPreviewableType, isSpreadsheetType } from "@/components/document/DocumentPreview";
 import { getErrorMessage } from "@/utils/error";
 
 const PAGE_SIZE = 10;
@@ -59,9 +59,116 @@ const PROCESS_MODE_OPTIONS = [
   { value: "pipeline", label: "数据通道" }
 ];
 
+/**
+ * schema 到达前的整篇不分块哨兵
+ *
+ * 与 FALLBACK_BUDGET 同理：真值由后端随 schema 下发（wholeDocumentSentinel），
+ * 这里只负责 schema 未到达那一瞬间不算错，**不是**第二份真相源
+ */
 const NO_CHUNK_VALUE = -1;
 
-const parseChunkConfig = (raw?: string | null): Record<string, unknown> => {
+const noChunkValueOf = (schema: IngestionSpecSchema | null) =>
+  schema?.wholeDocumentSentinel ?? NO_CHUNK_VALUE;
+
+/**
+ * 预算字段的网格列数：字段数能被 3 整除就三列，否则两列
+ *
+ * 非表格文档是三个字段、恰好铺满一行；表格多一个「每块行数」，四个排三列就剩一个孤零零挂在第二行
+ */
+const budgetGridCols = (count: number) => (count % 3 === 0 ? "md:grid-cols-3" : "md:grid-cols-2");
+
+/**
+ * 预算字段的标签行：字段名 + 悬浮详解 + 建议区间
+ *
+ * 四个字段并排，长说明各占三行就是一堵墙，"调大调小会怎样"因此收进悬浮层；区间不另写一句话，
+ * 直接排在标签右侧。展示的是建议值而非合法值——1 或 8192 合法但没人该这么填，摆出来只会误导，
+ * 真正越界仍由后端 ChunkBudget 构造期拦下。标签本体由调用方传入：上传弹窗要 FormLabel
+ * 关联输入框与错误态，详情弹窗只需一段静态文字
+ */
+const BudgetLabelRow = ({ field, children }: { field: BudgetFieldSchema; children: ReactNode }) => (
+  <div className="flex items-center gap-1">
+    {children}
+    {field.detail ? (
+      <TooltipProvider delayDuration={200}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              tabIndex={-1}
+              aria-label={`${field.label}说明`}
+              className="text-muted-foreground/50 transition-colors hover:text-foreground"
+            >
+              <Info className="h-3.5 w-3.5" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="max-w-64">
+            <p className="leading-relaxed">{field.detail}</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    ) : null}
+    <span className="ml-auto whitespace-nowrap text-xs tabular-nums text-muted-foreground/60">
+      建议 {field.recommendedMin} ~ {field.recommendedMax}
+    </span>
+  </div>
+);
+
+/**
+ * 「高级设置」折叠头：块预算三个数字对绝大多数上传者是噪音，默认收起来
+ */
+const AdvancedToggle = ({ open, onToggle }: { open: boolean; onToggle: () => void }) => (
+  <button
+    type="button"
+    onClick={onToggle}
+    className="flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+  >
+    {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+    高级设置
+    <span className="ml-1 text-xs">默认值适用于绝大多数文档</span>
+  </button>
+);
+
+/**
+ * schema 到达前的占位预算
+ *
+ * 真实默认值由后端 ingestion-spec-schema 下发并覆盖，提交时也只按 schema 字段取值，
+ * 所以这里的数字不进任何一次落库。它只负责两件事：弹窗刚打开那一瞬间输入框不空着，
+ * 以及 schema 拉取失败时表单校验不空转。值与后端 ChunkBudget.defaults() 保持一致，
+ * 但**不是**第二份真相源
+ */
+const FALLBACK_BUDGET = {
+  maxChars: "1024",
+  overlapChars: "128",
+  rowsPerChunk: "50",
+  toleranceFactor: "3"
+} as const;
+
+/**
+ * 组装摄取配置 JSON：按后端下发的 schema 字段逐个取值，缺失取 schema 默认
+ * <p>
+ * 不再需要"表格强制某个策略当载体骗过校验"这类花招——用户能配的就是档位与预算本身
+ */
+const buildIngestionSpec = (
+  parseProfile: string,
+  values: Record<string, string>,
+  schema: IngestionSpecSchema | null,
+  wholeDocument = false
+): string => {
+  const spec: Record<string, number | string> = { parseProfile };
+  for (const field of schema?.budgetFields ?? []) {
+    const raw = values[field.key];
+    const parsed = raw === undefined || raw.trim() === "" ? NaN : Number(raw);
+    spec[field.key] = Number.isFinite(parsed) ? parsed : field.defaultValue;
+  }
+  // 「整篇不分块」是一个开关，哨兵只是它在线路上的编码——把这个值塞进表单状态，
+  // 用户就会在输入框里看见一个 -1
+  if (wholeDocument) {
+    spec.maxChars = noChunkValueOf(schema);
+  }
+  return JSON.stringify(spec);
+};
+
+const parseIngestionSpec = (raw?: string | null): Record<string, unknown> => {
   if (!raw) return {};
   try {
     const parsed = JSON.parse(raw);
@@ -99,17 +206,25 @@ const formatSourceLabel = (sourceType?: string | null) => {
   return "-";
 };
 
-const ProcessModeCell = ({ doc, pipelineMap }: { doc: KnowledgeDocument; pipelineMap: Map<string, string> }) => {
+const ProcessModeCell = ({ doc, pipelineMap, specSchema }: {
+  doc: KnowledgeDocument;
+  pipelineMap: Map<string, string>;
+  specSchema: IngestionSpecSchema | null;
+}) => {
   const mode = doc.processMode?.toLowerCase();
   if (mode === "chunk") {
-    const detail = doc.chunkStrategy ? formatChunkStrategy(doc.chunkStrategy) : null;
+    // 档位对该格式没区别时不提这一句：控件都藏了，这里再显示"复杂表格"只是同一个谎言换个出口
+    // 历史数据里可能还留着当年选下的假值，按同一份门控挡掉
+    const detail = hasParseProfileChoice(specSchema, docExtOf(doc))
+      ? parseProfileLabelOf(specSchema, readSpecValue(doc.ingestionSpec, "parseProfile"))
+      : null;
     const trigger = <span className="cursor-default text-sm">Chunk</span>;
     if (!detail) return trigger;
     return (
       <TooltipProvider delayDuration={300}>
         <Tooltip>
           <TooltipTrigger asChild>{trigger}</TooltipTrigger>
-          <TooltipContent><p>策略：{detail}</p></TooltipContent>
+          <TooltipContent><p>{specSchema?.parseProfileLabel}：{detail}</p></TooltipContent>
         </Tooltip>
       </TooltipProvider>
     );
@@ -133,17 +248,68 @@ const ProcessModeCell = ({ doc, pipelineMap }: { doc: KnowledgeDocument; pipelin
   return <span className="text-muted-foreground/35 text-sm">-</span>;
 };
 
-const formatChunkStrategy = (strategy?: string | null) => {
-  const normalized = strategy?.toLowerCase();
-  if (normalized === "fixed_size") return "固定大小";
-  if (normalized === "structure_aware") return "语义感知（Markdown友好）";
-  return strategy || "-";
+/**
+ * 档位展示名：label 由后端随 schema 下发，前端不留第二份
+ * <p>
+ * 原先这里硬编码"快速 / 保真"，与后端 schema 里的 label 是同一句话的两个副本，
+ * 改文案必漏一处
+ */
+const parseProfileLabelOf = (schema: IngestionSpecSchema | null, profile?: string | null) => {
+  const normalized = profile?.toLowerCase();
+  if (!normalized) return null;
+  return schema?.parseProfiles.find(option => option.value === normalized)?.label ?? null;
 };
 
-// 表格类文件：走 block-aware 按行切分 + key-val 嵌入，配置面板只暴露真正生效的参数
+/**
+ * 把摄取配置里的预算字段拍平成表单值：兼容后端 {budget:{...}} 与扁平两种形状
+ */
+const flattenBudget = (raw?: string | null): Record<string, unknown> => {
+  const spec = parseIngestionSpec(raw);
+  const nested = spec["budget"];
+  return nested && typeof nested === "object"
+    ? { ...spec, ...(nested as Record<string, unknown>) }
+    : spec;
+};
+
+/**
+ * 从摄取配置 JSON 里读一个键：配置是后端归一化后的规整 JSON，读取不需要探测多个键名
+ */
+const readSpecValue = (raw: string | null | undefined, key: string): string | null => {
+  const spec = parseIngestionSpec(raw);
+  const nested = spec["budget"];
+  const value = spec[key] ?? (nested && typeof nested === "object"
+    ? (nested as Record<string, unknown>)[key]
+    : undefined);
+  return value === undefined || value === null ? null : String(value);
+};
+
+// 表格类文件：按行切分 + key-val 嵌入，预算面板额外暴露"每块行数"
 const TABLE_FILE_EXTS = ["xlsx", "xls", "csv"];
 const extOf = (name?: string | null) => name?.split(".").pop()?.toLowerCase() ?? "";
 const isTableExt = (ext?: string | null) => !!ext && TABLE_FILE_EXTS.includes(ext.toLowerCase());
+
+/**
+ * 从链接取后缀：先剥掉 query 与 hash，再取末段路径的扩展名
+ * 拿不到后缀（如 /download?id=1）就是空串，界面按"未知格式"处理
+ */
+const extOfUrl = (url?: string | null) => {
+  const path = (url ?? "").trim().split(/[?#]/)[0];
+  const lastSegment = path.split("/").pop() ?? "";
+  return lastSegment.includes(".") ? extOf(lastSegment) : "";
+};
+
+/**
+ * 已入库文档的格式后缀：落库的 fileType 优先，URL 文档首次拉取前还没有它，退回链接后缀
+ */
+const docExtOf = (doc?: KnowledgeDocument | null) =>
+  doc?.fileType?.toLowerCase() || extOfUrl(doc?.sourceLocation);
+
+/**
+ * 该格式是否值得让用户选解析档位：清单由后端 schema 下发
+ * 不在清单里的格式两档命中同一个解析器，摆出选项就是骗用户
+ */
+const hasParseProfileChoice = (schema: IngestionSpecSchema | null, ext?: string | null) =>
+  !!ext && (schema?.parseProfileExtensions ?? []).includes(ext.toLowerCase());
 
 const FILE_TYPE_MAP: Record<string, { icon: typeof FileText; color: string }> = {
   pdf:         { icon: FileText, color: "text-red-500" },
@@ -202,13 +368,13 @@ export function KnowledgeDocumentsPage() {
   const [detailName, setDetailName] = useState("");
   const [detailSaving, setDetailSaving] = useState(false);
   const [detailProcessMode, setDetailProcessMode] = useState("chunk");
-  const [detailChunkStrategy, setDetailChunkStrategy] = useState("structure_aware");
+  const [detailParseProfile, setDetailParseProfile] = useState("fast");
   const [detailPipelineId, setDetailPipelineId] = useState("");
-  const [detailStrategies, setDetailStrategies] = useState<ChunkStrategyOption[]>([]);
+  const [specSchema, setSpecSchema] = useState<IngestionSpecSchema | null>(null);
   const [detailPipelines, setDetailPipelines] = useState<IngestionPipeline[]>([]);
   const [detailConfigValues, setDetailConfigValues] = useState<Record<string, string>>({});
   const [detailNoChunk, setDetailNoChunk] = useState(false);
-  const [detailOriginalChunkSize, setDetailOriginalChunkSize] = useState("512");
+  const [detailShowAdvanced, setDetailShowAdvanced] = useState(false);
   const [detailSourceLocation, setDetailSourceLocation] = useState("");
   const [detailScheduleEnabled, setDetailScheduleEnabled] = useState(false);
   const [detailScheduleCron, setDetailScheduleCron] = useState("");
@@ -229,6 +395,8 @@ export function KnowledgeDocumentsPage() {
       (r.records || []).forEach(p => map.set(String(p.id), p.name));
       setPipelineMap(map);
     }).catch(() => {});
+    // schema 是静态的，且列表与编辑弹窗都要用它判定档位是否适用，挂载拉一次即可
+    getIngestionSpecSchema().then(setSpecSchema).catch(() => {});
   }, []);
 
   const toggleSelect = (id: string) => {
@@ -330,46 +498,49 @@ export function KnowledgeDocumentsPage() {
       setDetailName(detailTarget.docName || "");
       const mode = (detailTarget.processMode || "chunk").toLowerCase();
       setDetailProcessMode(mode);
-      setDetailChunkStrategy((detailTarget.chunkStrategy || "structure_aware").toLowerCase());
+      setDetailParseProfile((readSpecValue(detailTarget.ingestionSpec, "parseProfile") || "fast").toLowerCase());
       setDetailPipelineId(detailTarget.pipelineId ? String(detailTarget.pipelineId) : "");
       setDetailSourceLocation(detailTarget.sourceLocation || "");
       setDetailScheduleEnabled(Boolean(detailTarget.scheduleEnabled));
       setDetailScheduleCron(detailTarget.scheduleCron || "");
 
-      // 从文档的 chunkConfig JSON 解析参数值
-      const config = parseChunkConfig(detailTarget.chunkConfig);
+      // 从文档的摄取配置 JSON 解析预算值
+      const config = flattenBudget(detailTarget.ingestionSpec);
       const values: Record<string, string> = {};
       for (const [k, v] of Object.entries(config)) {
         values[k] = String(v);
       }
+
+      // 整篇不分块只是个开关：哨兵留在线路上，输入框回落默认值，
+      // 不把 -1 摆到用户眼前，取消开关时也就有个能用的起点
+      const isWholeDocument = values["maxChars"] === String(noChunkValueOf(specSchema));
+      setDetailNoChunk(isWholeDocument);
+      if (isWholeDocument) {
+        for (const field of specSchema?.budgetFields ?? []) {
+          values[field.key] = String(field.defaultValue);
+        }
+      }
       setDetailConfigValues(values);
 
-      // 如果 chunkSize 为 -1（不分块），初始化开关状态
-      const rawChunkSize = values["chunkSize"];
-      if (rawChunkSize === String(NO_CHUNK_VALUE)) {
-        setDetailNoChunk(true);
-        setDetailOriginalChunkSize("512");
-      } else {
-        setDetailNoChunk(false);
-        setDetailOriginalChunkSize(rawChunkSize || "512");
-      }
+      // 这篇动过预算就自动展开：折叠是为了少打扰，不是为了藏住已经生效的设置
+      setDetailShowAdvanced((specSchema?.budgetFields ?? []).some(
+        field => values[field.key] !== undefined && values[field.key] !== String(field.defaultValue)
+      ));
 
-      // 加载策略列表和管道列表
-      getChunkStrategies().then(setDetailStrategies).catch(() => {});
+      // 加载管道列表（配置 schema 已在挂载时拉过）
       getIngestionPipelines(1, 100).then(r => setDetailPipelines(r.records || [])).catch(() => {});
     } else {
       setDetailName("");
       setDetailProcessMode("chunk");
-      setDetailChunkStrategy("structure_aware");
+      setDetailParseProfile("fast");
       setDetailPipelineId("");
       setDetailConfigValues({});
-      setDetailStrategies([]);
       setDetailPipelines([]);
       setDetailSourceLocation("");
       setDetailScheduleEnabled(false);
       setDetailScheduleCron("");
       setDetailNoChunk(false);
-      setDetailOriginalChunkSize("512");
+      setDetailShowAdvanced(false);
     }
   }, [detailTarget]);
 
@@ -428,6 +599,22 @@ export function KnowledgeDocumentsPage() {
       toast.error("文档名称不能为空");
       return;
     }
+    if (detailProcessMode === "chunk" && !detailNoChunk) {
+      for (const field of specSchema?.budgetFields ?? []) {
+        const value = Number(detailConfigValues[field.key] ?? field.defaultValue);
+        if (!Number.isFinite(value) || value < field.min || value > field.max) {
+          toast.error(`${field.label}需落在 ${field.min} ~ ${field.max}`);
+          return;
+        }
+      }
+      const budgetMaxChars = Number(detailConfigValues["maxChars"]);
+      const budgetOverlap = Number(detailConfigValues["overlapChars"]);
+      if (Number.isFinite(budgetMaxChars) && Number.isFinite(budgetOverlap)
+          && budgetMaxChars > 0 && budgetOverlap >= budgetMaxChars) {
+        toast.error("块重叠必须小于块大小");
+        return;
+      }
+    }
     setDetailSaving(true);
     try {
       const data: Parameters<typeof updateDocument>[1] = {
@@ -435,30 +622,10 @@ export function KnowledgeDocumentsPage() {
         processMode: detailProcessMode,
       };
       if (detailProcessMode === "chunk") {
-        if (isDetailTable) {
-          // fixed_size 载体 + 表格 block-aware 自由键（rowsPerChunk / excelParser）
-          data.chunkStrategy = "fixed_size";
-          const configObj: Record<string, number | string> = {
-            chunkSize: Number(detailConfigValues["chunkSize"]) || 512,
-            overlapSize: 0,
-            rowsPerChunk: Number(detailConfigValues["rowsPerChunk"]) || 50
-          };
-          if (!isDetailCsv) {
-            configObj.excelParser = detailConfigValues["excelParser"] || "poi";
-          }
-          data.chunkConfig = JSON.stringify(configObj);
-        } else {
-          data.chunkStrategy = detailChunkStrategy;
-          // 根据策略的 defaultConfig keys 组装 chunkConfig JSON
-          const strategy = detailStrategies.find(s => s.value === detailChunkStrategy);
-          if (strategy) {
-            const configObj: Record<string, number> = {};
-            for (const key of Object.keys(strategy.defaultConfig)) {
-              configObj[key] = Number(detailConfigValues[key]) || strategy.defaultConfig[key];
-            }
-            data.chunkConfig = JSON.stringify(configObj);
-          }
-        }
+        // 档位对该格式没区别时一律提交 fast：不把"声明过复杂表格"这件从未发生的事写进库，
+        // 顺带把历史遗留的假值洗掉
+        const profile = hasParseProfileChoice(specSchema, docExtOf(detailTarget)) ? detailParseProfile : "fast";
+        data.ingestionSpec = buildIngestionSpec(profile, detailConfigValues, specSchema, detailNoChunk);
       } else {
         data.pipelineId = detailPipelineId;
       }
@@ -542,51 +709,24 @@ export function KnowledgeDocumentsPage() {
   const detailSourceType = detailTarget?.sourceType?.toLowerCase();
   const detailIsUrlSource = detailSourceType === "url";
   const detailNameLabel = detailIsUrlSource ? "文档名称" : "本地文件";
-  // 表格类文档（用后端返回的 fileType 判定）：配置区切到表格专属项
-  const detailFileType = detailTarget?.fileType?.toLowerCase();
+  // 格式判定与上传弹窗同一套依据，免得出现"上传时能选、回来编辑却没这一项"
+  const detailFileType = docExtOf(detailTarget);
+  // 表格类：预算面板额外显示"每块行数"
   const isDetailTable = isTableExt(detailFileType);
-  const isDetailCsv = detailFileType === "csv";
 
-  // 当策略切换时，用默认值填充配置
-  const handleDetailStrategyChange = (value: string) => {
-    setDetailChunkStrategy(value);
-    const strategy = detailStrategies.find(s => s.value === value);
-    if (strategy) {
-      const values: Record<string, string> = {};
-      for (const [k, v] of Object.entries(strategy.defaultConfig)) {
-        values[k] = String(v);
-      }
-      setDetailConfigValues(values);
-      setDetailNoChunk(false);
-      setDetailOriginalChunkSize(
-        strategy.defaultConfig["chunkSize"] !== undefined
-          ? String(strategy.defaultConfig["chunkSize"])
-          : "512"
-      );
-    }
-  };
+  // 预算字段：表格类才需要"每块行数"
+  const detailBudgetFields = (specSchema?.budgetFields ?? [])
+    .filter(field => field.key !== "rowsPerChunk" || isDetailTable);
 
-  // 处理编辑页"不分块"按钮点击
-  const handleDetailNoChunkToggle = () => {
-    if (detailNoChunk) {
-      // 取消选中，恢复原始值
-      setDetailConfigValues(v => ({ ...v, chunkSize: detailOriginalChunkSize }));
-      setDetailNoChunk(false);
-    } else {
-      // 选中，保存当前值并设置为-1
-      const currentSize = detailConfigValues["chunkSize"] || "512";
-      setDetailOriginalChunkSize(currentSize);
-      setDetailConfigValues(v => ({ ...v, chunkSize: String(NO_CHUNK_VALUE) }));
-      setDetailNoChunk(true);
-    }
-  };
+  // 档位选项：只对两档确实命中不同解析器的格式展示
+  const showDetailParseProfile = hasParseProfileChoice(specSchema, detailFileType);
 
-  // 用户手动修改块大小值时取消"不分块"状态
-  const handleDetailChunkSizeChange = (value: string) => {
-    setDetailConfigValues(v => ({ ...v, chunkSize: value }));
-    if (detailNoChunk && value !== String(NO_CHUNK_VALUE)) {
-      setDetailNoChunk(false);
-    }
+  // 开关只切自己：预算值原地留着，开启期间那几个输入框是禁用的，
+  // 不需要"存一份原值再还原"那套腾挪
+  const handleDetailNoChunkToggle = () => setDetailNoChunk(prev => !prev);
+
+  const handleDetailBudgetChange = (key: string, value: string) => {
+    setDetailConfigValues(v => ({ ...v, [key]: value }));
   };
 
   return (
@@ -756,14 +896,14 @@ export function KnowledgeDocumentsPage() {
                       )}
                     </TableCell>
                     <TableCell>
-                      <ProcessModeCell doc={doc} pipelineMap={pipelineMap} />
+                      <ProcessModeCell doc={doc} pipelineMap={pipelineMap} specSchema={specSchema} />
                     </TableCell>
                     <TableCell>
                       <RelativeTime value={doc.updateTime} updatedBy={doc.updatedBy} />
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
-                        {(doc.fileType === "markdown" || doc.fileType === "pdf" || isTableExt(doc.fileType) || isImageType(doc.fileType)) ? (
+                        {isPreviewableType(doc.fileType) ? (
                           <Button
                             size="sm"
                             variant="outline"
@@ -1029,116 +1169,71 @@ export function KnowledgeDocumentsPage() {
 
               {detailProcessMode === "chunk" ? (
                 <div className="space-y-3 rounded-lg border p-3">
-                  {isDetailTable ? (
-                  <div className="space-y-3">
-                    <p className="text-sm text-muted-foreground leading-relaxed">
-                      表格按行切分，每块自动重复表头并以「列名: 值」嵌入；按下方预算控制每块大小
-                    </p>
-                    {!isDetailCsv ? (
-                      <div>
-                        <div className="text-sm font-medium mb-2">Excel 解析方式</div>
-                        <Select value={detailConfigValues["excelParser"] ?? "poi"}
-                          onValueChange={val => setDetailConfigValues(v => ({ ...v, excelParser: val }))}>
-                          <SelectTrigger><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="poi">简单 KeyVal（规整单表，快）</SelectItem>
-                            <SelectItem value="mineru">复杂版面（MinerU，合并/多表/多行表头，较慢）</SelectItem>
-                          </SelectContent>
-                        </Select>
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    切法由文档结构决定：标题、表格、代码、列表各按自身边界切分，每块自动带上所属章节
+                  </p>
+                  {showDetailParseProfile ? (
+                    <div>
+                      <div className="text-sm font-medium mb-2">{specSchema?.parseProfileLabel}</div>
+                      <Select value={detailParseProfile} onValueChange={setDetailParseProfile}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {(specSchema?.parseProfiles ?? []).map(option => (
+                            <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <div className="text-sm text-muted-foreground mt-1">
+                        {specSchema?.parseProfiles.find(o => o.value === detailParseProfile)?.hint ?? ""}
+                      </div>
+                    </div>
+                  ) : null}
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={detailNoChunk}
+                      onClick={handleDetailNoChunkToggle}
+                      className={cn(
+                        "relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background",
+                        detailNoChunk ? "bg-blue-600" : "bg-slate-200"
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "inline-block h-4 w-4 transform rounded-full bg-background shadow transition-transform",
+                          detailNoChunk ? "translate-x-4" : "translate-x-1"
+                        )}
+                      />
+                    </button>
+                    <div>
+                      <div className="text-sm font-medium">整篇不分块</div>
+                      <div className="text-sm text-muted-foreground">开启后整个文档作为一个块入库</div>
+                    </div>
+                  </div>
+                  <div>
+                    <AdvancedToggle open={detailShowAdvanced} onToggle={() => setDetailShowAdvanced(v => !v)} />
+                    {detailShowAdvanced ? (
+                      <div className={cn("mt-3 grid gap-4", budgetGridCols(detailBudgetFields.length))}>
+                        {detailBudgetFields.map(field => (
+                          <div key={field.key} className="space-y-2">
+                            <BudgetLabelRow field={field}>
+                              <span className="text-xs font-medium">{field.label}</span>
+                            </BudgetLabelRow>
+                            <Input
+                              type="number"
+                              min={field.min}
+                              max={field.max}
+                              value={detailConfigValues[field.key] ?? String(field.defaultValue)}
+                              disabled={detailNoChunk}
+                              onChange={e => handleDetailBudgetChange(field.key, e.target.value)}
+                            />
+                            <div className="text-xs text-muted-foreground">{field.hint}</div>
+                          </div>
+                        ))}
                       </div>
                     ) : null}
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <div>
-                        <div className="text-sm font-medium mb-2">块大小预算</div>
-                        <Input type="number" value={detailConfigValues["chunkSize"] ?? "512"}
-                          onChange={e => setDetailConfigValues(v => ({ ...v, chunkSize: e.target.value }))} />
-                        <div className="text-sm text-muted-foreground mt-1">每块嵌入文本的字符预算上限</div>
-                      </div>
-                      <div>
-                        <div className="text-sm font-medium mb-2">每块最大行数</div>
-                        <Input type="number" value={detailConfigValues["rowsPerChunk"] ?? "50"}
-                          onChange={e => setDetailConfigValues(v => ({ ...v, rowsPerChunk: e.target.value }))} />
-                        <div className="text-sm text-muted-foreground mt-1">行数硬上限，与预算共同决定切分粒度</div>
-                      </div>
-                    </div>
                   </div>
-                  ) : (
-                  <>
-                  <div>
-                    <div className="text-sm font-medium mb-2">分块策略</div>
-                    <Select value={detailChunkStrategy} onValueChange={handleDetailStrategyChange}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {detailStrategies.map(s => (
-                          <SelectItem key={s.value} value={s.value}>{s.label || s.value}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {detailChunkStrategy === "fixed_size" ? (
-                    <div className="grid gap-4 md:grid-cols-3">
-                      <div>
-                        <div className="text-sm font-medium mb-2">块大小</div>
-                        <Input type="number" value={detailConfigValues["chunkSize"] ?? "512"}
-                          onChange={e => handleDetailChunkSizeChange(e.target.value)} />
-                        <div className="text-sm text-muted-foreground mt-1">字符数</div>
-                      </div>
-                      <div>
-                        <div className="text-sm font-medium mb-2">重叠大小</div>
-                        <Input type="number" value={detailConfigValues["overlapSize"] ?? "128"}
-                          onChange={e => setDetailConfigValues(v => ({ ...v, overlapSize: e.target.value }))} />
-                      </div>
-                      <div>
-                        <div className="text-sm font-medium mb-2">不分块</div>
-                        <div className="flex h-9 items-center">
-                          <button
-                            type="button"
-                            role="switch"
-                            aria-checked={detailNoChunk}
-                            onClick={handleDetailNoChunkToggle}
-                            className={cn(
-                              "relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background",
-                              detailNoChunk ? "bg-blue-600" : "bg-slate-200"
-                            )}
-                          >
-                            <span
-                              className={cn(
-                                "inline-block h-4 w-4 transform rounded-full bg-background shadow transition-transform",
-                                detailNoChunk ? "translate-x-4" : "translate-x-1"
-                              )}
-                            />
-                          </button>
-                        </div>
-                        <div className="text-sm text-muted-foreground mt-1">开启后块大小为-1</div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <div>
-                        <div className="text-sm font-medium mb-2">理想块大小</div>
-                        <Input type="number" value={detailConfigValues["targetChars"] ?? "1400"}
-                          onChange={e => setDetailConfigValues(v => ({ ...v, targetChars: e.target.value }))} />
-                      </div>
-                      <div>
-                        <div className="text-sm font-medium mb-2">块上限</div>
-                        <Input type="number" value={detailConfigValues["maxChars"] ?? "1800"}
-                          onChange={e => setDetailConfigValues(v => ({ ...v, maxChars: e.target.value }))} />
-                      </div>
-                      <div>
-                        <div className="text-sm font-medium mb-2">块下限</div>
-                        <Input type="number" value={detailConfigValues["minChars"] ?? "600"}
-                          onChange={e => setDetailConfigValues(v => ({ ...v, minChars: e.target.value }))} />
-                      </div>
-                      <div>
-                        <div className="text-sm font-medium mb-2">重叠大小</div>
-                        <Input type="number" value={detailConfigValues["overlapChars"] ?? "0"}
-                          onChange={e => setDetailConfigValues(v => ({ ...v, overlapChars: e.target.value }))} />
-                      </div>
-                    </div>
-                  )}
-                  </>
-                  )}
                 </div>
               ) : null}
             </div>
@@ -1159,9 +1254,10 @@ export function KnowledgeDocumentsPage() {
 
       <Dialog open={Boolean(previewTarget)} onOpenChange={(open) => (!open ? setPreviewTarget(null) : null)}>
         <DialogContent hideClose className={
-          previewTarget?.fileType === "pdf" || isSpreadsheetType(previewTarget?.fileType) || isImageType(previewTarget?.fileType)
-            ? "flex h-[92vh] flex-col overflow-hidden sm:max-w-[1100px] p-0"
-            : "flex max-h-[90vh] flex-col overflow-hidden sm:max-w-[900px] p-0"
+          // 正文区用纯白：pdf 画布、docx 页面本身就是白的，弹窗底色带灰会在正文四周描出一圈内嵌外框
+          previewTarget?.fileType === "pdf" || isDocxType(previewTarget?.fileType) || isSpreadsheetType(previewTarget?.fileType) || isImageType(previewTarget?.fileType)
+            ? "flex h-[92vh] flex-col overflow-hidden bg-white sm:max-w-[1100px] p-0"
+            : "flex max-h-[90vh] flex-col overflow-hidden bg-white sm:max-w-[900px] p-0"
         } onOpenAutoFocus={(e) => e.preventDefault()} onCloseAutoFocus={(e) => { e.preventDefault(); requestAnimationFrame(() => (document.activeElement as HTMLElement)?.blur()); }}>
           <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-card px-6 py-3">
             <span className="text-sm font-medium text-muted-foreground truncate">{previewTarget?.docName || "预览"}</span>
@@ -1209,7 +1305,7 @@ export function KnowledgeDocumentsPage() {
                       </span>
                       <span className="text-sm text-muted-foreground">
                         {log.processMode === "pipeline" ? "数据通道" : "直接分块"}
-                        {log.processMode === "chunk" && log.chunkStrategy ? ` · ${formatChunkStrategy(log.chunkStrategy)}` : ""}
+                        {log.processMode === "chunk" && parseProfileLabelOf(specSchema, log.parseProfile) ? ` · ${parseProfileLabelOf(specSchema, log.parseProfile)}` : ""}
                         {log.processMode === "pipeline" && (log.pipelineName || log.pipelineId) ? ` · ${log.pipelineName || log.pipelineId}` : ""}
                       </span>
                     </div>
@@ -1333,17 +1429,13 @@ const uploadSchema = z
     scheduleEnabled: z.boolean().default(false),
     scheduleCron: z.string().optional(),
     processMode: z.enum(["chunk", "pipeline"]).default("chunk"),
-    chunkStrategy: z.string().optional(),
+    parseProfile: z.string().optional(),
     pipelineId: z.string().optional(),
-    chunkSize: z.string().optional(),
-    overlapSize: z.string().optional(),
-    targetChars: z.string().optional(),
+    // 用户可控的全部自由度：块预算，字段与后端 schema 的 budgetFields 一一对应
     maxChars: z.string().optional(),
-    minChars: z.string().optional(),
     overlapChars: z.string().optional(),
-    // 表格类专属：每块最大行数 + Excel 解析方式（poi / mineru）
     rowsPerChunk: z.string().optional(),
-    excelParser: z.string().optional()
+    toleranceFactor: z.string().optional()
   })
   .superRefine((values, ctx) => {
     const isBlank = (value?: string) => !value || value.trim() === "";
@@ -1381,22 +1473,19 @@ const uploadSchema = z
     }
 
     if (values.processMode === "chunk") {
-      if (!values.chunkStrategy) {
+      requireNumber(values.maxChars, "maxChars", "块大小");
+      requireNumber(values.overlapChars, "overlapChars", "块重叠");
+      requireNumber(values.toleranceFactor, "toleranceFactor", "结构容忍倍数");
+      // 重叠必须小于块大小，否则切分无法推进；非正数不是预算（整篇不分块走开关，不进表单），不参与该校验
+      const maxChars = Number(values.maxChars);
+      const overlap = Number(values.overlapChars);
+      if (Number.isFinite(maxChars) && Number.isFinite(overlap)
+          && maxChars > 0 && overlap >= maxChars) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          path: ["chunkStrategy"],
-          message: "请选择分块策略"
+          path: ["overlapChars"],
+          message: "块重叠必须小于块大小"
         });
-        return;
-      }
-      if (values.chunkStrategy === "fixed_size") {
-        requireNumber(values.chunkSize, "chunkSize", "块大小");
-        requireNumber(values.overlapSize, "overlapSize", "重叠大小");
-      } else {
-        requireNumber(values.targetChars, "targetChars", "理想块大小");
-        requireNumber(values.maxChars, "maxChars", "块上限");
-        requireNumber(values.minChars, "minChars", "块下限");
-        requireNumber(values.overlapChars, "overlapChars", "重叠大小");
       }
     } else if (values.processMode === "pipeline") {
       if (isBlank(values.pipelineId)) {
@@ -1411,14 +1500,19 @@ const uploadSchema = z
 
 type UploadFormValues = z.infer<typeof uploadSchema>;
 
+/**
+ * 预算字段名：与后端 schema 的 key 一一对应
+ */
+type BudgetFieldName = "maxChars" | "overlapChars" | "rowsPerChunk" | "toleranceFactor";
+
 function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
   const [file, setFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [saving, setSaving] = useState(false);
-  const [chunkStrategies, setChunkStrategies] = useState<ChunkStrategyOption[]>([]);
+  const [specSchema, setSpecSchema] = useState<IngestionSpecSchema | null>(null);
   const [noChunk, setNoChunk] = useState(false);
-  const [originalChunkSize, setOriginalChunkSize] = useState("512");
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [pipelines, setPipelines] = useState<IngestionPipeline[]>([]);
   const [loadingPipelines, setLoadingPipelines] = useState(false);
   const [maxFileSize, setMaxFileSize] = useState<number>(50 * 1024 * 1024);
@@ -1431,32 +1525,31 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
       scheduleEnabled: false,
       scheduleCron: "",
       processMode: "chunk",
-      chunkStrategy: "fixed_size",
+      parseProfile: "fast",
       pipelineId: "",
-      chunkSize: "512",
-      overlapSize: "128",
-      targetChars: "1400",
-      maxChars: "1800",
-      minChars: "600",
-      overlapChars: "0",
-      rowsPerChunk: "50",
-      excelParser: "poi"
+      ...FALLBACK_BUDGET
     }
   });
 
   const sourceType = form.watch("sourceType");
   const processMode = form.watch("processMode");
-  const chunkStrategy = form.watch("chunkStrategy");
+  const parseProfile = form.watch("parseProfile");
   const scheduleEnabled = form.watch("scheduleEnabled");
-  const chunkSize = form.watch("chunkSize");
+  const sourceLocation = form.watch("sourceLocation");
   const isUrlSource = sourceType === "url";
   const isChunkMode = processMode === "chunk";
   const isPipelineMode = processMode === "pipeline";
-  const isFixedSize = chunkStrategy === "fixed_size";
-  // 表格类（仅文件来源按扩展名判定）：配置面板切到表格专属项
-  const fileExt = isUrlSource ? "" : extOf(file?.name);
+
+  // 格式判定的唯一依据：本地文件取文件名后缀，远程来源取链接路径后缀
+  const fileExt = isUrlSource ? extOfUrl(sourceLocation) : extOf(file?.name);
+  // 表格类：配置面板切到表格专属项
   const isTableType = isTableExt(fileExt);
-  const isCsv = fileExt === "csv";
+  // 档位选项：只对两档确实命中不同解析器的格式展示
+  const showParseProfile = hasParseProfileChoice(specSchema, fileExt);
+
+  // 预算字段：表格类才需要"每块行数"
+  const budgetFields = (specSchema?.budgetFields ?? [])
+    .filter((field) => field.key !== "rowsPerChunk" || isTableType);
 
   const loadPipelines = async () => {
     setLoadingPipelines(true);
@@ -1480,21 +1573,14 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
         scheduleEnabled: false,
         scheduleCron: "",
         processMode: "chunk",
-        chunkStrategy: "fixed_size",
+        parseProfile: "fast",
         pipelineId: "",
-        chunkSize: "512",
-        overlapSize: "128",
-        targetChars: "1400",
-        maxChars: "1800",
-        minChars: "600",
-        overlapChars: "0",
-        rowsPerChunk: "50",
-        excelParser: "poi"
+        ...FALLBACK_BUDGET
       });
       setNoChunk(false);
-      setOriginalChunkSize("512");
+      setShowAdvanced(false);
       loadPipelines();
-      getChunkStrategies().then(setChunkStrategies).catch(() => {});
+      getIngestionSpecSchema().then(setSpecSchema).catch(() => {});
       getSystemSettings()
         .then((settings) => setMaxFileSize(settings.upload.maxFileSize))
         .catch(() => {});
@@ -1507,62 +1593,17 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
     }
   }, [isUrlSource]);
 
-  // 切换策略时，用 API 返回的默认值填充表单
+  // schema 到达后用后端下发的默认值填充表单，默认值只有后端那一份
   useEffect(() => {
-    const strategy = chunkStrategies.find((s) => s.value === chunkStrategy);
-    if (!strategy) return;
-    const defaults = strategy.defaultConfig;
-    const formAccessors: Record<string, (v: string) => void> = {
-      chunkSize: (v) => form.setValue("chunkSize", v),
-      overlapSize: (v) => form.setValue("overlapSize", v),
-      targetChars: (v) => form.setValue("targetChars", v),
-      maxChars: (v) => form.setValue("maxChars", v),
-      minChars: (v) => form.setValue("minChars", v),
-      overlapChars: (v) => form.setValue("overlapChars", v)
-    };
-    for (const key of Object.keys(strategy.defaultConfig)) {
-      if (defaults[key] !== undefined && formAccessors[key]) {
-        formAccessors[key](String(defaults[key]));
-      }
+    if (!specSchema) return;
+    for (const field of specSchema.budgetFields) {
+      form.setValue(field.key as BudgetFieldName, String(field.defaultValue));
     }
-    if (defaults["chunkSize"] !== undefined) {
-      setOriginalChunkSize(String(defaults["chunkSize"]));
-    }
-  }, [chunkStrategy, chunkStrategies, form]);
+  }, [specSchema, form]);
 
-  // 监听块大小变化，如果用户手动修改了值，取消"不分块"状态
-  useEffect(() => {
-    if (noChunk && chunkSize !== String(NO_CHUNK_VALUE)) {
-      setNoChunk(false);
-    }
-  }, [chunkSize, noChunk]);
-
-  // 表格类强制 fixed_size 载体：chunkStrategy 对表格无意义，固定成 fixed_size 让 chunkSize 作体量预算并通过后端校验
-  useEffect(() => {
-    if (isTableType && chunkStrategy !== "fixed_size") {
-      form.setValue("chunkStrategy", "fixed_size");
-    }
-  }, [isTableType, chunkStrategy, form]);
-
-  // 处理"不分块"按钮点击
-  const handleNoChunkToggle = () => {
-    if (noChunk) {
-      // 取消选中，恢复原始值
-      form.setValue("chunkSize", originalChunkSize);
-      setNoChunk(false);
-    } else {
-      // 选中，保存当前值并设置为-1
-      setOriginalChunkSize(chunkSize || "512");
-      form.setValue("chunkSize", String(NO_CHUNK_VALUE));
-      setNoChunk(true);
-    }
-  };
-
-  const parseNumber = (value?: string) => {
-    if (!value || !value.trim()) return null;
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : null;
-  };
+  // 开关只切自己：哨兵不进表单状态，开启期间预算输入框是禁用的，
+  // 于是也不需要"存一份原值再还原"那套腾挪
+  const handleNoChunkToggle = () => setNoChunk(prev => !prev);
 
   const handleSubmit = async (values: UploadFormValues) => {
     if (values.sourceType === "file" && !file) {
@@ -1575,42 +1616,15 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
       return;
     }
 
-    // 组装 chunkConfig JSON：表格类只发真正生效的参数，其余按策略 defaultConfig keys 组装
-    let chunkConfig: string | undefined;
-    if (values.processMode === "chunk") {
-      if (isTableType) {
-        // fixed_size 载体：chunkSize 作体量预算、overlapSize 占位过校验；rowsPerChunk / excelParser 为 block-aware 自由键
-        const config: Record<string, number | string> = {
-          chunkSize: parseNumber(values.chunkSize) ?? 512,
-          overlapSize: 0,
-          rowsPerChunk: parseNumber(values.rowsPerChunk) ?? 50
-        };
-        if (!isCsv) {
-          config.excelParser = values.excelParser || "poi";
-        }
-        chunkConfig = JSON.stringify(config);
-      } else {
-        const strategy = chunkStrategies.find((s) => s.value === values.chunkStrategy);
-        if (strategy) {
-          const formAccessors: Record<string, string | undefined> = {
-            chunkSize: values.chunkSize,
-            overlapSize: values.overlapSize,
-            targetChars: values.targetChars,
-            maxChars: values.maxChars,
-            minChars: values.minChars,
-            overlapChars: values.overlapChars
-          };
-          const config: Record<string, number> = {};
-          for (const key of Object.keys(strategy.defaultConfig)) {
-            const val = parseNumber(formAccessors[key]);
-            if (val !== null) {
-              config[key] = val;
-            }
-          }
-          chunkConfig = JSON.stringify(config);
-        }
-      }
+    const budgetValues: Record<string, string> = {};
+    for (const field of specSchema?.budgetFields ?? []) {
+      budgetValues[field.key] = values[field.key as BudgetFieldName] ?? "";
     }
+
+    const ingestionSpec = values.processMode === "chunk"
+      ? buildIngestionSpec(showParseProfile ? (values.parseProfile || "fast") : "fast",
+          budgetValues, specSchema, noChunk)
+      : undefined;
 
     setSaving(true);
     try {
@@ -1624,11 +1638,7 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
             ? values.scheduleCron.trim()
             : null,
         processMode: values.processMode,
-        chunkStrategy:
-          values.processMode === "chunk"
-            ? (isTableType ? "fixed_size" : values.chunkStrategy)
-            : undefined,
-        chunkConfig: chunkConfig ?? null,
+        ingestionSpec: ingestionSpec ?? null,
         pipelineId: values.processMode === "pipeline" ? values.pipelineId : null
       };
       await onSubmit(payload);
@@ -1652,7 +1662,12 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
           <DialogDescription>支持本地文件或远程URL，并配置分块策略</DialogDescription>
         </DialogHeader>
         <Form {...form}>
-          <form className="space-y-4" onSubmit={form.handleSubmit(handleSubmit)}>
+          {/*
+            noValidate：预算输入框上的 min / max 只作提示（步进与红框），不参与拦截。
+            它们躺在默认折叠的「高级设置」里，浏览器原生校验会为了一个看不见的控件
+            静默拒绝提交，按钮看上去就像坏了。校验一路交给 zod 与后端 ChunkBudget
+          */}
+          <form className="space-y-4" noValidate onSubmit={form.handleSubmit(handleSubmit)}>
             <FormField
               control={form.control}
               name="sourceType"
@@ -1849,207 +1864,98 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
 
               {isChunkMode ? (
                 <div className="space-y-3">
-                  {isTableType ? (
-                  <div className="space-y-3">
-                    <p className="text-xs text-muted-foreground leading-relaxed">
-                      表格按行切分，每块自动重复表头并以「列名: 值」嵌入；按下方预算控制每块大小
-                    </p>
-                    {!isCsv ? (
-                      <FormField
-                        control={form.control}
-                        name="excelParser"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="text-xs text-muted-foreground font-normal">Excel 解析方式</FormLabel>
-                            <Select value={field.value} onValueChange={field.onChange}>
-                              <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="选择解析方式" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                <SelectItem value="poi">简单 KeyVal（规整单表，快）</SelectItem>
-                                <SelectItem value="mineru">复杂版面（MinerU，合并/多表/多行表头，较慢）</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    ) : null}
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <FormField
-                        control={form.control}
-                        name="chunkSize"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="text-xs text-muted-foreground font-normal">块大小预算</FormLabel>
-                            <FormControl>
-                              <Input type="number" {...field} />
-                            </FormControl>
-                            <FormDescription>每块嵌入文本的字符预算上限</FormDescription>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="rowsPerChunk"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="text-xs text-muted-foreground font-normal">每块最大行数</FormLabel>
-                            <FormControl>
-                              <Input type="number" {...field} />
-                            </FormControl>
-                            <FormDescription>行数硬上限，与预算共同决定切分粒度</FormDescription>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-                  </div>
-                  ) : (
-                  <>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    切法由文档结构决定：标题、表格、代码、列表各按自身边界切分，每块自动带上所属章节
+                  </p>
+                  {showParseProfile ? (
                   <FormField
                     control={form.control}
-                    name="chunkStrategy"
+                    name="parseProfile"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-xs text-muted-foreground font-normal">切分方式</FormLabel>
+                        <FormLabel className="text-xs text-muted-foreground font-normal">
+                          {specSchema?.parseProfileLabel}
+                        </FormLabel>
                         <Select value={field.value} onValueChange={field.onChange}>
                           <FormControl>
                             <SelectTrigger>
-                              <SelectValue placeholder="选择切分方式" />
+                              <SelectValue />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            {chunkStrategies.map((option) => (
+                            {(specSchema?.parseProfiles ?? []).map((option) => (
                               <SelectItem key={option.value} value={option.value}>
                                 {option.label}
                               </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
+                        <FormDescription>
+                          {specSchema?.parseProfiles.find((o) => o.value === parseProfile)?.hint ?? ""}
+                        </FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
-
-              {isFixedSize ? (
-                <>
-                  <div className="grid gap-4 md:grid-cols-3">
-                    <FormField
-                      control={form.control}
-                      name="chunkSize"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-xs text-muted-foreground font-normal">块大小</FormLabel>
-                          <FormControl>
-                            <Input type="number" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
+                  ) : null}
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={noChunk}
+                      onClick={handleNoChunkToggle}
+                      className={cn(
+                        "relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background",
+                        noChunk ? "bg-blue-600" : "bg-slate-200"
                       )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="overlapSize"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-xs text-muted-foreground font-normal">重叠大小</FormLabel>
-                          <FormControl>
-                            <Input type="number" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormItem>
-                      <FormLabel className="text-xs text-muted-foreground font-normal">不分块</FormLabel>
-                      <FormControl>
-                        <div className="flex h-9 items-center">
-                          <button
-                            type="button"
-                            role="switch"
-                            aria-checked={noChunk}
-                            onClick={handleNoChunkToggle}
-                            className={cn(
-                              "relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background",
-                              noChunk ? "bg-blue-600" : "bg-slate-200"
-                            )}
-                          >
-                            <span
-                              className={cn(
-                                "inline-block h-4 w-4 transform rounded-full bg-background shadow transition-transform",
-                                noChunk ? "translate-x-4" : "translate-x-1"
-                              )}
-                            />
-                          </button>
-                        </div>
-                      </FormControl>
-                      <FormDescription>开启后块大小为-1</FormDescription>
-                    </FormItem>
+                    >
+                      <span
+                        className={cn(
+                          "inline-block h-4 w-4 transform rounded-full bg-background shadow transition-transform",
+                          noChunk ? "translate-x-4" : "translate-x-1"
+                        )}
+                      />
+                    </button>
+                    <div>
+                      <div className="text-xs font-medium">整篇不分块</div>
+                      <div className="text-xs text-muted-foreground">开启后整个文档作为一个块入库</div>
+                    </div>
                   </div>
-                </>
-              ) : (
-                <div className="grid gap-4 md:grid-cols-2">
-                  <FormField
-                    control={form.control}
-                    name="targetChars"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-xs text-muted-foreground font-normal">理想块大小</FormLabel>
-                        <FormControl>
-                          <Input type="number" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="maxChars"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-xs text-muted-foreground font-normal">块上限</FormLabel>
-                        <FormControl>
-                          <Input type="number" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="minChars"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-xs text-muted-foreground font-normal">块下限</FormLabel>
-                        <FormControl>
-                          <Input type="number" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="overlapChars"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-xs text-muted-foreground font-normal">重叠大小</FormLabel>
-                        <FormControl>
-                          <Input type="number" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                  <div>
+                    <AdvancedToggle open={showAdvanced} onToggle={() => setShowAdvanced(v => !v)} />
+                    {showAdvanced ? (
+                      <div className={cn("mt-3 grid gap-4", budgetGridCols(budgetFields.length))}>
+                        {budgetFields.map((budgetField) => (
+                          <FormField
+                            key={budgetField.key}
+                            control={form.control}
+                            name={budgetField.key as BudgetFieldName}
+                            render={({ field }) => (
+                              <FormItem>
+                                <BudgetLabelRow field={budgetField}>
+                                  <FormLabel className="text-xs text-muted-foreground font-normal">
+                                    {budgetField.label}
+                                  </FormLabel>
+                                </BudgetLabelRow>
+                                <FormControl>
+                                  <Input
+                                    type="number"
+                                    min={budgetField.min}
+                                    max={budgetField.max}
+                                    {...field}
+                                    disabled={noChunk}
+                                  />
+                                </FormControl>
+                                <FormDescription className="text-xs">{budgetField.hint}</FormDescription>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
-              )}
-                  </>
-                  )}
-            </div>
             ) : null}
             </div>
 

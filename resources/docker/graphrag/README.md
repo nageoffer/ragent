@@ -57,8 +57,7 @@ rag:
     type: lightrag                        # 由 none 改为 lightrag，注册 LightRagClient + GraphSearchChannel
     lightrag:
       base-url: http://127.0.0.1:9621     # 本机默认；后端与本栈不同机时改为对应地址
-      query-mode: mix                     # naive / local / global / hybrid / mix
-      timeout-ms: 30000
+      query-mode: hybrid                  # 只回图结构证据，与向量 / 关键词通道正交（可选 naive / local / global / hybrid / mix）
     embedding-model: qwen-emb-8b          # 与 Compose 的 SiliconFlow Embedding 配置一致
     ingestion:
       async: true

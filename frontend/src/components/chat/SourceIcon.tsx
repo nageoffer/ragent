@@ -1,40 +1,11 @@
 import * as React from "react";
 import { File, FileText, Globe, Image as ImageIcon, Presentation, Sheet } from "lucide-react";
 
+import { fileExt, isExternal } from "@/lib/source";
 import { cn } from "@/lib/utils";
 import type { SourceRef } from "@/types";
 
 const IMAGE_EXTS = ["png", "jpg", "jpeg", "svg", "gif", "webp", "bmp"];
-
-export function normalizeType(sourceType?: string) {
-  return (sourceType || "").toLowerCase();
-}
-
-// 有外部链接的来源（url/飞书等）走 favicon 与新窗口跳转 本地文件走 docId 预览
-export function isExternal(source: SourceRef) {
-  return Boolean(source.url);
-}
-
-// 从 fileType 取扩展名 缺失时回退按 docName 扩展名兜底（兼容无 fileType 的历史数据）
-export function fileExt(source: SourceRef): string {
-  if (source.fileType) return source.fileType.toLowerCase();
-  const match = (source.docName || "").match(/\.([a-z0-9]+)$/i);
-  return match ? match[1].toLowerCase() : "";
-}
-
-// 来源基础文案：飞书文档 / 网页域名 / 本地文件
-export function sourceLabel(source: SourceRef) {
-  const type = normalizeType(source.sourceType);
-  if (isExternal(source)) {
-    if (type === "feishu") return "飞书文档";
-    try {
-      return new URL(source.url as string).hostname;
-    } catch {
-      return "网页";
-    }
-  }
-  return "本地文件";
-}
 
 // favicon 取来源站点根目录的 /favicon.ico（浏览器标签页上的站点图标）失败回退地球
 function faviconUrl(url?: string | null): string | null {

@@ -25,8 +25,7 @@ export interface KnowledgeDocument {
   fileType?: string | null;
   fileSize?: number | null;
   processMode?: string | null;
-  chunkStrategy?: string | null;
-  chunkConfig?: string | null;
+  ingestionSpec?: string | null;
   pipelineId?: string | number | null;
   status?: string | null;
   createdBy?: string | null;
@@ -62,7 +61,7 @@ export interface KnowledgeDocumentChunkLog {
   docId: string;
   status: string;
   processMode?: string | null;
-  chunkStrategy?: string | null;
+  parseProfile?: string | null;
   pipelineId?: string | null;
   pipelineName?: string | null;
   extractDuration?: number | null;
@@ -105,8 +104,7 @@ export interface KnowledgeDocumentUploadPayload {
   scheduleEnabled?: boolean;
   scheduleCron?: string | null;
   processMode?: "chunk" | "pipeline";
-  chunkStrategy?: string;
-  chunkConfig?: string | null;
+  ingestionSpec?: string | null;
   pipelineId?: string | null;
 }
 
@@ -117,14 +115,49 @@ export interface KnowledgeChunkPageParams {
 }
 
 // 知识库管理
-export interface ChunkStrategyOption {
+export interface ParseProfileOption {
   value: string;
   label: string;
-  defaultConfig: Record<string, number>;
+  hint?: string | null;
 }
 
-export const getChunkStrategies = async (): Promise<ChunkStrategyOption[]> => {
-  return api.get<ChunkStrategyOption[], ChunkStrategyOption[]>("/knowledge-base/chunk-strategies");
+export interface BudgetFieldSchema {
+  key: string;
+  label: string;
+  defaultValue: number;
+  min: number;
+  max: number;
+  recommendedMin: number;
+  recommendedMax: number;
+  hint?: string | null;
+  detail?: string | null;
+}
+
+/**
+ * 摄取配置表单 schema：后端下发字段定义与取值范围，前端据此动态渲染，
+ * 后端加一个参数不需要改前端
+ */
+export interface IngestionSpecSchema {
+  /**
+   * 档位选项的字段名：与下面的选项名一起由后端下发。这几段文案要互相说得通
+   * （"表格结构"配"规整表格 / 复杂表格"），拆到两端各存一半必然改一处漏一处
+   */
+  parseProfileLabel: string;
+  parseProfiles: ParseProfileOption[];
+  /**
+   * 档位真正有区别的文件扩展名（后端从解析器注册表推导）：不在清单里的格式，
+   * 两档命中同一个解析器，选项必须藏起来。前端不得自己维护一份格式清单
+   */
+  parseProfileExtensions: string[];
+  budgetFields: BudgetFieldSchema[];
+  /**
+   * 整篇不分块在线路上的取值：只在提交与回读时出现，不进表单状态
+   */
+  wholeDocumentSentinel: number;
+}
+
+export const getIngestionSpecSchema = async (): Promise<IngestionSpecSchema> => {
+  return api.get<IngestionSpecSchema, IngestionSpecSchema>("/knowledge-base/docs/ingestion-spec-schema");
 };
 
 export const getKnowledgeBases = async (current = 1, size = 200, name?: string): Promise<KnowledgeBase[]> => {
@@ -220,11 +253,8 @@ export const uploadDocument = async (
   if (payload.processMode) {
     formData.append("processMode", payload.processMode);
   }
-  if (payload.chunkStrategy) {
-    formData.append("chunkStrategy", payload.chunkStrategy);
-  }
-  if (payload.chunkConfig) {
-    formData.append("chunkConfig", payload.chunkConfig);
+  if (payload.ingestionSpec) {
+    formData.append("ingestionSpec", payload.ingestionSpec);
   }
   if (payload.pipelineId) {
     formData.append("pipelineId", payload.pipelineId);
@@ -243,8 +273,7 @@ export const getDocument = async (docId: string): Promise<KnowledgeDocument> => 
 export const updateDocument = async (docId: string, data: {
   docName?: string;
   processMode?: string;
-  chunkStrategy?: string;
-  chunkConfig?: string;
+  ingestionSpec?: string;
   pipelineId?: string;
   sourceLocation?: string;
   scheduleEnabled?: number;

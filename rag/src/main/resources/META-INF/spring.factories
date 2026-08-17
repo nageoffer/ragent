@@ -1,0 +1,7 @@
+# 检索通道配置一致性校验：启动最前置的环境后置处理器
+org.springframework.boot.EnvironmentPostProcessor=\
+  com.nageoffer.ai.ragent.rag.config.validation.RetrievalConfigEnvironmentPostProcessor
+
+# 检索通道配置矛盾的启动诊断器（把 RetrievalConfigException 渲染成 APPLICATION FAILED TO START 框）
+org.springframework.boot.diagnostics.FailureAnalyzer=\
+  com.nageoffer.ai.ragent.rag.config.validation.RetrievalConfigFailureAnalyzer

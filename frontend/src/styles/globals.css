@@ -356,16 +356,13 @@ html.dark *::-webkit-scrollbar-thumb:hover {
     @apply text-2xl font-semibold text-slate-900;
   }
 
+  /* 24px 中文标题的字面几乎撑满行高，靠 leading 撑出的间距只有 10px，副标题会贴上去 */
   .admin-layout .admin-page-subtitle {
-    @apply text-sm text-slate-500;
+    @apply mt-1.5 text-sm text-slate-500;
   }
 
   .admin-layout .admin-page-actions {
     @apply flex flex-1 flex-wrap items-center justify-end gap-2;
-  }
-
-  .admin-layout .admin-code {
-    @apply rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-600;
   }
 
   .admin-layout .admin-link {
@@ -425,7 +422,7 @@ html.dark *::-webkit-scrollbar-thumb:hover {
   }
 
   .admin-layout .admin-sidebar__logo {
-    @apply flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#4F46E5] to-[#7C3AED] text-sm font-semibold text-white;
+    @apply flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#4F46E5] to-[#7C3AED] text-white;
   }
 
   .admin-layout .admin-sidebar__title {
@@ -488,6 +485,11 @@ html.dark *::-webkit-scrollbar-thumb:hover {
     @apply h-4 w-4 text-white/50;
   }
 
+  /* Bot 字形在 24 画布里只占 16 高，比同栏其余图标矮一截，放大两像素找齐；负 margin 抵消撑开量，文字不跟着右移 */
+  .admin-layout .admin-sidebar__item-icon--optical-lg {
+    @apply -m-px h-[18px] w-[18px];
+  }
+
   .admin-layout .admin-sidebar__item--active .admin-sidebar__item-icon {
     @apply text-indigo-300;
   }
@@ -526,10 +528,6 @@ html.dark *::-webkit-scrollbar-thumb:hover {
 
   .admin-layout .ui-card-description {
     @apply text-sm text-slate-500;
-  }
-
-  .admin-layout .ui-card-content {
-    @apply pt-0 pb-6;
   }
 
   .admin-layout .ui-table-wrap {
@@ -2481,6 +2479,203 @@ html.dark *::-webkit-scrollbar-thumb:hover {
       grid-template-columns: minmax(0, 1fr);
     }
   }
+
+  /* 智能体列表：卡片网格 */
+
+  .admin-layout .agent-grid {
+    @apply grid gap-4 md:grid-cols-2 xl:grid-cols-3;
+  }
+
+  .admin-layout .agent-card {
+    @apply flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-5 text-left shadow-sm transition-all duration-200;
+    min-height: 196px;
+  }
+
+  .admin-layout .agent-card:hover {
+    @apply -translate-y-0.5 border-slate-300 shadow-md;
+  }
+
+  .admin-layout .agent-card--active {
+    @apply border-indigo-300;
+    box-shadow: 0 10px 26px -16px rgba(79, 70, 229, 0.55);
+  }
+
+  /* AgentAvatar 的形状与配色都在组件里，弹窗走 portal 渲染在 .admin-layout 之外，
+     样式不能挂在这个作用域下 */
+
+  .admin-layout .agent-card__desc {
+    @apply mt-1 overflow-hidden text-[13px] leading-relaxed text-slate-500;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    min-height: 40px;
+  }
+
+  .admin-layout .agent-card__live {
+    @apply inline-flex shrink-0 items-center gap-1.5 rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-medium text-indigo-600;
+  }
+
+  .admin-layout .agent-card__live-dot {
+    @apply h-1.5 w-1.5 rounded-full bg-indigo-500;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.18);
+  }
+
+  /* 两枚胶囊并排靠左，中间不留被 justify-between 撑开的空白 */
+  .admin-layout .agent-card__meta {
+    @apply mt-auto flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3;
+  }
+
+  .admin-layout .agent-card__chip {
+    @apply inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-slate-200/70 bg-slate-50 px-2 py-1 text-[11px] leading-4 text-slate-500;
+  }
+
+  /* 已填写但当前架构读不到的槽位数，完整说明在 title 里 */
+  .admin-layout .agent-card__pending {
+    @apply cursor-default rounded bg-slate-200 px-1 text-[10px] font-medium leading-4 text-slate-600;
+  }
+
+  .admin-layout .agent-card--skeleton {
+    @apply animate-pulse border-slate-100 bg-slate-100 shadow-none;
+  }
+
+  .admin-layout .agent-card--add {
+    @apply items-center justify-center gap-2 border-dashed border-slate-300 bg-white/50 text-center shadow-none;
+  }
+
+  .admin-layout .agent-card--add:hover {
+    @apply translate-y-0 border-indigo-300 bg-indigo-50/40 shadow-none;
+  }
+
+  .admin-layout .agent-card__add-icon {
+    @apply flex h-11 w-11 items-center justify-center rounded-2xl border border-dashed border-slate-300 text-slate-400;
+  }
+
+  /* 智能体提示词：左右分栏，整页不滚动 */
+
+  .admin-layout .agent-prompt-page {
+    @apply flex flex-col gap-4;
+  }
+
+  .admin-layout .agent-prompt-page__header {
+    @apply shrink-0;
+  }
+
+  .admin-layout .agent-prompt-layout {
+    @apply grid gap-4;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-layout .agent-prompt-rail {
+    @apply flex flex-col gap-4 overflow-y-auto rounded-xl border border-slate-200 bg-white p-3;
+  }
+
+  /* 窄屏下分栏退化成上下排布，导航必须自己收口，否则要滚过整列才够到编辑器 */
+  @media (max-width: 1099px) {
+    .admin-layout .agent-prompt-rail {
+      max-height: 260px;
+    }
+  }
+
+  .admin-layout .agent-prompt-rail__group {
+    @apply space-y-0.5;
+  }
+
+  .admin-layout .agent-prompt-rail__group-title {
+    @apply px-2.5 pb-1 text-[11px] font-semibold tracking-wide text-slate-400;
+  }
+
+  .admin-layout .agent-prompt-rail__item {
+    @apply flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] text-slate-600 transition-colors hover:bg-slate-100;
+  }
+
+  .admin-layout .agent-prompt-rail__item--active {
+    @apply bg-indigo-50 font-medium text-indigo-700 hover:bg-indigo-50;
+  }
+
+  .admin-layout .agent-prompt-rail__flag {
+    @apply shrink-0 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-600;
+  }
+
+  .admin-layout .agent-prompt-rail__fallback {
+    @apply shrink-0 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-400;
+  }
+
+  .admin-layout .agent-prompt-rail__legend {
+    @apply mt-auto space-y-1.5 border-t border-slate-100 px-2.5 pt-3 text-[11px] text-slate-400;
+  }
+
+  .admin-layout .agent-prompt-rail__legend > span {
+    @apply flex items-center gap-2;
+  }
+
+  .admin-layout .agent-prompt-dot {
+    @apply h-1.5 w-1.5 shrink-0 rounded-full;
+  }
+
+  .admin-layout .agent-prompt-dot--on {
+    @apply bg-emerald-500;
+  }
+
+  .admin-layout .agent-prompt-dot--off {
+    @apply bg-slate-300;
+  }
+
+  .admin-layout .agent-prompt-pane {
+    @apply flex min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white;
+  }
+
+  .admin-layout .agent-prompt-pane__header {
+    @apply flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-3;
+  }
+
+  .admin-layout .agent-prompt-pane__placeholders {
+    @apply flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-100 bg-slate-50/70 px-4 py-2 text-xs;
+  }
+
+  .admin-layout .agent-prompt-placeholder {
+    @apply rounded-md border border-slate-200 bg-white px-1.5 py-0.5 font-mono text-[11px] text-slate-600;
+  }
+
+  .admin-layout .agent-prompt-placeholder--missing {
+    @apply border-rose-200 bg-rose-50 text-rose-600;
+  }
+
+  .admin-layout .agent-prompt-pane__footer {
+    @apply flex shrink-0 items-center justify-between border-t border-slate-100 px-4 py-2 text-xs text-slate-500;
+  }
+
+  @media (min-width: 1100px) {
+    .admin-layout .admin-main:has(.agent-prompt-page) {
+      height: 100vh;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .admin-layout .admin-main:has(.agent-prompt-page) .admin-content {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      padding: 20px 32px 20px;
+    }
+
+    .admin-layout .admin-main:has(.agent-prompt-page) .admin-breadcrumbs {
+      margin-bottom: 8px;
+    }
+
+    .admin-layout .agent-prompt-page {
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .admin-layout .agent-prompt-layout {
+      flex: 1;
+      min-height: 0;
+      grid-template-columns: 252px minmax(0, 1fr);
+    }
+  }
 }
 
 .chat-surface {
@@ -2495,6 +2690,24 @@ textarea {
   field-sizing: fixed;
   overflow-y: auto;
   scrollbar-width: none;
+}
+
+/* 提示词正文动辄上千行，必须挣脱全局 field-sizing: content，否则整页被撑成几十屏 */
+.agent-prompt-textarea {
+  field-sizing: fixed;
+  overflow-y: auto;
+  min-height: 320px;
+}
+
+@media (min-width: 1100px) {
+  .agent-prompt-textarea {
+    min-height: 0;
+  }
+}
+
+.agent-form-textarea {
+  max-height: 200px;
+  overflow-y: auto;
 }
 
 .chunk-editor-textarea::-webkit-scrollbar {
@@ -2660,4 +2873,301 @@ textarea {
   word-break: break-word;
   overflow-wrap: break-word;
   white-space: pre-wrap;
+}
+
+/* docx-preview 会往容器里注入灰底纸张外框，这里压平成与 txt/markdown 一致的连续正文流
+   注入的 style 标签在文档流中晚于本文件，靠 .docx-host 提权覆盖而非 !important
+   文档页边距可能小到 0，留白交给 .docx-host 的内边距，wrapper 只负责限制行宽 */
+.docx-host .docx-wrapper {
+  display: block;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0;
+  background: transparent;
+}
+
+.docx-host .docx-wrapper > section.docx {
+  background: transparent;
+  box-shadow: none;
+  margin: 0;
+}
+
+/* docx / pdf 去掉纸张外框后靠它区分页与页 */
+.doc-page-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  color: #999999;
+}
+
+.doc-page-divider::before,
+.doc-page-divider::after {
+  content: "";
+  flex: 1;
+  border-top: 1px solid var(--border-default);
+}
+
+/* ===== 系统配置页（色板与 trace-list-stat-icon 对齐，独立命名避免跨页耦合） ===== */
+@layer components {
+  .admin-layout .settings-section {
+    @apply space-y-4;
+  }
+
+  .admin-layout .settings-section-head {
+    @apply flex items-baseline justify-between gap-3;
+  }
+
+  .admin-layout .settings-section-title {
+    @apply text-[15px] font-semibold text-slate-900;
+  }
+
+  .admin-layout .settings-section-hint {
+    @apply text-xs text-slate-400;
+  }
+
+  .admin-layout .settings-card {
+    @apply rounded-xl border border-slate-200 bg-white p-5 shadow-sm;
+  }
+
+  .admin-layout .settings-arch-grid {
+    @apply grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5;
+  }
+
+  .admin-layout .settings-arch-card {
+    @apply flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm;
+  }
+
+  .admin-layout .settings-arch-card.is-off {
+    @apply border-dashed bg-slate-50/70 shadow-none;
+  }
+
+  .admin-layout .settings-icon {
+    @apply inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg;
+  }
+
+  .admin-layout .settings-icon.is-cyan {
+    background: #ecfeff;
+    color: #0e7490;
+  }
+
+  .admin-layout .settings-icon.is-emerald {
+    background: #ecfdf5;
+    color: #059669;
+  }
+
+  .admin-layout .settings-icon.is-indigo {
+    background: #eef2ff;
+    color: #4f46e5;
+  }
+
+  .admin-layout .settings-icon.is-amber {
+    background: #fffbeb;
+    color: #d97706;
+  }
+
+  .admin-layout .settings-icon.is-sky {
+    background: #f0f9ff;
+    color: #0284c7;
+  }
+
+  .admin-layout .settings-icon.is-slate {
+    @apply bg-slate-100 text-slate-400;
+  }
+
+  .admin-layout .settings-arch-label {
+    @apply text-xs text-slate-500;
+  }
+
+  .admin-layout .settings-arch-value {
+    @apply font-mono text-sm font-semibold leading-5 text-slate-900;
+  }
+
+  .admin-layout .settings-arch-card.is-off .settings-arch-value {
+    @apply text-slate-400;
+  }
+
+  .admin-layout .settings-arch-caption {
+    @apply text-[11px] leading-4 text-slate-400;
+  }
+
+  .admin-layout .settings-pipeline {
+    @apply grid gap-6 xl:grid-cols-[340px,minmax(0,1fr)];
+  }
+
+  .admin-layout .settings-subhead {
+    @apply mb-2 flex items-baseline justify-between text-xs font-medium text-slate-500;
+  }
+
+  .admin-layout .settings-subhead-hint {
+    @apply font-mono text-[11px] font-normal text-slate-400;
+  }
+
+  .admin-layout .settings-channel-list {
+    @apply space-y-2;
+  }
+
+  .admin-layout .settings-channel {
+    @apply flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5;
+  }
+
+  .admin-layout .settings-channel.is-off {
+    @apply border-dashed bg-slate-50/70;
+  }
+
+  .admin-layout .settings-channel-name {
+    @apply text-sm font-medium leading-5 text-slate-900;
+  }
+
+  .admin-layout .settings-channel.is-off .settings-channel-name {
+    @apply text-slate-400;
+  }
+
+  .admin-layout .settings-channel-meta {
+    @apply font-mono text-[11px] leading-4 text-slate-400;
+  }
+
+  .admin-layout .settings-channel-weight {
+    @apply ml-auto shrink-0 rounded-full bg-slate-100 px-2 py-0.5 font-mono text-[11px] text-slate-500;
+  }
+
+  .admin-layout .settings-funnel {
+    @apply flex flex-col gap-1 md:flex-row md:items-stretch;
+  }
+
+  .admin-layout .settings-funnel-stage {
+    @apply min-w-0 flex-1 rounded-xl border border-slate-200 bg-white p-4;
+  }
+
+  .admin-layout .settings-funnel-step {
+    @apply text-xs text-slate-500;
+  }
+
+  .admin-layout .settings-funnel-value {
+    @apply mt-1 font-mono text-2xl font-bold tabular-nums leading-8 text-slate-900;
+  }
+
+  .admin-layout .settings-funnel-unit {
+    @apply ml-1 font-sans text-xs font-normal text-slate-400;
+  }
+
+  .admin-layout .settings-funnel-track {
+    @apply mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100;
+  }
+
+  .admin-layout .settings-funnel-bar {
+    @apply h-full rounded-full bg-indigo-500;
+  }
+
+  .admin-layout .settings-funnel-stage.is-final .settings-funnel-bar {
+    @apply bg-emerald-500;
+  }
+
+  .admin-layout .settings-funnel-key {
+    @apply mt-2 block font-mono text-[11px] text-slate-400;
+  }
+
+  .admin-layout .settings-funnel-arrow {
+    @apply flex items-center justify-center self-center text-slate-300;
+  }
+
+  .admin-layout .settings-scope {
+    @apply mt-4 grid gap-3 rounded-lg border border-slate-200/70 bg-slate-50 p-4 sm:grid-cols-3;
+  }
+
+  .admin-layout .settings-scope-note {
+    @apply text-[11px] leading-4 text-slate-400 sm:col-span-3;
+  }
+
+  .admin-layout .settings-kv {
+    @apply flex flex-col gap-0.5;
+  }
+
+  .admin-layout .settings-kv-label {
+    @apply text-xs text-slate-500;
+  }
+
+  .admin-layout .settings-kv-value {
+    @apply break-all text-sm font-medium tabular-nums text-slate-800;
+  }
+
+  .admin-layout .settings-kv-key {
+    @apply font-mono text-[10px] text-slate-300;
+  }
+
+  .admin-layout .settings-kv-grid {
+    @apply grid gap-x-6 gap-y-3 sm:grid-cols-2;
+  }
+
+  .admin-layout .settings-card-title {
+    @apply mb-4 flex items-center gap-2 text-sm font-semibold text-slate-900;
+  }
+
+  .admin-layout .settings-card-title-hint {
+    @apply ml-auto text-xs font-normal text-slate-400;
+  }
+
+  .admin-layout .settings-feature-row {
+    @apply mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-4;
+  }
+
+  .admin-layout .settings-feature {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700;
+  }
+
+  .admin-layout .settings-feature.is-off {
+    @apply border-dashed bg-slate-50 text-slate-400;
+  }
+
+  .admin-layout .settings-feature-key {
+    @apply font-mono text-[10px] text-slate-400;
+  }
+
+  .admin-layout .settings-feature.is-off .settings-feature-key {
+    @apply text-slate-300;
+  }
+
+  .admin-layout .settings-tier {
+    @apply flex flex-col gap-2 rounded-lg border border-slate-200 p-3 md:flex-row md:items-center md:gap-4;
+  }
+
+  .admin-layout .settings-tier-name {
+    @apply flex w-28 shrink-0 items-center gap-1.5 font-mono text-sm font-semibold text-slate-900;
+  }
+
+  .admin-layout .settings-tier-chain {
+    @apply flex flex-wrap items-center gap-1;
+  }
+
+  .admin-layout .settings-tier-timeout {
+    @apply shrink-0 font-mono text-xs text-slate-400 md:ml-auto;
+  }
+
+  .admin-layout .settings-chip {
+    @apply rounded-md bg-slate-100 px-2 py-0.5 font-mono text-xs text-slate-700;
+  }
+
+  .admin-layout .settings-chip.is-primary {
+    @apply bg-indigo-50 text-indigo-700;
+  }
+
+  .admin-layout .settings-tag {
+    @apply inline-flex shrink-0 items-center whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium;
+  }
+
+  .admin-layout .settings-tag.is-on {
+    @apply bg-emerald-50 text-emerald-600;
+  }
+
+  .admin-layout .settings-tag.is-off {
+    @apply bg-slate-100 text-slate-400;
+  }
+
+  .admin-layout .settings-tag.is-indigo {
+    @apply bg-indigo-50 text-indigo-600;
+  }
+
+  .admin-layout .settings-tag.is-violet {
+    @apply bg-violet-50 text-violet-600;
+  }
 }

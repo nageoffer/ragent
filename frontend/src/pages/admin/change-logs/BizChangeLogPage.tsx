@@ -9,6 +9,7 @@ import {
   ListChecks,
   MessagesSquare,
   Network,
+  Orbit,
   ScrollText,
   Search,
   ShieldCheck,
@@ -86,9 +87,10 @@ const SUCCESS_OPTIONS = [
 ];
 
 const BIZ_TYPE_OPTIONS = [
+  { value: "AGENT_PROFILE", label: "智能体" },
   { value: "KNOWLEDGE_BASE", label: "知识库" },
   { value: "KNOWLEDGE_DOCUMENT", label: "文档" },
-  { value: "KNOWLEDGE_CHUNK", label: "Chunk" },
+  { value: "KNOWLEDGE_CHUNK", label: "文档分块" },
   { value: "INGESTION_PIPELINE", label: "数据通道" },
   { value: "INGESTION_TASK", label: "采集任务" },
   { value: "INTENT_TREE", label: "意图树" },
@@ -129,6 +131,8 @@ const parseJson = (value?: string | null): unknown => {
 
 // 业务类型的图标与配色，让业务列更有辨识度也更大气
 const BIZ_TYPE_META: Record<string, { icon: LucideIcon; className: string }> = {
+  // 跟 AgentAvatar 的 orbit-indigo 预设对齐，别单独挑图标和配色
+  AGENT_PROFILE: { icon: Orbit, className: "bg-[#eef2ff] text-[#6366F1]" },
   KNOWLEDGE_BASE: { icon: Database, className: "bg-[#e6f7ff] text-[#1890FF]" },
   KNOWLEDGE_DOCUMENT: { icon: FileText, className: "bg-[#f0f5ff] text-[#2F54EB]" },
   KNOWLEDGE_CHUNK: { icon: Boxes, className: "bg-[#e6fffb] text-[#13C2C2]" },

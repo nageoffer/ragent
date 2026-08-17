@@ -22,6 +22,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.Comparator;
+
 /**
  * RAG 检索命中结果
  * <p>
@@ -31,8 +33,21 @@ import lombok.NoArgsConstructor;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
+@Builder(toBuilder = true)
 public class RetrievedChunk {
+
+    /**
+     * 相关性降序 缺分与非有限值沉底
+     * 各取数与通道出口共用的唯一排序规则 下游截断与 RRF 均以该名次为基准
+     * 合法分数（余弦 / BM25 / 倒数名次）均为有限值 NaN 与 ±Infinity 只能来自上游缺陷
+     * 且 Float.compare 会把 NaN 当最大值 不归一就让毒值抢占最高名次
+     */
+    public static final Comparator<RetrievedChunk> BY_SCORE_DESC = (a, b) -> Float.compare(sortScore(b), sortScore(a));
+
+    private static float sortScore(RetrievedChunk chunk) {
+        Float score = chunk.getScore();
+        return score == null || !Float.isFinite(score) ? Float.NEGATIVE_INFINITY : score;
+    }
 
     /**
      * 命中记录的唯一标识
@@ -51,6 +66,12 @@ public class RetrievedChunk {
      * 数值越大表示与查询的相关性越高
      */
     private Float score;
+
+    /**
+     * 所属知识库 collection
+     * 检索时由各后端从存储侧字段填充 用于按库推导意图归属 无库来源（如联网检索）为 null
+     */
+    private String collectionName;
 
     /**
      * 所属文档 ID

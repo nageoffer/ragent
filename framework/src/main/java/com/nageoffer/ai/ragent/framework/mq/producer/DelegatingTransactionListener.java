@@ -58,6 +58,10 @@ public class DelegatingTransactionListener implements RocketMQLocalTransactionLi
         localTransactionMap.put(txId, localTransaction);
     }
 
+    void unregisterLocalTransaction(String txId) {
+        localTransactionMap.remove(txId);
+    }
+
     public void registerChecker(String topic, TransactionChecker checker) {
         checkerMap.put(topic, checker);
     }

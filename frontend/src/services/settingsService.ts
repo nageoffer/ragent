@@ -1,18 +1,73 @@
 import { api } from "@/services/api";
 
 export interface SystemSettings {
-  upload: {
-    maxFileSize: number;
-    maxRequestSize: number;
+  engine: {
+    type: string;
+  };
+  backends: {
+    storage: {
+      type: string;
+      kbBucket: string;
+      assetBucket: string;
+      endpoint?: string | null;
+      publicUrl?: string | null;
+      region?: string | null;
+    };
+    vector: {
+      type: string;
+    };
+    keyword: {
+      type: string;
+      uris?: string | null;
+      index?: string | null;
+      analyzer?: string | null;
+      searchAnalyzer?: string | null;
+    };
+    graph: {
+      type: string;
+      baseUrl?: string | null;
+      queryMode?: string | null;
+      embeddingModel?: string | null;
+    };
   };
   rag: {
     default: {
       collectionName: string;
       dimension: number;
       metricType: string;
+      sseTimeoutMs: number;
     };
-    queryRewrite: {
-      enabled: boolean;
+    features: {
+      queryRewrite: boolean;
+      rerank: boolean;
+      citation: boolean;
+      contextEnrich: boolean;
+      trace: boolean;
+    };
+    search: {
+      defaultTopK: number;
+      recallBudget: number;
+      scope: {
+        minIntentScore: number;
+        confidenceThreshold: number;
+        supplementRatio: number;
+      };
+      channels: {
+        timeoutMs: number;
+        vector: RetrievalChannel;
+        keyword: RetrievalChannel;
+        graph: RetrievalChannel;
+        webSearch: RetrievalChannel & {
+          count: number;
+          timeoutSeconds: number;
+          apiKeyConfigured: boolean;
+        };
+      };
+      fusion: {
+        strategy: string;
+        rrfK: number;
+        rerankCandidateLimit: number;
+      };
     };
     rateLimit: {
       global: {
@@ -50,13 +105,23 @@ export interface SystemSettings {
     chat: ModelGroup;
     embedding: ModelGroup;
     rerank: ModelGroup;
+    vlm?: ModelGroup | null;
   };
+  upload: {
+    maxFileSize: number;
+    maxRequestSize: number;
+  };
+}
+
+export interface RetrievalChannel {
+  enabled: boolean;
+  weight: number;
 }
 
 export interface ModelGroup {
   defaultModel?: string | null;
   candidates: ModelCandidate[];
-  // chat 组档位机制字段，embedding/rerank 为空
+  // chat 组档位机制字段，embedding/rerank/vlm 为空
   defaultTier?: string | null;
   deepThinkingTier?: string | null;
   tiers?: Record<string, TierConfig> | null;

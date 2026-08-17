@@ -99,7 +99,13 @@ export const MessageItem = React.memo(function MessageItem({ message }: MessageI
               </span>
             </div>
           ) : null}
-          {hasContent ? <MarkdownRenderer content={message.content} /> : null}
+          {hasContent ? (
+            <MarkdownRenderer
+              content={message.content}
+              messageId={message.id}
+              sources={message.sources}
+            />
+          ) : null}
           {message.status === "error" ? (
             <p className="text-xs text-rose-500">生成已中断。</p>
           ) : null}

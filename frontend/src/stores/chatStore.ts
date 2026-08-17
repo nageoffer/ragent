@@ -55,6 +55,7 @@ interface ChatState {
   appendThinkingContent: (delta: string) => void;
   submitFeedback: (messageId: string, feedback: FeedbackValue) => Promise<void>;
   toggleSourcesPanel: (messageId: string) => void;
+  openSourcesPanel: (messageId: string) => void;
   closeSourcesPanel: () => void;
   loadRecommended: (messageId: string) => Promise<void>;
   toggleRecommended: (messageId: string) => void;
@@ -572,6 +573,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       openedSourceMessageId: state.openedSourceMessageId === messageId ? null : messageId
     }));
   },
+  openSourcesPanel: (messageId) => set({ openedSourceMessageId: messageId }),
   closeSourcesPanel: () => set({ openedSourceMessageId: null }),
   loadRecommended: async (messageId) => {
     const target = get().messages.find((message) => message.id === messageId);

@@ -38,8 +38,21 @@ rocketmq:
     group: ragent-producer${unique-name:}_pg
     send-message-timeout: 2000
 
-milvus:
-  uri: http://localhost:19530
+ragent:
+  engine:
+    type: workflow  # 执行架构档位，可选 workflow（v1 编排管线）/ agent（v2 ReAct 架构，RAG 管线降级为主 Agent 的一个 Tool）
+  demo-mode: false
+  eval:
+    enabled: true
+
+# Agent 执行架构（ragent.engine.type=agent 时生效）；单模型无 fallback，供应商可用性由 provider 侧保障
+agent:
+  chat:
+    provider: bailian   # 引用 ai.providers 下的供应商，取其 url / api-key / endpoints.chat
+    model: qwen3-max    # 直接传给 OpenAI 兼容端点的模型名
+  max-iters: 10         # ReAct 循环上限，超出后熔断收尾
+  max-retries: 2        # 单次模型调用失败重试次数
+  sse-timeout-ms: 300000
 
 rag:
   storage:
@@ -75,13 +88,8 @@ rag:
     type: none  # 图谱后端总开关，可选 none / lightrag。lightrag 即接入后端供「后台可视化 / 检索读取」；是否参与检索、是否写入分别由 rag.search.channels.graph.enabled 与下方 ingestion.enabled 独立控制
     lightrag:
       base-url: http://127.0.0.1:9621
-      query-mode: mix  # naive / local / global / hybrid / mix
-      timeout-ms: 30000
+      query-mode: hybrid
     embedding-model: qwen-emb-8b  # 与 LightRAG 的 SiliconFlow Qwen3-Embedding-8B 配置一致
-    ingestion:
-      enabled: false           # 写入同步开关：false 冻结图谱写入（向量写不再重建图谱），仅保留可视化 / 检索读取，避免为不检索的图谱持续付出实体抽取成本；true 恢复随向量写自动同步
-      async: true              # 标脏入队 + 后台防抖重建，不阻塞主写链路
-      global-workspace: false  # 跨库方案B（独立全局图）；默认关，Phase1 用 fan-out 兜底
 
   default:
     collection-name: rag_default_store
@@ -94,6 +102,9 @@ rag:
 
   rerank:
     enabled: true
+
+  citation:
+    enabled: true  # 回答行内引用角标 [N](#cite-N)：开启会动态追加引用规则并为资料注入编号，增加首字延迟；关闭不影响文档级来源面板
 
   rate-limit:
     global:
@@ -133,17 +144,18 @@ rag:
     # 检索漏斗三段预算，各自独立、单调收窄，启动时校验 recall-budget ≥ default-top-k 且 rerank-candidate-limit ≥ default-top-k
     default-top-k: 10           # ③ 最终进 LLM 的条数（产品语义的 topK）
     recall-budget: 20           # ① 每通道召回条数（绝对值，向量意图路/关键词/图谱共用）；须 ≥ default-top-k，0=回退 default-top-k
+    # 检索作用域：本次请求该看哪些知识库，与用什么模态检索无关，故与 channels 平级、三条通道共读
+    # 判定只看 KB 意图最高分，不看意图个数；关掉任一通道都不影响其余通道的作用域
+    scope:
+      min-intent-score: 0.4        # 低于此分的意图节点不参与「是否收窄」的判定
+      confidence-threshold: 0.6    # KB 意图最高分低于此值 → 退化为全库检索
+      supplement-ratio: 0.25       # 定向时各通道从自身产出额度划给「未命中库」的保底比例，兜住意图判错；0=关闭补充路，命中库已覆盖全库时自动不补
     channels:
+      timeout-ms: 15000     # 单通道查询超时上限（毫秒）
       vector:
-        enabled: true       # 向量通道总开关；意图定向与全局是同一通道按意图置信度内部二选一的两种作用域
-        intent-directed:    # 有足够置信的 KB 意图时，收窄到命中库检索
-          min-intent-score: 0.4
-        global:             # 无 / 低置信 KB 意图时，退化为全库检索兜底
-          confidence-threshold: 0.6              # KB 意图最高分低于此值 → 走全局作用域
-          single-intent-supplement-threshold: 0.8  # 仅单个 KB 意图且分数低于此值 → 走全局作用域兜底
-          candidate-budget: 0                    # 全局作用域取数上限；0=跟随 rerank-candidate-limit（超出即被下游截断属空转），确需更宽跨库广度时填正值
+        enabled: true       # 向量通道总开关
       keyword:
-        enabled: false      # mode 已移除，固定为「有 KB 意图收窄命中库、无意图全局兜底」
+        enabled: false      # 检索范围读引擎解析好的作用域，与向量通道同源
       graph:
         enabled: false    # 图谱检索通道开关：false 不参与问答召回（后端仍在，后台可视化照常）；置 true 前需先开 rag.graph.type=lightrag
       web-search:
@@ -155,10 +167,10 @@ rag:
       strategy: rrf
       rrf-k: 20                   # 候选池通常仅 20~40 条，k=60 会过度平滑名次；调低至 20 让头部更有区分度（配合「检索归因」日志校准）
       rerank-candidate-limit: 40  # ② RRF 融合后送入 Rerank 的候选池上限，<=0 不截断（经验值 40~100）
-      channel-weights:            # 各通道 RRF 贡献权重：向量最可信=1.0；图谱为新通道、跑在全局图上、证据仅经结果侧过滤，暂降权=0.5
+      channel-weights:
         vector: 1.0
         keyword: 1.0
-        graph: 0.5
+        graph: 0.8
         web-search: 0.5
 
   trace:
@@ -252,7 +264,7 @@ ai:
         candidates: [ qwen-flash, qwen-plus, qwen3-local ]
         timeout-ms: 5000
       standard:
-        candidates: [ qwen-plus, qwen3-local, gpt-5.4 ]
+        candidates: [ qwen3-max, qwen-plus, qwen3-local, gpt-5.4 ]
         timeout-ms: 30000
       deep:
         candidates: [ qwen3-max, glm-4.7 ]
@@ -320,7 +332,5 @@ sa-token:
   is-log: false
   is-print: false
 
-app:
-  demo-mode: false
-  eval:
-    enabled: true
+milvus:
+  uri: http://localhost:19530

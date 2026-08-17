@@ -1,29 +1,10 @@
 import * as React from "react";
 import { X } from "lucide-react";
 
-import { fileExt, isExternal, SourceIcon, sourceLabel } from "@/components/chat/SourceIcon";
+import { SourceIcon } from "@/components/chat/SourceIcon";
 import { cn } from "@/lib/utils";
+import { openSource, sourceSite } from "@/lib/source";
 import { useChatStore } from "@/stores/chatStore";
-import type { SourceRef } from "@/types";
-
-function openSource(source: SourceRef) {
-  if (isExternal(source) && source.url) {
-    window.open(source.url, "_blank", "noopener,noreferrer");
-    return;
-  }
-  // 本地文件：新标签页打开预览 预览页按 docId 自取元数据与原文件
-  window.open(`/preview/doc/${source.docId}`, "_blank", "noopener,noreferrer");
-}
-
-// 元信息文案：本地文件补上扩展名（本地文件 · xlsx），网页/飞书用域名或类型
-function metaLabel(source: SourceRef) {
-  const base = sourceLabel(source);
-  if (!isExternal(source)) {
-    const ext = fileExt(source);
-    return ext ? `${base} · ${ext}` : base;
-  }
-  return base;
-}
 
 /**
  * 参考来源面板：作为 flex 兄弟项从右侧推挤入场（非模态 不压暗主页）
@@ -101,7 +82,7 @@ export function SourcesPanel() {
                         <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center">
                           <SourceIcon source={source} className="h-3.5 w-3.5" />
                         </span>
-                        <span className="truncate">{metaLabel(source)}</span>
+                        <span className="truncate">{sourceSite(source)}</span>
                       </div>
                       {source.excerpt ? (
                         <p className="mt-2 line-clamp-3 text-xs leading-relaxed text-[#8A8F94]">
