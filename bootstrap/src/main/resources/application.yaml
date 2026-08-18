@@ -214,6 +214,11 @@ ai:
       endpoints:
         chat: /v1/chat/completions
         embedding: /v1/embeddings
+    atlascloud:
+      url: ${ATLASCLOUD_BASE_URL:${ATLAS_CLOUD_BASE_URL:https://api.atlascloud.ai}}
+      api-key: ${ATLASCLOUD_API_KEY:${ATLAS_CLOUD_API_KEY:}}
+      endpoints:
+        chat: /v1/chat/completions
 
   selection:
     failure-threshold: 2
@@ -244,6 +249,12 @@ ai:
       - id: gpt-5.4
         provider: aihubmix
         model: gpt-5.4
+      - id: atlas-deepseek-v4-pro
+        provider: atlascloud
+        model: deepseek-ai/deepseek-v4-pro
+      - id: atlas-qwen3.5-flash
+        provider: atlascloud
+        model: qwen/qwen3.5-flash
 
     default-tier: standard
     deep-thinking-tier: deep
