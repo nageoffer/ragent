@@ -15,62 +15,22 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.rag.enums;
+package com.nageoffer.ai.ragent.rag.service;
 
-import lombok.RequiredArgsConstructor;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
- * SSE 事件类型枚举
+ * 消息语音播放服务
  */
-@RequiredArgsConstructor
-public enum SSEEventType {
+public interface VoicePlaybackService {
 
     /**
-     * 会话与任务的元信息事件
+     * 播放指定消息
      */
-    META("meta"),
+    void play(String messageId, SseEmitter emitter);
 
     /**
-     * 增量消息事件
+     * 停止指定播放任务
      */
-    MESSAGE("message"),
-
-    /**
-     * 模型回复完成事件
-     */
-    FINISH("finish"),
-
-    /**
-     * 完成事件
-     */
-    DONE("done"),
-
-    /**
-     * 取消事件
-     */
-    CANCEL("cancel"),
-
-    /**
-     * 拒绝事件
-     */
-    REJECT("reject"),
-
-    /**
-     * 音频帧事件
-     */
-    AUDIO("audio"),
-
-    /**
-     * 音频元信息事件
-     */
-    AUDIO_META("audio-meta");
-
-    private final String value;
-
-    /**
-     * SSE 事件名称（与前端约定一致）
-     */
-    public String value() {
-        return value;
-    }
+    void stop(String taskId);
 }

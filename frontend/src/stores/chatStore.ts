@@ -22,6 +22,7 @@ import {
 } from "@/services/chatService";
 import { buildQuery } from "@/utils/helpers";
 import { createStreamResponse } from "@/hooks/useStreamResponse";
+import { stopVoicePlayback } from "@/hooks/useVoicePlayback";
 import { storage } from "@/utils/storage";
 
 interface ChatState {
@@ -42,6 +43,8 @@ interface ChatState {
   openedSourceMessageId: string | null;
   // 展开推荐面板后需滚入视口的消息；每次请求都是新对象，供 MessageList 一次性响应
   recommendReveal: { id: string } | null;
+  // 当前正在语音播放的消息 ID 全局同时只播一条
+  playingMessageId: string | null;
   fetchSessions: () => Promise<void>;
   createSession: () => Promise<string>;
   deleteSession: (sessionId: string) => Promise<void>;
@@ -107,6 +110,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   cancelRequested: false,
   openedSourceMessageId: null,
   recommendReveal: null,
+  playingMessageId: null,
   fetchSessions: async () => {
     set({ isLoading: true });
     try {
@@ -144,6 +148,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (state.isStreaming) {
       get().cancelGeneration();
     }
+    // 切换会话时停止语音播放
+    stopVoicePlayback();
     set({
       currentSessionId: null,
       messages: [],
@@ -163,6 +169,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
   deleteSession: async (sessionId) => {
     try {
       await deleteSessionRequest(sessionId);
+      // 删除当前会话时停止语音播放
+      if (get().currentSessionId === sessionId) {
+        stopVoicePlayback();
+      }
       set((state) => ({
         sessions: state.sessions.filter((session) => session.id !== sessionId),
         messages: state.currentSessionId === sessionId ? [] : state.messages,
@@ -196,6 +206,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (get().isStreaming) {
       get().cancelGeneration();
     }
+    // 切换会话时停止语音播放
+    stopVoicePlayback();
     set({
       isLoading: true,
       currentSessionId: sessionId,

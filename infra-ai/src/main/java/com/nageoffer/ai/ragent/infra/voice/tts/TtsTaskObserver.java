@@ -15,62 +15,25 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.rag.enums;
+package com.nageoffer.ai.ragent.infra.voice.tts;
 
-import lombok.RequiredArgsConstructor;
+import com.nageoffer.ai.ragent.infra.chat.StreamCancellationHandle;
 
 /**
- * SSE 事件类型枚举
+ * TTS 任务生命周期观察器
  */
-@RequiredArgsConstructor
-public enum SSEEventType {
+@FunctionalInterface
+public interface TtsTaskObserver {
 
     /**
-     * 会话与任务的元信息事件
+     * 供应商任务已启动
      */
-    META("meta"),
+    void onTaskStarted(StreamCancellationHandle handle);
 
     /**
-     * 增量消息事件
+     * 当前调用是否已取消
      */
-    MESSAGE("message"),
-
-    /**
-     * 模型回复完成事件
-     */
-    FINISH("finish"),
-
-    /**
-     * 完成事件
-     */
-    DONE("done"),
-
-    /**
-     * 取消事件
-     */
-    CANCEL("cancel"),
-
-    /**
-     * 拒绝事件
-     */
-    REJECT("reject"),
-
-    /**
-     * 音频帧事件
-     */
-    AUDIO("audio"),
-
-    /**
-     * 音频元信息事件
-     */
-    AUDIO_META("audio-meta");
-
-    private final String value;
-
-    /**
-     * SSE 事件名称（与前端约定一致）
-     */
-    public String value() {
-        return value;
+    default boolean isCancelled() {
+        return false;
     }
 }

@@ -161,4 +161,17 @@ class ModelSelectorTest {
         List<ModelTarget> targets = selector.selectChatCandidates(false);
         assertEquals(List.of("qwen3-local", "gpt-5.4"), ids(targets));
     }
+
+    @Test
+    void TTS模型组超时写入ModelTarget统一超时() {
+        AIModelProperties.ModelCandidate ttsCandidate = cand("tts-model", "bailian", "tts-model", false);
+        properties.getTts().setDefaultModel("tts-model");
+        properties.getTts().setCandidates(List.of(ttsCandidate));
+        properties.getTts().setTimeoutMs(1000L);
+
+        List<ModelTarget> targets = selector.selectTtsCandidates();
+
+        assertEquals(List.of("tts-model"), ids(targets));
+        assertEquals(1000L, targets.get(0).timeoutMs());
+    }
 }

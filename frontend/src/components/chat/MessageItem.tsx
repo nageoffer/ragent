@@ -3,6 +3,7 @@ import { Brain, ChevronDown } from "lucide-react";
 
 import { FeedbackButtons } from "@/components/chat/FeedbackButtons";
 import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer";
+import { useVoicePlayback } from "@/hooks/useVoicePlayback";
 import { RecommendedQuestions } from "@/components/chat/RecommendedQuestions";
 import { RecommendedQuestionsButton } from "@/components/chat/RecommendedQuestionsButton";
 import { SourcesButton } from "@/components/chat/SourcesButton";
@@ -33,6 +34,7 @@ export const MessageItem = React.memo(function MessageItem({ message }: MessageI
     Boolean(message.id) &&
     (message.messageStatus ?? "NORMAL") === "NORMAL" &&
     !message.id.startsWith("assistant-");
+  const { playingId, togglePlay } = useVoicePlayback();
   const [thinkingExpanded, setThinkingExpanded] = React.useState(false);
   const hasThinking = Boolean(message.thinking && message.thinking.trim().length > 0);
   const hasContent = message.content.trim().length > 0;
@@ -116,6 +118,8 @@ export const MessageItem = React.memo(function MessageItem({ message }: MessageI
                   messageId={message.id}
                   feedback={message.feedback ?? null}
                   content={message.content}
+                  playing={playingId === message.id}
+                  onTogglePlay={() => togglePlay(message.id)}
                   alwaysVisible
                 />
               ) : null}

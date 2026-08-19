@@ -108,6 +108,19 @@ rag:
       lease-seconds: 30
       poll-interval-ms: 200
 
+  voice:
+    executors:
+      websocket-lifecycle:
+        core-pool-size: 2
+        max-pool-size: 32
+        keep-alive-seconds: 60
+        thread-name-prefix: websocket_lifecycle_executor_
+      playback:
+        core-pool-size: 2
+        max-pool-size: 8
+        keep-alive-seconds: 60
+        thread-name-prefix: voice_playback_executor_
+
   memory:
     history-keep-turns: 8
     summary-enabled: true
@@ -193,9 +206,11 @@ ai:
     bailian:
       url: https://dashscope.aliyuncs.com
       api-key: ${BAILIAN_API_KEY:}
+      workspace: ${BAILIAN_WORKSPACE:}
       endpoints:
         chat: /compatible-mode/v1/chat/completions
         rerank: /api/v1/services/rerank/text-rerank/text-rerank
+        tts: /api-ws/v1/inference
     aihubmix:
       url: https://aihubmix.com
       api-key: ${AIHUBMIX_API_KEY:}
@@ -290,6 +305,25 @@ ai:
       - id: qwen-vl-max
         provider: bailian
         model: qwen-vl-max
+
+  tts:
+    default-model: cosyvoice-v3-flash
+    timeout-ms: 3000
+    candidates:
+      - id: cosyvoice-v3-flash
+        provider: bailian
+        model: cosyvoice-v3-flash
+        priority: 1
+        voice: longxiaochun_v3
+
+  websocket:
+    connect-timeout-ms: 10000
+    task-start-timeout-ms: 10000
+    task-packet-idle-timeout-ms: 10000
+    max-total-per-model: 8
+    max-idle-per-model: 8
+    idle-timeout-ms: 25000
+    eviction-interval-ms: 30000
 
 # MinerU SaaS API 配置（PDF / Word / PPT 走 MinerU 解析）
 mineru:

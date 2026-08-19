@@ -4,6 +4,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { ThumbDownFilledIcon, ThumbUpFilledIcon } from "@/components/chat/ThumbIcons";
+import { VoicePlayButton } from "@/components/chat/VoicePlayButton";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -19,6 +20,8 @@ interface FeedbackButtonsProps {
   messageId: string;
   feedback: FeedbackValue;
   content: string;
+  playing?: boolean;
+  onTogglePlay?: () => void;
   className?: string;
   alwaysVisible?: boolean;
 }
@@ -31,6 +34,8 @@ export function FeedbackButtons({
   messageId,
   feedback,
   content,
+  playing,
+  onTogglePlay,
   className,
   alwaysVisible
 }: FeedbackButtonsProps) {
@@ -170,6 +175,7 @@ export function FeedbackButtons({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+      {onTogglePlay ? <VoicePlayButton playing={Boolean(playing)} onToggle={onTogglePlay} /> : null}
       <Button
         variant="ghost"
         size="icon"

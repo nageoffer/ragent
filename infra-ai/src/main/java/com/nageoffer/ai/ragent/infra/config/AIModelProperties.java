@@ -62,6 +62,11 @@ public class AIModelProperties {
     private ModelGroup vlm = new ModelGroup();
 
     /**
+     * 语音合成模型组配置
+     */
+    private ModelGroup tts = new ModelGroup();
+
+    /**
      * 模型选择策略配置
      */
     private Selection selection = new Selection();
@@ -70,6 +75,11 @@ public class AIModelProperties {
      * 流式响应配置
      */
     private Stream stream = new Stream();
+
+    /**
+     * WebSocket 连接及任务生命周期配置
+     */
+    private WebSocketConfig websocket = new WebSocketConfig();
 
     /**
      * 模型组配置类
@@ -90,6 +100,11 @@ public class AIModelProperties {
         private List<ModelCandidate> candidates = new ArrayList<>();
 
         /**
+         * 模型组调用超时预算
+         */
+        private Long timeoutMs;
+
+        /**
          * 默认档位名（仅 chat 使用）
          * 未显式指定 Tier 覆盖时的默认档位（兜底档）
          */
@@ -106,6 +121,33 @@ public class AIModelProperties {
          * key: 档位名（如 fast/standard/deep），value: 该档位的候选与超时
          */
         private Map<String, TierConfig> tiers = new HashMap<>();
+    }
+
+    /**
+     * WebSocket 配置
+     */
+    @Data
+    public static class WebSocketConfig {
+
+        private long connectTimeoutMs;
+
+        private long taskStartTimeoutMs;
+
+        private long taskPacketIdleTimeoutMs;
+
+        private int maxTotalPerModel;
+
+        private int maxIdlePerModel;
+
+        /**
+         * 连接空闲驱逐超时 0 表示不驱逐
+         */
+        private long idleTimeoutMs;
+
+        /**
+         * 空闲驱逐扫描间隔
+         */
+        private long evictionIntervalMs;
     }
 
     /**
@@ -173,6 +215,11 @@ public class AIModelProperties {
          * 是否支持思考链功能
          */
         private Boolean supportsThinking = false;
+
+        /**
+         * 语音类模型默认音色
+         */
+        private String voice;
     }
 
     /**
@@ -191,6 +238,11 @@ public class AIModelProperties {
          * API 密钥
          */
         private String apiKey;
+
+        /**
+         * 供应商工作空间标识
+         */
+        private String workspace;
 
         /**
          * 端点映射配置

@@ -62,4 +62,11 @@ public class StreamCallbackFactory {
 
         return new StreamChatEventHandler(params);
     }
+
+    /**
+     * 创建语音播放事件处理器
+     */
+    public VoicePlaybackEventHandler createVoicePlaybackEventHandler(SseEmitter emitter, String taskId) {
+        return new VoicePlaybackEventHandler(emitter, taskId, taskManager);
+    }
 }
