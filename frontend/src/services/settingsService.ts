@@ -120,6 +120,7 @@ export interface RetrievalChannel {
 
 export interface ModelGroup {
   defaultModel?: string | null;
+  timeoutMs?: number | null;
   candidates: ModelCandidate[];
   // chat 组档位机制字段，embedding/rerank/vlm 为空
   defaultTier?: string | null;

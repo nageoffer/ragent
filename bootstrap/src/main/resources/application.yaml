@@ -290,6 +290,7 @@ ai:
 
   vlm:
     default-model: qwen-vl-max
+    timeout-ms: 120000
     candidates:
       - id: qwen-vl-max
         provider: bailian

@@ -270,9 +270,17 @@ function ModelCandidatesCard({
     <div className="settings-card">
       <div className="settings-card-title">
         {title}
-        {group.defaultModel ? (
+        {group.defaultModel || group.timeoutMs != null ? (
           <span className="settings-card-title-hint">
-            默认 <code className="font-mono text-slate-500">{group.defaultModel}</code>
+            {group.defaultModel ? (
+              <>
+                默认 <code className="font-mono text-slate-500">{group.defaultModel}</code>
+              </>
+            ) : null}
+            {group.defaultModel && group.timeoutMs != null ? (
+              <span className="mx-1.5 text-slate-200">|</span>
+            ) : null}
+            {group.timeoutMs != null ? `超时 ${formatDurationMs(group.timeoutMs)}` : null}
           </span>
         ) : null}
       </div>
