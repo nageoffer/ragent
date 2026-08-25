@@ -79,4 +79,14 @@ public class RAGConfigProperties {
      */
     @Value("${rag.citation.enabled:false}")
     private Boolean citationEnabled;
+
+    /**
+     * MCP 工具调用超时时间（秒）
+     * <p>
+     * 控制检索链路中单个 MCP 工具调用的最长等待时间，超时后该工具按失败处理，
+     * 避免远端 MCP Server 或网络异常导致检索线程永久阻塞
+     * 默认值：{@code 60}
+     */
+    @Value("${rag.mcp.tool-timeout-seconds:60}")
+    private Long mcpToolTimeoutSeconds;
 }
