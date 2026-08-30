@@ -217,6 +217,12 @@ ai:
       endpoints:
         chat: /v1/chat/completions
         embedding: /v1/embeddings
+    litellm:
+      url: ${LITELLM_BASE_URL:http://localhost:4000}
+      api-key: ${LITELLM_API_KEY:}
+      endpoints:
+        chat: /v1/chat/completions
+        embedding: /v1/embeddings
 
   selection:
     failure-threshold: 2
