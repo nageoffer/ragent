@@ -179,6 +179,31 @@ rag:
     enabled: true
     max-error-length: 1000
 
+  # ==================== 安全过滤配置 ====================
+  security:
+    # 安全模块总开关，false 时所有规则不生效
+    enabled: true
+    # 阻断时的拒答文案
+    block-message: "抱歉，检测到您的输入包含不安全的请求，已被安全策略拦截。如有疑问请联系管理员。"
+    # 告警时的提示文案模板，{rule} 会被替换为规则名称
+    warn-message: "[安全提示] 您的请求触发了安全策略 ({rule})，本次回答已追加安全约束。"
+    input:
+      enabled: true
+      # 输入最大字符长度
+      max-length: 4096
+    output:
+      enabled: true
+      # 输出脱敏开关
+      mask-phone: true
+      mask-id-card: true
+      mask-email: true
+      mask-api-key: true
+      # Prompt 泄露检测
+      detect-prompt-leakage: true
+    mcp:
+      # MCP 工具权限控制
+      enforce-roles: true
+
   # 图片解析（图生文）配置
   # 产出一段自包含的知识文本：既说清"图是什么"，又完整保留所有文字与层级
   image-parse:
