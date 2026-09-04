@@ -21,6 +21,7 @@ import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
 import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
 import com.nageoffer.ai.ragent.framework.trace.RagTraceNode;
+import com.nageoffer.ai.ragent.rag.config.RAGConfigProperties;
 import com.nageoffer.ai.ragent.rag.config.SearchChannelProperties;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentNode;
 import com.nageoffer.ai.ragent.rag.core.intent.NodeScore;
@@ -52,6 +53,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.CONTEXT_FORMAT_PATH;
@@ -74,6 +76,7 @@ public class RetrievalEngine {
     private final MultiChannelRetrievalEngine multiChannelRetrievalEngine;
     private final Executor ragContextExecutor;
     private final Executor mcpBatchExecutor;
+    private final RAGConfigProperties ragConfigProperties;
 
     /**
      * 检索方法：根据子问题意图列表执行检索，整合知识库和MCP工具的结果
@@ -232,23 +235,34 @@ public class RetrievalEngine {
             return Map.of();
         }
 
+        long mcpTimeoutMillis = TimeUnit.SECONDS.toMillis(ragConfigProperties.getMcpToolTimeoutSeconds());
         List<CompletableFuture<ToolOutput>> futures = mcpIntentScores.stream()
-                .map(ns -> CompletableFuture.supplyAsync(
-                        () -> {
-                            String toolId = ns.getNode().getMcpToolId();
-                            try {
-                                CallToolResult result = executeSingleMcpTool(question, ns.getNode());
-                                return result == null ? null : new ToolOutput(toolId, result);
-                            } catch (Exception e) {
-                                log.error("MCP 工具调用异常, toolId: {}", toolId, e);
-                                return new ToolOutput(toolId, CallToolResult.builder()
-                                        .content(List.of(new TextContent("工具调用异常: " + e.getMessage())))
-                                        .isError(true)
-                                        .build());
-                            }
-                        },
-                        mcpBatchExecutor
-                ))
+                .map(ns -> {
+                    String toolId = ns.getNode().getMcpToolId();
+                    return CompletableFuture.supplyAsync(
+                            () -> {
+                                try {
+                                    CallToolResult result = executeSingleMcpTool(question, ns.getNode());
+                                    return result == null ? null : new ToolOutput(toolId, result);
+                                } catch (Exception e) {
+                                    log.error("MCP 工具调用异常, toolId: {}", toolId, e);
+                                    return new ToolOutput(toolId, CallToolResult.builder()
+                                            .content(List.of(new TextContent("工具调用异常: " + e.getMessage())))
+                                            .isError(true)
+                                            .build());
+                                }
+                            },
+                            mcpBatchExecutor
+                    )
+                    .orTimeout(mcpTimeoutMillis, TimeUnit.MILLISECONDS)
+                    .exceptionally(e -> {
+                        log.warn("MCP 工具调用超时, toolId: {}", toolId, e);
+                        return new ToolOutput(toolId, CallToolResult.builder()
+                                .content(List.of(new TextContent("工具调用超时: " + ragConfigProperties.getMcpToolTimeoutSeconds() + "s")))
+                                .isError(true)
+                                .build());
+                    });
+                })
                 .toList();
 
         return futures.stream()
