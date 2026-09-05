@@ -17,20 +17,10 @@
 
 package com.nageoffer.ai.ragent.admin.controller.vo;
 
-import lombok.Builder;
-import lombok.Data;
+/**
+ * 引擎专属运行统计的只读响应契约，不依赖聊天执行实现
+ */
+public interface DashboardPerformance {
 
-@Data
-@Builder
-public class DashboardOverviewVO {
-
-    private String engine;
-
-    private String window;
-
-    private String compareWindow;
-
-    private Long updatedAt;
-
-    private DashboardOverviewGroupVO kpis;
+    String getEngine();
 }

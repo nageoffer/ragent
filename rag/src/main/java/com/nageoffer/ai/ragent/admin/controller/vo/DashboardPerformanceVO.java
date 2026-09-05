@@ -22,7 +22,10 @@ import lombok.Data;
 
 @Data
 @Builder
-public class DashboardPerformanceVO {
+public class DashboardPerformanceVO implements DashboardPerformance {
+
+    @Builder.Default
+    private String engine = "workflow";
 
     private String window;
 
@@ -37,4 +40,9 @@ public class DashboardPerformanceVO {
     private Double noDocRate;
 
     private Double slowRate;
+
+    /**
+     * 区分”没有采样”和真实的 0% 成功率
+     */
+    private Long sampleCount;
 }

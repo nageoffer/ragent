@@ -35,4 +35,9 @@ public class DashboardOverviewGroupVO {
     private DashboardOverviewKpiVO totalMessages;
 
     private DashboardOverviewKpiVO messages24h;
+
+    /**
+     * 窗口内有消息的会话，不等同于窗口内新建的会话
+     */
+    private DashboardOverviewKpiVO activeSessions;
 }

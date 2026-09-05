@@ -344,8 +344,41 @@ html.dark *::-webkit-scrollbar-thumb:hover {
     @apply text-slate-500 transition-colors hover:text-slate-700;
   }
 
+  /*
+   * 概览页藏掉面包屑：它只有「首页 / Dashboard」两级，而 Dashboard 正是左栏当前选中项，
+   * 一行字说的全是读者已经知道的事。别的页面有多级路径，面包屑仍然是导航，不能全站删
+   */
+  .admin-layout .admin-main:has(.dashboard-page) .admin-breadcrumbs {
+    @apply hidden;
+  }
+
+  /*
+   * 概览页的底色比全站浅一档：这一页几乎全是白卡，#F3F4F6 与卡面差得太开，
+   * 每张卡都被描了一圈灰边，卡片数量一多就成了"格子墙"
+   */
+  .admin-layout .admin-main:has(.dashboard-page) {
+    @apply bg-[#F7F8FA];
+  }
+
+  /*
+   * 概览页的上留白从 32 收到 20：面包屑已经藏掉，这一段白与顶栏的白连成一片，
+   * 读者要先滚过一整条空白才看得到标题。左右仍是 32，横向节奏不动
+   */
+  .admin-layout .admin-main:has(.dashboard-page) .admin-content {
+    @apply py-5;
+  }
+
   .admin-layout .admin-page {
     @apply space-y-6;
+  }
+
+  /*
+   * 概览页的段间距压到 12：全站其它页面一屏放一两块内容，24 是舒展；
+   * 这一页要在不下拉的前提下放下四层，24 会让每层之间的白比卡内的行距还宽，读成互不相干的四页。
+   * 层与层之间的 12 仍大于卡内任何一处行距，四层的边界不会因此含糊
+   */
+  .admin-layout .admin-page.dashboard-page {
+    @apply space-y-3;
   }
 
   .admin-layout .admin-page-header {

@@ -37,6 +37,7 @@ import com.nageoffer.ai.ragent.user.dao.entity.UserDO;
 import com.nageoffer.ai.ragent.user.dao.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -53,6 +54,7 @@ import java.util.List;
 import java.util.Map;
 
 @Service
+@ConditionalOnProperty(prefix = "ragent.engine", name = "type", havingValue = "workflow", matchIfMissing = true)
 @RequiredArgsConstructor
 public class DashboardServiceImpl implements DashboardService {
 
@@ -87,6 +89,8 @@ public class DashboardServiceImpl implements DashboardService {
 
         long activeUsers = countActiveUsers(range.start, range.end);
         long activeUsersPrev = countActiveUsers(range.prevStart, range.prevEnd);
+        long activeSessions = countActiveSessions(range.start, range.end);
+        long activeSessionsPrev = countActiveSessions(range.prevStart, range.prevEnd);
 
         DashboardOverviewGroupVO group = DashboardOverviewGroupVO.builder()
                 .totalUsers(buildKpi(totalUsers, usersInWindow, null))
@@ -95,9 +99,11 @@ public class DashboardServiceImpl implements DashboardService {
                 .sessions24h(buildKpi(sessionsInWindow, sessionsInWindow - sessionsPrevWindow, calcPct(sessionsInWindow, sessionsPrevWindow)))
                 .totalMessages(buildKpi(totalMessages, messagesInWindow, null))
                 .messages24h(buildKpi(messagesInWindow, messagesInWindow - messagesPrevWindow, calcPct(messagesInWindow, messagesPrevWindow)))
+                .activeSessions(buildKpi(activeSessions, activeSessions - activeSessionsPrev, calcPct(activeSessions, activeSessionsPrev)))
                 .build();
 
         return DashboardOverviewVO.builder()
+                .engine("workflow")
                 .window(range.windowLabel)
                 .compareWindow(range.compareLabel)
                 .updatedAt(System.currentTimeMillis())
@@ -132,6 +138,7 @@ public class DashboardServiceImpl implements DashboardService {
                 .errorRate(errorRate)
                 .noDocRate(noDocRate)
                 .slowRate(slowRate)
+                .sampleCount(total)
                 .build();
     }
 
@@ -285,6 +292,14 @@ public class DashboardServiceImpl implements DashboardService {
     private long countActiveUsers(Date start, Date end) {
         QueryWrapper<ConversationMessageDO> wrapper = new QueryWrapper<>();
         wrapper.select("count(distinct user_id) as cnt")
+                .ge("create_time", start)
+                .lt("create_time", end);
+        return extractCount(messageMapper.selectMaps(wrapper));
+    }
+
+    private long countActiveSessions(Date start, Date end) {
+        QueryWrapper<ConversationMessageDO> wrapper = new QueryWrapper<>();
+        wrapper.select("count(distinct (conversation_id, user_id)) as cnt")
                 .ge("create_time", start)
                 .lt("create_time", end);
         return extractCount(messageMapper.selectMaps(wrapper));

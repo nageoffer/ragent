@@ -18,7 +18,8 @@
 package com.nageoffer.ai.ragent.admin.controller;
 
 import com.nageoffer.ai.ragent.admin.controller.vo.DashboardOverviewVO;
-import com.nageoffer.ai.ragent.admin.controller.vo.DashboardPerformanceVO;
+import com.nageoffer.ai.ragent.admin.controller.vo.DashboardPerformance;
+import cn.dev33.satoken.annotation.SaCheckRole;
 import com.nageoffer.ai.ragent.admin.controller.vo.DashboardTrendsVO;
 import com.nageoffer.ai.ragent.admin.service.DashboardService;
 import com.nageoffer.ai.ragent.framework.convention.Result;
@@ -32,6 +33,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/admin/dashboard")
+@SaCheckRole("admin")
 public class DashboardController {
 
     private final DashboardService dashboardService;
@@ -42,7 +44,7 @@ public class DashboardController {
     }
 
     @GetMapping("/performance")
-    public Result<DashboardPerformanceVO> performance(@RequestParam(required = false) String window) {
+    public Result<DashboardPerformance> performance(@RequestParam(required = false) String window) {
         return Results.success(dashboardService.loadPerformance(window));
     }
 
