@@ -104,13 +104,24 @@ class AgentRunHandleTest {
         });
         handle.complete(() -> {
         });
-        handle.fail(new IllegalStateException("上游炸了"), () -> {
+        handle.fail(() -> {
         });
 
         verify(taskManager, times(1)).unregister(TASK_ID);
         verify(sender, times(1)).complete();
-        verify(sender, never()).fail(any());
         assertThat(released.get()).isOne();
+    }
+
+    @Test
+    void shouldCloseFailedRunNormally() {
+        handle.fail(() -> {
+        });
+
+        // 失败事件已在收尾体里从流内发过，再走 completeWithError 只会让容器改写响应体
+        // 而响应头早已是 text/event-stream，写不出去，客户端什么终止信号都收不到
+        verify(sender, times(1)).complete();
+        verify(sender, never()).fail(any());
+        assertThat(handle.isFailed()).isTrue();
     }
 
     @Test

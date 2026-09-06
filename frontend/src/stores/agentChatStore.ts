@@ -183,7 +183,7 @@ const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, ""
 
 export const useAgentChatStore = create<AgentChatState>((set, get) => {
   // 文本增量按块规则落位：敞开块同类则追加 否则封口旧块并新开
-  const appendText = (kind: "reasoning" | "answer", delta: string) => {
+  const appendText = (kind: "reasoning" | "answer" | "error", delta: string) => {
     if (!delta) return;
     set((state) => {
       let nextOpenId = state.streamOpenBlockId;
@@ -200,7 +200,8 @@ export const useAgentChatStore = create<AgentChatState>((set, get) => {
             id: nextBlockId(),
             kind,
             at: nowHms(),
-            startMs: Date.now(),
+            // 中断提示是一句话不是一段生成 挂个耗时刷新后又没有 前后就不是同一条了
+            startMs: kind === "error" ? undefined : Date.now(),
             text: delta,
             // 流式思考块自动展开实时滚字
             open: kind === "reasoning" ? true : undefined
@@ -291,9 +292,10 @@ export const useAgentChatStore = create<AgentChatState>((set, get) => {
       },
       onMessage: (payload: AgentMessageDelta) => {
         if (!payload || typeof payload !== "object") return;
-        if (payload.type !== "response") return;
+        // 中断提示单开 error 块，跟模型说的话不是一个身份，样式与刷新后回放都按块走
+        if (payload.type !== "response" && payload.type !== "error") return;
         if (get().streamingMessageId !== assistantId) return;
-        appendText("answer", payload.delta);
+        appendText(payload.type === "error" ? "error" : "answer", payload.delta);
       },
       onThinking: (payload: AgentMessageDelta) => {
         if (!payload || typeof payload !== "object") return;
@@ -435,9 +437,10 @@ export const useAgentChatStore = create<AgentChatState>((set, get) => {
                   id: payload.messageId ? String(payload.messageId) : message.id,
                   status: "done",
                   // 后端把这一轮标成中断 说明开着的工具没等到结果 替它宣布完成就是编一个它没给过的结论
+                  // 也不能说"未执行"：那比"已中断"更强 而且与后端落库相反 会诱导用户再提交一次
                   blocks: settleBlocks(
                     message.blocks,
-                    payload.messageStatus === "INTERRUPTED" ? "awaiting" : "done"
+                    payload.messageStatus === "INTERRUPTED" ? "interrupted" : "done"
                   ),
                   elapsedMs: Date.now() - startedMs,
                   messageStatus: payload.messageStatus ?? "NORMAL"
@@ -495,6 +498,8 @@ export const useAgentChatStore = create<AgentChatState>((set, get) => {
         if (get().streamingMessageId !== assistantId) return;
         set((state) => ({
           ...STREAM_IDLE,
+          // 只剩带外断连会走到这里 流内失败由服务端的 error 块与 finish 讲清楚了
+          // 那时页面上没有任何失败痕迹 得由这行补出来
           // 这里读的是本次更新前的旧值 与上面清空 streamingMessageId 不冲突
           messages: state.messages.map((message) =>
             message.id === state.streamingMessageId
@@ -514,8 +519,7 @@ export const useAgentChatStore = create<AgentChatState>((set, get) => {
       {
         url,
         body,
-        headers: token ? { Authorization: token } : undefined,
-        retryCount: 1
+        headers: token ? { Authorization: token } : undefined
       },
       handlers
     );

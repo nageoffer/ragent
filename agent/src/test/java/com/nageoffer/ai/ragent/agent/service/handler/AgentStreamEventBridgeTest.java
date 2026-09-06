@@ -18,7 +18,9 @@
 package com.nageoffer.ai.ragent.agent.service.handler;
 
 import com.nageoffer.ai.ragent.agent.dto.AgentBlock;
+import com.nageoffer.ai.ragent.agent.dto.AgentCompletionPayload;
 import com.nageoffer.ai.ragent.agent.dto.AgentConfirmField;
+import com.nageoffer.ai.ragent.agent.dto.AgentMessageDelta;
 import com.nageoffer.ai.ragent.agent.dto.AgentToolProgress;
 import com.nageoffer.ai.ragent.agent.service.AgentConversationService;
 import com.nageoffer.ai.ragent.agent.tool.AgentToolCatalog.McpToolBinding;
@@ -90,7 +92,52 @@ class AgentStreamEventBridgeTest {
         bridge.onError(new IllegalStateException("上游炸了"));
 
         verify(taskManager).unregister(TASK_ID);
-        verify(sender).fail(any(Throwable.class));
+        verify(sender).complete();
+    }
+
+    @Test
+    void shouldReportFailureInStreamInsteadOfClosingWithError() {
+        when(taskManager.isCancelled(TASK_ID)).thenReturn(false);
+
+        bridge.onError(new IllegalStateException("上游炸了"));
+
+        ArgumentCaptor<String> events = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<Object> payloads = ArgumentCaptor.forClass(Object.class);
+        verify(sender, times(3)).sendEvent(events.capture(), payloads.capture());
+        // 响应头早已是 text/event-stream，容器再写不出任何错误体，失败只能从流内出口
+        assertThat(events.getAllValues()).containsExactly("message", "finish", "done");
+        verify(sender, never()).fail(any());
+        // finish 与落库同口径，前端定型的这条和刷新后拉到的是同一条
+        assertThat(payloads.getAllValues().get(1))
+                .isInstanceOfSatisfying(AgentCompletionPayload.class,
+                        payload -> assertThat(payload.messageStatus()).isEqualTo("INTERRUPTED"));
+    }
+
+    @Test
+    void shouldStreamInterruptNoticeAsBlock() {
+        when(taskManager.isCancelled(TASK_ID)).thenReturn(false);
+        bridge.onEvent(new TextBlockDeltaEvent("r-1", "b-1", "先说一句"));
+        bridge.onEvent(new ToolCallStartEvent("r-1", "call-1", "leave_submit"));
+        bridge.onEvent(new ToolResultEndEvent("r-1", "call-1", "leave_submit", ToolResultState.SUCCESS));
+
+        bridge.onError(new IllegalStateException("上游炸了"));
+
+        // 历史回放有块就不读 content，提示只塞进 content 的话刷新后这句就没了
+        List<AgentBlock> blocks = capturedBlocks();
+        AgentBlock notice = blocks.get(blocks.size() - 1);
+        // 单开 error 块：混进 answer 就跟模型说的话一个身份，前端认不出这是失败
+        assertThat(notice.getKind()).isEqualTo("error");
+        // 工具没等到结果不代表没执行，一律提醒核对，别让用户直接再提交一遍
+        assertThat(notice.getText()).contains("到对应业务系统核对");
+        // 同一句也要当场流出去，否则这一屏和刷新后看到的不是同一条
+        ArgumentCaptor<Object> deltas = ArgumentCaptor.forClass(Object.class);
+        verify(sender, times(2)).sendEvent(eq("message"), deltas.capture());
+        assertThat(deltas.getAllValues().get(1)).isEqualTo(new AgentMessageDelta("error", notice.getText()));
+        // content 是不依赖块结构的完整文本留痕，正文与提示都得留在里面且分得开
+        ArgumentCaptor<String> content = ArgumentCaptor.forClass(String.class);
+        verify(conversationService).addAssistantMessage(
+                any(), any(), content.capture(), any(), any(), any(), any());
+        assertThat(content.getValue()).isEqualTo("先说一句\n\n" + notice.getText());
     }
 
     @Test

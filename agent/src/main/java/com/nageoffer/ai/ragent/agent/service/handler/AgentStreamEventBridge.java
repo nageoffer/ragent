@@ -66,6 +66,10 @@ public class AgentStreamEventBridge {
 
     private static final String DELTA_TYPE_RESPONSE = "response";
     private static final String DELTA_TYPE_THINK = "think";
+    /**
+     * 中断提示的增量类型，前端据此单开 error 块，与模型说的话区分开
+     */
+    private static final String DELTA_TYPE_ERROR = "error";
     private static final String TOOL_STATUS_START = "start";
     private static final String TOOL_STATUS_END = "end";
     private static final String HINT_AGENT = "AGENT_HINT";
@@ -76,11 +80,10 @@ public class AgentStreamEventBridge {
     private static final int TOOL_RESULT_MAX_CHARS = 64_000;
     private static final String FALLBACK_CALL_KEY = "__anonymous__";
     /**
-     * 中断时的用户提示，执行过工具时提醒核对
+     * 中断时的用户提示，写操作可能已经发出去，一律提醒核对再重试
      */
-    private static final String NOTICE_TOOL_EXECUTED =
-            "回复到这里中断了。上面列出的操作已经提交出去，是否生效请到对应业务系统核对，不要直接再提交一次";
-    private static final String NOTICE_PLAIN = "回复到这里中断了，你可以重新问一次";
+    private static final String NOTICE_INTERRUPTED =
+            "回复到这里中断了。如果上面有提交类操作，请先到对应业务系统核对是否生效，确认没生效再重新提问";
     /**
      * 块时间戳格式，沿用前端约定不带时区
      */
@@ -180,26 +183,26 @@ public class AgentStreamEventBridge {
         if (runHandle.isCancelled()) {
             return;
         }
-        runHandle.fail(throwable, () -> {
+        runHandle.fail(() -> {
             log.error("Agent 流式会话异常, taskId: {}", runHandle.getTaskId(), throwable);
+            // 中断提示单独成 error 块：这是系统在说话，混进 answer 就跟模型的回答一个身份了
+            // 块和当场的增量都要发，只塞进 content 的话历史回放有块就不读 content，刷新后这句就没了
+            String content;
+            synchronized (stateLock) {
+                appendTextBlock(DELTA_TYPE_ERROR, NOTICE_INTERRUPTED);
+                content = StrUtil.isBlank(responseBuffer)
+                        ? NOTICE_INTERRUPTED
+                        : responseBuffer + "\n\n" + NOTICE_INTERRUPTED;
+            }
+            sender.sendEvent(AgentSSEEventType.MESSAGE.value(),
+                    new AgentMessageDelta(DELTA_TYPE_ERROR, NOTICE_INTERRUPTED));
             // 出错也落库留痕，否则已执行的工具操作在历史里查不到
-            persistAssistantMessage(interruptedContent(), AgentMessageStatus.INTERRUPTED);
+            String messageId = persistAssistantMessage(content, AgentMessageStatus.INTERRUPTED);
+            // finish 让前端把已流出的内容与工具块定型，口径与落库一致，刷新前后看到的是同一条
+            sender.sendEvent(AgentSSEEventType.FINISH.value(),
+                    new AgentCompletionPayload(messageId, title, AgentMessageStatus.INTERRUPTED.name()));
+            sender.sendEvent(AgentSSEEventType.DONE.value(), "[DONE]");
         });
-    }
-
-    /**
-     * 拼接中断提示，执行过工具时提醒用户核对
-     */
-    private String interruptedContent() {
-        String streamed;
-        boolean toolExecuted;
-        synchronized (stateLock) {
-            streamed = responseBuffer.toString();
-            toolExecuted = blocks.stream().anyMatch(block -> "tool".equals(block.getKind())
-                    && ("done".equals(block.getStatus()) || "failed".equals(block.getStatus())));
-        }
-        String notice = toolExecuted ? NOTICE_TOOL_EXECUTED : NOTICE_PLAIN;
-        return StrUtil.isBlank(streamed) ? notice : streamed + "\n\n" + notice;
     }
 
     /**
@@ -444,7 +447,11 @@ public class AgentStreamEventBridge {
      * 调用方需持 stateLock
      */
     private void appendTextBlock(String deltaType, String delta) {
-        String kind = DELTA_TYPE_THINK.equals(deltaType) ? "reasoning" : "answer";
+        String kind = switch (deltaType) {
+            case DELTA_TYPE_THINK -> "reasoning";
+            case DELTA_TYPE_ERROR -> "error";
+            default -> "answer";
+        };
         if (openTextBlock == null || !kind.equals(openTextBlock.getKind())) {
             sealOpenTextBlock();
             openTextBlock = AgentBlock.builder()

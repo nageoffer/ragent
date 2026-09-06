@@ -26,7 +26,7 @@ import lombok.NoArgsConstructor;
 import java.util.List;
 
 /**
- * Agent 运行轨迹块：按事件顺序排列的 reasoning / answer / tool / confirm 片段，随消息落库
+ * Agent 运行轨迹块：按事件顺序排列的 reasoning / answer / tool / confirm / error 片段，随消息落库
  */
 @Data
 @NoArgsConstructor
@@ -36,7 +36,7 @@ import java.util.List;
 public class AgentBlock {
 
     /**
-     * reasoning / answer / tool / confirm
+     * reasoning / answer / tool / confirm / error
      */
     private String kind;
 

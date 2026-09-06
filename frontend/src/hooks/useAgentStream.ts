@@ -25,14 +25,9 @@ export interface AgentStreamOptions {
   url: string;
   headers?: Record<string, string>;
   signal?: AbortSignal;
-  retryCount?: number;
-  retryDelayMs?: number;
   // 带 body 即走 POST：确认裁决是有副作用的动作 不该塞进 query 让浏览器随手重发
   body?: unknown;
 }
-
-// 幂等提交被拒等业务错误：重试只会再次被拒或触发重复生成 故直接抛出
-class AgentStreamRejectionError extends Error {}
 
 function parseData(raw: string): unknown {
   if (!raw) return "";
@@ -57,6 +52,7 @@ async function readSseStream(
   let buffer = "";
   let eventName = "message";
   let dataLines: string[] = [];
+  let terminated = false;
 
   const dispatchEvent = () => {
     if (dataLines.length === 0) {
@@ -93,13 +89,11 @@ async function readSseStream(
         handlers.onFinish?.(payload as AgentCompletionPayload);
         break;
       case "done":
+        terminated = true;
         handlers.onDone?.();
         break;
       case "cancel":
         handlers.onCancel?.(payload as AgentCompletionPayload);
-        break;
-      case "error":
-        handlers.onError?.(new Error(String((payload as { error?: string })?.error || payload)));
         break;
       default:
         break;
@@ -139,59 +133,48 @@ async function readSseStream(
       }
     }
   }
+
+  // 后端每条出口都以 done 封尾 没收到它就是连接被掐断
+  // 当成功静默收场 这一轮会永远停在「等待响应」
+  // 主动取消由上层自己收尾 不算异常
+  if (!terminated && !signal?.aborted) {
+    throw new Error("连接已中断，本轮回答未完成");
+  }
 }
 
-async function streamWithRetry(
+// 只发一次 失败就交给上层：Agent 一轮里可能已经执行过写操作
+// 而客户端没有办法自证「这一轮在服务端没跑起来」——连一帧都没收到也可能只是回程断了
+// 重发就意味着整轮重跑 写操作再执行一遍 与 HITL 的不重复提交直接冲突
+async function streamOnce(
   options: AgentStreamOptions,
   handlers: AgentStreamHandlers
 ): Promise<void> {
   const { url, headers, signal, body } = options;
-  const retryCount = options.retryCount ?? 2;
-  const retryDelayMs = options.retryDelayMs ?? 600;
   const post = body !== undefined;
 
-  let attempt = 0;
-  while (attempt <= retryCount) {
-    try {
-      const response = await fetch(url, {
-        method: post ? "POST" : "GET",
-        headers: {
-          Accept: "text/event-stream",
-          ...(post ? { "Content-Type": "application/json" } : {}),
-          ...headers
-        },
-        body: post ? JSON.stringify(body) : undefined,
-        signal
-      });
+  const response = await fetch(url, {
+    method: post ? "POST" : "GET",
+    headers: {
+      Accept: "text/event-stream",
+      ...(post ? { "Content-Type": "application/json" } : {}),
+      ...headers
+    },
+    body: post ? JSON.stringify(body) : undefined,
+    signal
+  });
 
-      if (!response.ok) {
-        throw new Error(`SSE 请求失败（${response.status}）`);
-      }
-
-      // @IdempotentSubmit 拦截时返回 200 + JSON 体而非事件流
-      const contentType = response.headers.get("content-type") || "";
-      if (!contentType.includes("text/event-stream")) {
-        const errBody = (await response.json().catch(() => null)) as { message?: string } | null;
-        throw new AgentStreamRejectionError(errBody?.message || "请求失败");
-      }
-
-      await readSseStream(response, handlers, signal);
-      return;
-    } catch (error) {
-      const err = error as Error;
-      if (signal?.aborted) {
-        throw err;
-      }
-      if (err instanceof AgentStreamRejectionError) {
-        throw err;
-      }
-      if (attempt >= retryCount) {
-        throw err;
-      }
-      await new Promise((resolve) => setTimeout(resolve, retryDelayMs * Math.pow(2, attempt)));
-      attempt += 1;
-    }
+  if (!response.ok) {
+    throw new Error(`SSE 请求失败（${response.status}）`);
   }
+
+  // @IdempotentSubmit 拦截时返回 200 + JSON 体而非事件流 文案取自 JSON 体
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.includes("text/event-stream")) {
+    const errBody = (await response.json().catch(() => null)) as { message?: string } | null;
+    throw new Error(errBody?.message || "请求失败");
+  }
+
+  await readSseStream(response, handlers, signal);
 }
 
 export function createAgentStreamResponse(
@@ -205,7 +188,7 @@ export function createAgentStreamResponse(
   };
 
   return {
-    start: () => streamWithRetry(mergedOptions, handlers),
+    start: () => streamOnce(mergedOptions, handlers),
     cancel: () => controller.abort()
   };
 }

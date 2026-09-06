@@ -6,7 +6,7 @@ export type AgentMessageUiStatus = "streaming" | "done" | "cancelled" | "error";
 export type AgentPersistedMessageStatus = "NORMAL" | "INTERRUPTED" | "AWAITING_CONFIRM";
 
 // hint 为流式过程中的运行提示 只存在于前端时间线 后端不落库
-export type AgentBlockKind = "reasoning" | "answer" | "tool" | "hint" | "confirm";
+export type AgentBlockKind = "reasoning" | "answer" | "tool" | "hint" | "confirm" | "error";
 
 // 块状态 前四个属于工具块 后五个属于确认卡片
 export type AgentBlockStatus =

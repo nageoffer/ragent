@@ -198,13 +198,13 @@ public class AgentRunHandle {
         }
     }
 
-    public void fail(Throwable error, Runnable body) {
+    public void fail(Runnable body) {
         // failed 置在收尾体里，释放钩子执行时已可读
         if (settle(() -> {
             failed = true;
             body.run();
         })) {
-            sender.fail(error);
+            sender.complete();
         }
     }
 

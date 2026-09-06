@@ -68,7 +68,7 @@ public class AgentMessageDO {
     private String thinkingContent;
 
     /**
-     * 运行轨迹块（reasoning / answer / tool / confirm 有序序列），回放时间线的唯一来源
+     * 运行轨迹块（reasoning / answer / tool / confirm / error 有序序列），回放时间线的唯一来源
      * 与上面两个字段有意不等价：剔空块、工具结果截 20k，用作正文会丢字
      */
     @TableField(typeHandler = AgentBlockListTypeHandler.class)
