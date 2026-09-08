@@ -49,6 +49,11 @@ public enum ModelProvider {
     AI_HUB_MIX("aihubmix"),
 
     /**
+     * LiteLLM gateway (OpenAI-compatible proxy for 100+ providers)
+     */
+    LITE_LLM("litellm"),
+
+    /**
      * 空实现，用于测试或占位
      */
     NOOP("noop");
