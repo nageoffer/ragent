@@ -40,7 +40,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class HttpClientHelper {
 
-    @Qualifier("syncHttpClient")
+    @Qualifier("documentFetchHttpClient")
     private final OkHttpClient client;
 
     public HttpFetchResponse get(String url, Map<String, String> headers) {
