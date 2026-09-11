@@ -1,2 +1,5 @@
 /mvnw text eol=lf
 *.cmd text eol=crlf
+
+# 模板数据由 checksums.sha256 逐字节校验，EOL 转换会让 Windows 检出全部失配
+/resources/initializer/enterprise-knowledge-base/** -text
