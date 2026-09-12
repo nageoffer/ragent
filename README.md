@@ -271,6 +271,22 @@ Ragent 不是为了用设计模式而用，每个模式都对应一个具体的�
 
 扩展的改动主要收敛在新实现和配置中，不必复制一套检索、会话或 Trace 主链路。
 
+#### 通过 MCP 接入联网搜索
+
+如需在不注册账号、配置 API Key 的情况下增加实时网页搜索和 URL 内容提取，可以在现有 `rag.mcp.servers` 列表中添加 Parallel Search MCP：
+
+```yaml
+rag:
+  mcp:
+    servers:
+      - name: default
+        url: http://localhost:9099
+      - name: parallel-search
+        url: https://search.parallel.ai/mcp
+```
+
+应用启动后会自动发现该服务提供的 `web_search` 和 `web_fetch` 工具；这一可选服务器与现有 MCP Server 共存，不替换现有检索通道。
+
 ### 4. 生产级特性
 
 这里的生产级特性指项目已经实现生产环境会遇到的关键机制，而不只是功能能跑：
