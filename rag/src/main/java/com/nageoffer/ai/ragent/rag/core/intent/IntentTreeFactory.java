@@ -290,6 +290,51 @@ public class IntentTreeFactory {
         sys.setChildren(List.of(welcome, aboutBot));
         roots.add(sys);
 
+        // ========== 5. 谷粒商城 - 商品信息查询 ==========
+        IntentNode guliEcommerce = IntentNode.builder()
+                .id("guli-ecommerce")
+                .name("谷粒商城")
+                .level(DOMAIN)
+                .kind(IntentKind.MCP)
+                .build();
+
+        IntentNode productDetail = IntentNode.builder()
+                .id("guli-product-detail")
+                .name("商品详情查询")
+                .level(CATEGORY)
+                .parentId(guliEcommerce.getId())
+                .kind(IntentKind.MCP)
+                .mcpToolId("product_detail_query")
+                .description("查询商品的详细信息，包括商品名称、品牌、分类、价格、描述、颜色等")
+                .examples(List.of(
+                        "iPhone 15 Pro 的详情",
+                        "商品 ID 为 1 的商品信息",
+                        "华为 Mate 60 Pro 有什么特点"
+                ))
+                .paramPromptTemplate(MCP_PRODUCT_DETAIL_PARAMETER_EXTRACT_PROMPT)
+                .promptTemplate(MCP_PRODUCT_DETAIL_PROMPT_TEMPLATE)
+                .build();
+
+        IntentNode productStock = IntentNode.builder()
+                .id("guli-product-stock")
+                .name("商品库存查询")
+                .level(CATEGORY)
+                .parentId(guliEcommerce.getId())
+                .kind(IntentKind.MCP)
+                .mcpToolId("product_stock_query")
+                .description("查询商品的库存情况，支持按商品 ID 或 SKU ID 查询，返回库存数量、价格、规格等")
+                .examples(List.of(
+                        "iPhone 15 Pro 还有货吗",
+                        "SKU 101 的库存是多少",
+                        "商品 1 现在还有货吗"
+                ))
+                .paramPromptTemplate(MCP_PRODUCT_STOCK_PARAMETER_EXTRACT_PROMPT)
+                .promptTemplate(MCP_PRODUCT_STOCK_PROMPT_TEMPLATE)
+                .build();
+
+        guliEcommerce.setChildren(List.of(productDetail, productStock));
+        roots.add(guliEcommerce);
+
         // 填充 fullPath
         fillFullPath(roots, null);
         return roots;
@@ -448,6 +493,182 @@ public class IntentTreeFactory {
             {{INTENT_RULES}}
             
             【动态数据】
+            %s
+            
+            【用户问题】
+            %s
+            """;
+
+    // ========== 谷粒商城 MCP 工具 Prompts ==========
+
+    /**
+     * 商品详情查询 - 参数提取 Prompt
+     */
+    public static final String MCP_PRODUCT_DETAIL_PARAMETER_EXTRACT_PROMPT = """
+            Hello，你是一个高度专业且严谨的【商品详情查询参数提取器】。
+            
+            你的唯一任务是：严格按照提供的【工具定义】和【参数列表】的约束，从【用户问题】中提取所有必要的参数，并以 JSON 格式输出。
+            
+            ### 核心提取逻辑
+            
+            1. **数据源限定**：只使用【用户问题】中的信息作为提取来源。
+            2. **参数范围限定**：只提取 <parameters> 标签内定义的参数，**禁止**添加任何工具定义中不存在的额外字段。
+            3. **必填参数处理**：
+               - `productId` 是必填参数，如果用户问题中无法找到明确的商品 ID：
+                 - 尝试从上下文中推断商品 ID（如提到"iPhone 15 Pro"对应 ID 1）
+                 - 如果确实无法推断，将该参数的值输出为 **null**
+            
+            ### 商品 ID 映射规则
+            
+            如果用户提到以下商品名称，请映射到对应的商品 ID：
+            - "iPhone 15 Pro"、"苹果 15 Pro" → productId: 1
+            - "华为 Mate 60 Pro"、"Mate 60 Pro" → productId: 2
+            - "小米 14 Ultra"、"Mi 14 Ultra" → productId: 3
+            - "MacBook Pro 14"、"苹果笔记本" → productId: 10
+            - "ThinkPad X1 Carbon"、"联想 X1" → productId: 11
+            - "iPad Pro 12.9"、"苹果平板" → productId: 20
+            - "华为 MatePad Pro"、"华为平板" → productId: 21
+            
+            ### 输入数据与输出格式
+            
+            #### 【工具定义】
+            <tool_definition>
+            %s
+            </tool_definition>
+            
+            #### 【用户问题】
+            <user_query>
+            %s
+            </user_query>
+            
+            #### 【输出格式（JSON Object Only）】
+            
+            {"productId": 商品 ID 数字或 null}
+            
+            """;
+
+    /**
+     * 商品详情查询 - 结果展示 Prompt
+     */
+    private static final String MCP_PRODUCT_DETAIL_PROMPT_TEMPLATE = """
+            Hello，你是专业的电商购物助手。系统已调用内部工具获取到了最新的【商品详情数据】。
+            你的任务是将这些结构化数据转化为**商业化、易读的自然语言**回复，帮助用户了解商品信息。
+            
+            【核心处理规则】
+            1. **直接回答**：开门见山地介绍商品，不要使用"根据数据显示"这类废话作为开头。
+            2. **突出卖点**：重点强调商品的核心特性、优势和使用场景。
+            3. **格式化输出**：
+               - 使用清晰的段落和分点展示商品信息
+               - 对价格、库存等关键信息进行加粗（**Bold**）处理
+               - 如果有多个颜色可选，清晰列出所有选项
+            
+            【异常与边界处理】
+            1. **数据为空**：如果【商品详情数据】为空或 null，请礼貌地告知用户未找到该商品信息。
+            2. **库存紧张**：如果库存较少（<=30 件），可以善意提醒用户尽早购买。
+            3. **多意图部分匹配**：如果用户同时询问了多个商品，而数据只能回答其中部分：
+               - **先回答能回答的部分**，按正常格式输出商品信息
+               - **再说明无法回答的部分**，例如："关于『XX 商品』，当前未查询到相关信息。"
+            
+            【禁止事项】
+            - 严禁虚构商品信息或价格
+            - 严禁透漏你正在解析数据的过程
+            
+            {{INTENT_RULES}}
+            
+            【商品详情数据】
+            %s
+            
+            【用户问题】
+            %s
+            """;
+
+    /**
+     * 商品库存查询 - 参数提取 Prompt
+     */
+    public static final String MCP_PRODUCT_STOCK_PARAMETER_EXTRACT_PROMPT = """
+            Hello，你是一个高度专业且严谨的【商品库存查询参数提取器】。
+            
+            你的唯一任务是：严格按照提供的【工具定义】和【参数列表】的约束，从【用户问题】中提取所有必要的参数，并以 JSON 格式输出。
+            
+            ### 核心提取逻辑
+            
+            1. **数据源限定**：只使用【用户问题】中的信息作为提取来源。
+            2. **参数范围限定**：只提取 <parameters> 标签内定义的参数，**禁止**添加任何工具定义中不存在的额外字段。
+            3. **必填参数处理**：
+               - `productId` 是必填参数，如果用户问题中无法找到明确的商品 ID：
+                 - 尝试从上下文中推断商品 ID（参考商品 ID 映射规则）
+                 - 如果确实无法推断，将该参数的值输出为 **null**
+               - `skuId` 是可选参数，如果用户未提及具体 SKU，**不要包含该字段**
+            
+            ### 商品 ID 映射规则
+            
+            如果用户提到以下商品名称，请映射到对应的商品 ID：
+            - "iPhone 15 Pro"、"苹果 15 Pro" → productId: 1
+            - "华为 Mate 60 Pro"、"Mate 60 Pro" → productId: 2
+            - "小米 14 Ultra"、"Mi 14 Ultra" → productId: 3
+            - "MacBook Pro 14"、"苹果笔记本" → productId: 10
+            - "ThinkPad X1 Carbon"、"联想 X1" → productId: 11
+            - "iPad Pro 12.9"、"苹果平板" → productId: 20
+            - "华为 MatePad Pro"、"华为平板" → productId: 21
+            
+            ### SKU ID 识别
+            
+            如果用户明确提到 SKU ID（如"SKU 101"、"编号 101"），请提取为 skuId 参数。
+            
+            ### 输入数据与输出格式
+            
+            #### 【工具定义】
+            <tool_definition>
+            %s
+            </tool_definition>
+            
+            #### 【用户问题】
+            <user_query>
+            %s
+            </user_query>
+            
+            #### 【输出格式（JSON Object Only）】
+            
+            {"productId": 商品 ID 数字或 null, "skuId": SKU ID 数字（如有）}
+            
+            注意：如果 skuId 未提及，不要在 JSON 中包含该字段。
+            
+            """;
+
+    /**
+     * 商品库存查询 - 结果展示 Prompt
+     */
+    private static final String MCP_PRODUCT_STOCK_PROMPT_TEMPLATE = """
+            Hello，你是专业的电商购物助手。系统已调用内部工具获取到了最新的【商品库存数据】。
+            你的任务是将这些结构化数据转化为**商业化、易读的自然语言**回复，帮助用户了解库存情况并促进购买决策。
+            
+            【核心处理规则】
+            1. **直接回答**：开门见山地告知用户库存情况，不要使用"根据数据显示"这类废话作为开头。
+            2. **库存状态解读**：
+               - **库存充足**（>30 件）：让用户知道可以放心购买
+               - **库存较少**（10-30 件）：善意提醒用户尽早购买
+               - **库存紧张**（<=10 件）：强烈建议用户尽快下单
+            3. **格式化输出**：
+               - 如果是多个 SKU，使用 Markdown 表格展示各 SKU 的库存情况
+               - 对库存状态、价格等关键信息进行加粗（**Bold**）处理
+            
+            【促销建议】
+            1. 如果库存充足，可以鼓励用户"放心选购"
+            2. 如果库存紧张，可以营造紧迫感"手慢无"
+            3. 可以提供购买建议，如某颜色/规格性价比更高
+            
+            【异常与边界处理】
+            1. **数据为空**：如果【商品库存数据】为空或 null，请礼貌地告知用户该商品暂无库存信息。
+            2. **缺货提示**：如果某个 SKU 库存为 0，明确告知用户该规格暂时缺货。
+            3. **推荐替代**：如果用户查询的 SKU 缺货，可以推荐同商品的其他有货 SKU。
+            
+            【禁止事项】
+            - 严禁虚构库存数量
+            - 严禁透漏你正在解析数据的过程
+            
+            {{INTENT_RULES}}
+            
+            【商品库存数据】
             %s
             
             【用户问题】
