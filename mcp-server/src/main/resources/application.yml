@@ -1,6 +1,6 @@
 server:
   port: 9099
-
 spring:
   application:
     name: ragent-mcp-server
+

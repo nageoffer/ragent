@@ -46,6 +46,7 @@ public class DefaultConversationMemoryService implements ConversationMemoryServi
     }
 
     @Override
+    //异步并行加载摘要和历史记录-->合并结果
     public List<ChatMessage> load(String conversationId, String userId) {
         // 参数校验
         if (StrUtil.isBlank(conversationId) || StrUtil.isBlank(userId)) {
@@ -54,7 +55,7 @@ public class DefaultConversationMemoryService implements ConversationMemoryServi
 
         long startTime = System.currentTimeMillis();
         try {
-            // 并行加载摘要和历史记录
+            // 并行加载摘要（t_conversation_summary）和历史记录（t_message）
             CompletableFuture<ChatMessage> summaryFuture = CompletableFuture.supplyAsync(
                     () -> loadSummaryWithFallback(conversationId, userId), memoryLoadExecutor
             );
@@ -62,7 +63,7 @@ public class DefaultConversationMemoryService implements ConversationMemoryServi
                     () -> loadHistoryWithFallback(conversationId, userId), memoryLoadExecutor
             );
 
-            // 等待所有任务完成后合并结果
+            // 等待所有任务完成后合并结果（（A,B）->C) ）
             return CompletableFuture.allOf(summaryFuture, historyFuture)
                     .thenApply(v -> {
                         ChatMessage summary = summaryFuture.join();
@@ -122,7 +123,7 @@ public class DefaultConversationMemoryService implements ConversationMemoryServi
             return messages;
         }
         List<ChatMessage> result = new ArrayList<>();
-        result.add(summaryService.decorateIfNeeded(summary));
+        result.add(summaryService.decorateIfNeeded(summary));//
         result.addAll(messages);
         return result;
     }

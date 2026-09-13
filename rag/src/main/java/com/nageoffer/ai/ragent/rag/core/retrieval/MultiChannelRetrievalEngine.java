@@ -49,7 +49,11 @@ import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
 /**
- * 多通道检索引擎
+ * 多通道检索引擎：MultiChannelRetrievalEngine 本质上就是 RAG 检索阶段的“总调度器”：它统一确定检索范围， 并行调用不同 SearchChannel，允许单通道超时/失败而不拖垮整体，再通过 PostProcessor 把多路结果融合、排序和裁剪，最后根据 Chunk 所属 Collection 给结果做 Intent 归因。
+ *  向量检索：擅长语义相似
+    关键词检索：擅长精确词、编号、专有名词
+    图谱检索：擅长关系和知识连接
+    网页检索：补充外部最新信息
  * <p>
  * 负责协调多个检索通道和后置处理器：
  * 1. 并行执行所有启用的检索通道
@@ -79,13 +83,15 @@ public class MultiChannelRetrievalEngine {
     @RagTraceNode(name = "multi-channel-retrieval", type = "RETRIEVE_CHANNEL")
     public KnowledgeRetrievalResult retrieveKnowledgeChannels(SubQuestionIntent subIntent,
                                                                RetrievalBudget budget) {
+        
         SearchContext context = buildSearchContext(subIntent, budget);
 
+        //从所有 SearchChannel 中找出当前场景启用的通道。
         List<SearchChannelResult> channelResults = executeSearchChannels(context);
         if (CollUtil.isEmpty(channelResults)) {
             return KnowledgeRetrievalResult.empty();
         }
-
+        //执行后处理
         List<RetrievedChunk> chunks = executePostProcessors(channelResults, context);
         // 异常或超时导致定向证据为空时，保留的定向范围会使其按未命中处理
         return new KnowledgeRetrievalResult(
@@ -95,33 +101,40 @@ public class MultiChannelRetrievalEngine {
     }
 
     /**
+     * 
      * 按库推导意图归属：定向作用域下，最终存活 chunk 的 collection 属于某命中意图的绑定库即归属该意图
      * <p>
      * 归属与证据经由哪条通道到达无关——所有检索共用同一个问题，「哪条查询捞到它」只携带库信息与排名运气；
      * 同一库被多个意图绑定时全部归属（确定性多归属）。补充路证据的库不在任何命中意图绑定里，天然无归属；
      * 全局作用域没有命中意图，整体无归属
+     * //Attribution = 归属关系，基于 collection 关系，为 LLM 提供候选归属范围。
      */
     private Map<String, Set<String>> deriveAttribution(List<RetrievedChunk> chunks, RetrievalScope scope) {
         if (scope == null || !scope.directed() || chunks.isEmpty()) {
             return Map.of();
         }
+        //建立「collection → intent」映射，一个 collection 可能对应多个 intent。
         Map<String, Set<String>> intentIdsByCollection = new LinkedHashMap<>();
+        //遍历所有命中的意图
         for (NodeScore intent : scope.intents()) {
             String intentId = intent.getNode().getId();
             if (intentId == null || intentId.isBlank()) {
                 continue;
             }
+            //
             for (String collection : intent.getNode().getEffectiveCollectionNames()) {
                 intentIdsByCollection
                         .computeIfAbsent(collection, ignored -> new LinkedHashSet<>())
                         .add(intentId);
             }
         }
+        //chunk → collection → intent
         Map<String, Set<String>> intentIdsByChunkKey = new LinkedHashMap<>();
         for (RetrievedChunk chunk : chunks) {
             Set<String> intentIds = chunk.getCollectionName() == null
                     ? null
                     : intentIdsByCollection.get(chunk.getCollectionName());
+            //补充路证据的库不在任何命中意图绑定里，天然无归属。
             if (intentIds != null && !intentIds.isEmpty()) {
                 intentIdsByChunkKey.putIfAbsent(RetrievedChunkKey.of(chunk), Set.copyOf(intentIds));
             }
@@ -147,6 +160,7 @@ public class MultiChannelRetrievalEngine {
                 enabledChannels.stream().map(SearchChannel::getName).toList());
 
         long channelTimeoutMs = searchProperties.getChannels().getTimeoutMs();
+        //把每个检索通道丢到线程池里异步执行
         List<CompletableFuture<SearchChannelResult>> futures = enabledChannels.stream()
                 .map(channel -> withTimeout(CompletableFuture.supplyAsync(
                         () -> {
@@ -197,12 +211,12 @@ public class MultiChannelRetrievalEngine {
 
         return results;
     }
-
+    //执行后处理，多个通道的分数体系不同，需要去重，融合，重排
     private List<RetrievedChunk> executePostProcessors(List<SearchChannelResult> results,
                                                        SearchContext context) {
         List<SearchResultPostProcessor> enabledProcessors = postProcessors.stream()
                 .filter(processor -> processor.isEnabled(context))
-                .sorted(Comparator.comparingInt(SearchResultPostProcessor::getOrder))
+                .sorted(Comparator.comparingInt(SearchResultPostProcessor::getOrder))//说明后处理器是一个：Pipeline / Chain
                 .toList();
 
         if (enabledProcessors.isEmpty()) {
@@ -218,9 +232,11 @@ public class MultiChannelRetrievalEngine {
 
         int initialSize = chunks.size();
 
+        //遍历后置处理器
         for (SearchResultPostProcessor processor : enabledProcessors) {
             try {
                 int beforeSize = chunks.size();
+                //
                 chunks = processor.process(chunks, results, context);
                 int afterSize = chunks.size();
 
@@ -254,6 +270,7 @@ public class MultiChannelRetrievalEngine {
             return future;
         }
         long startTime = System.currentTimeMillis();
+        //orTimeout() 更像是“我不等你了”，而不是“把你的任务杀掉”。
         return future.orTimeout(timeoutMs, TimeUnit.MILLISECONDS)
                 .exceptionally(e -> {
                     long latencyMs = System.currentTimeMillis() - startTime;
@@ -275,6 +292,7 @@ public class MultiChannelRetrievalEngine {
         List<SubQuestionIntent> subIntents = List.of(subIntent);
         String question = subIntent.subQuestion();
 
+        //SearchContext是 一次检索任务的“任务单”。
         return SearchContext.builder()
                 .originalQuestion(question)
                 .rewrittenQuestion(question)

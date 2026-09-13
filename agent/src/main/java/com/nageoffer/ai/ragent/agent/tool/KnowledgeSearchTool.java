@@ -37,6 +37,7 @@ import java.util.Map;
 
 /**
  * 知识库检索工具：RAG 管线在 Agent 模式下的唯一入口，描述由当前 Agent 的提示词槽位提供
+ * 整体职责：Agent 大模型需要查知识库时，会调用这个工具；工具拿到用户 query，带上最近会话历史，调用 RAG 检索门面返回知识库片段，包装成工具结果返回给大模型。
  */
 @Slf4j
 @RequiredArgsConstructor
@@ -85,6 +86,7 @@ public class KnowledgeSearchTool implements AgentTool {
     }
 
     @Override
+    //把老的同步阻塞代码execute（），扔到专门的线程池boundedElastic，包装成响应式 Mono 对外暴露。
     public Mono<ToolResultBlock> callAsync(ToolCallParam param) {
         return Mono.fromCallable(() -> execute(param))
                 .subscribeOn(Schedulers.boundedElastic());

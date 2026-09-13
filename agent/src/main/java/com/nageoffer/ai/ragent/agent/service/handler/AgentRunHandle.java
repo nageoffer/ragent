@@ -35,7 +35,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class AgentRunHandle {
 
     @Getter
-    private final String taskId;
+    private final String taskId;    // 任务 ID，唯一标识一次 Agent 运行
 
     /**
      * 流中途的增量事件仍由使用方直接写，句柄只管三条出口的互斥与收尾
@@ -44,18 +44,21 @@ public class AgentRunHandle {
     private final SseEmitterSender sender;
 
     private final StreamTaskManager taskManager;
-    private final AtomicBoolean settled = new AtomicBoolean(false);
+    private final AtomicBoolean settled = new AtomicBoolean(false); //原子布尔标记，代表「是否已经执行过收尾」
 
     /**
      * 钩子队列与「已释放」旗标同锁：登记与释放交叠时，钩子要么进队列被排干，要么就地补跑，恰好一次
      */
-    private final Object releaseLock = new Object();
+    private final Object releaseLock = new Object();    
     private final List<Runnable> releaseHooks = new ArrayList<>();
     private boolean released;
 
     private volatile Disposable disposable;
     private volatile Runnable interruptAction;
 
+    /**
+     * 本轮 Agent 运行的生命周期句柄，管理释放、中断、回调钩子。
+     */
     public AgentRunHandle(String taskId, SseEmitterSender sender, StreamTaskManager taskManager) {
         this.taskId = taskId;
         this.sender = sender;
@@ -125,14 +128,19 @@ public class AgentRunHandle {
     }
 
     public void fail(Throwable error, Runnable body) {
+        // 流已以 text/event-stream 提交后，错误不能经 sender.fail(completeWithError) 硬断：
+        // 容器会把异常再派发给全局异常处理器，而响应 Content-Type 已无可序列化对象，
+        // 只会刷出 No converter 的三层噪音。失败态与 complete/cancel 一致，走 settle 收尾
+        // （注销任务 + 闸门/缓存/记忆释放钩子）后正常关闭连接；失败告知由调用方在 body 里
+        // 以 SSE error 事件发给前端。
         if (settle(body)) {
-            sender.fail(error);
+            sender.complete();
         }
     }
 
     /**
      * 收尾体只跑一次；无论其成败都要注销任务并释放资源，否则异常路径会漏掉闸门
-     * 收尾体的异常就地咽下：结算旗标已让超时守卫失效，异常再往上抛就没人关通道，SSE 会一直挂到超时
+     * 收尾体的异常就地咽下：一旦进入settle方法，settled=true ,已让超时守卫失效，异常再往上抛就没人关通道，SSE 会一直挂到超时
      */
     private boolean settle(Runnable body) {
         if (!settled.compareAndSet(false, true)) {
@@ -143,14 +151,15 @@ public class AgentRunHandle {
         } catch (Exception e) {
             log.error("Agent 运行收尾处理失败, taskId: {}", taskId, e);
         } finally {
-            taskManager.unregister(taskId);
-            runReleaseHooks();
+            taskManager.unregister(taskId); //注销任务
+            runReleaseHooks();              //运行释放钩子
         }
         return true;
     }
 
+    //
     private void runReleaseHooks() {
-        List<Runnable> pending;
+        List<Runnable> pending; //待执行的，挂起的
         synchronized (releaseLock) {
             released = true;
             pending = new ArrayList<>(releaseHooks);

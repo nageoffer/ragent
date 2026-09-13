@@ -34,6 +34,7 @@ public abstract class AbstractException extends RuntimeException {
     public final String errorMessage;
 
     public AbstractException(String message, Throwable throwable, IErrorCode errorCode) {
+        // 传入的message优先级高于errorCode.message()
         super(message, throwable);
         this.errorCode = errorCode.code();
         this.errorMessage = Optional.ofNullable(StringUtils.hasLength(message) ? message : null).orElse(errorCode.message());

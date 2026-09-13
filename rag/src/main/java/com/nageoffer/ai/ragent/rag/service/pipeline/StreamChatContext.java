@@ -46,11 +46,11 @@ public class StreamChatContext {
     // ==================== 管道中填充的中间状态 ====================
 
     @Setter
-    private List<ChatMessage> history;
+    private List<ChatMessage> history;  //先写入历史消息
 
     @Setter
-    private RewriteResult rewriteResult;
+    private RewriteResult rewriteResult;   //问题改写和拆分
 
     @Setter
-    private List<SubQuestionIntent> subIntents;
+    private List<SubQuestionIntent> subIntents;  //意图识别
 }

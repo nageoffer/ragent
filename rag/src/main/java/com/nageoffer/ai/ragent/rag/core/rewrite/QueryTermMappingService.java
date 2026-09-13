@@ -44,6 +44,7 @@ public class QueryTermMappingService {
             return text;
         }
 
+        //加载归一化规则，即关键词映射：如苹果手机 → iPhone
         List<QueryTermMappingDO> mappings = loadMappings();
         if (mappings.isEmpty()) {
             return text;
@@ -51,9 +52,11 @@ public class QueryTermMappingService {
 
         String result = text;
         for (QueryTermMappingDO mapping : mappings) {
+            //只处理启用
             if (mapping.getEnabled() == null || mapping.getEnabled() == 0) {
                 continue;
             }
+            //只处理指定的匹配类型
             if (mapping.getMatchType() != null && mapping.getMatchType() != 1) {
                 continue;
             }
@@ -62,6 +65,7 @@ public class QueryTermMappingService {
             if (source == null || source.isEmpty() || target == null || target.isEmpty()) {
                 continue;
             }
+            //真正替换
             result = QueryTermMappingUtil.applyMapping(result, source, target);
         }
 

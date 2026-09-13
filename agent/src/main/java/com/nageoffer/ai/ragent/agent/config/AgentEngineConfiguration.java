@@ -34,7 +34,7 @@ import java.util.Map;
  */
 @Configuration
 @ConditionalOnAgentEngine
-@RequiredArgsConstructor
+@RequiredArgsConstructor   //必填字段构造函数注解
 public class AgentEngineConfiguration {
 
     private final AgentProperties agentProperties;
@@ -42,7 +42,7 @@ public class AgentEngineConfiguration {
 
     @Bean
     public OpenAIChatModel agentChatModel() {
-        AgentProperties.Chat chat = agentProperties.getChat();
+        AgentProperties.Chat chat = agentProperties.getChat();  // agent.chat 配置(model+provider)
         if (chat == null || StrUtil.isBlank(chat.getProvider()) || StrUtil.isBlank(chat.getModel())) {
             throw new IllegalStateException("agent.chat.provider / agent.chat.model 未配置");
         }
@@ -63,13 +63,13 @@ public class AgentEngineConfiguration {
                 .apiKey(provider.getApiKey())
                 .modelName(chat.getModel())
                 .stream(true)
-                // 兼容端点普遍无法同时处理 response_format 与工具调用，统一走 generate_response 兜底
-                .nativeStructuredOutputWithTools(false)
+                // 兼容端点普遍无法同时处理 response_format 与工具调用，统一走 generate_response 兜底(因为作者配置了第三方api代理平台，不是官方端点)
+                .nativeStructuredOutputWithTools(false) //设置该模型是否能够同时原生支持【结构化输出 response_format】 和 【工具调用 tool calling】。
                 .build();
     }
 
     @Bean
-    public PgAgentStateStore agentStateStore(AgentStateMapper agentStateMapper) {
+    public PgAgentStateStore agentStateStore(AgentStateMapper agentStateMapper) {   
         return new PgAgentStateStore(agentStateMapper);
     }
 }

@@ -26,7 +26,7 @@ import org.springframework.context.annotation.Configuration;
  * 单模型无 fallback：chat.provider 引用 ai.providers 解析 url / api-key / endpoints.chat
  */
 @Data
-@Configuration
+@Configuration 
 @ConfigurationProperties(prefix = "agent")
 public class AgentProperties {
 
@@ -45,10 +45,10 @@ public class AgentProperties {
     /**
      * SSE 通道超时，到点即回收上游运行；一次 Agent 运行最多 max-iters 轮，每轮量级接近 RAG 单问全程
      */
-    private Long sseTimeoutMs = 900_000L;
+    private Long sseTimeoutMs = 900_000L;   // 15 分钟
 
     @Data
-    public static class Chat {
+    public static class Chat {  
 
         /**
          * ai.providers 下的供应商 key

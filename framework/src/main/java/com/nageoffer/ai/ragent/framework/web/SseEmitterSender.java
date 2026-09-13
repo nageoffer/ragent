@@ -40,7 +40,7 @@ public class SseEmitterSender {
      * 连接关闭状态标识，使用原子布尔类型保证线程安全
      * true 表示连接已关闭，false 表示连接仍然活跃
      */
-    private final AtomicBoolean closed = new AtomicBoolean(false);
+    private final AtomicBoolean closed = new AtomicBoolean(false);  //CAS:compareAndSet 原子操作，确保只关闭一次
 
     /**
      * Spring 的 SseEmitter 实例，用于实际的 SSE 通信

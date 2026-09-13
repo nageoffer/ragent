@@ -53,6 +53,7 @@ import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.CONTEXT_FORMAT_PA
 @Slf4j
 @Service
 @RequiredArgsConstructor
+//LLM摘要实现
 public class JdbcConversationMemorySummaryService implements ConversationMemorySummaryService {
 
     private static final String SUMMARY_LOCK_PREFIX = "ragent:memory:summary:lock:";
@@ -67,7 +68,9 @@ public class JdbcConversationMemorySummaryService implements ConversationMemoryS
     private final Executor memorySummaryExecutor;
 
     @Override
+    //当对话轮次达到阈值后，它会：读取最近的历史消息，调 LLM 生成摘要
     public void compressIfNeeded(String conversationId, String userId, ChatMessage message) {
+        //1. 摘要触发时机
         if (!memoryProperties.getSummaryEnabled()) {
             return;
         }
@@ -83,6 +86,7 @@ public class JdbcConversationMemorySummaryService implements ConversationMemoryS
     }
 
     @Override
+    //获得最新的摘要信息
     public ChatMessage loadLatestSummary(String conversationId, String userId) {
         ConversationSummaryDO summary = conversationGroupService.findLatestSummary(conversationId, userId);
         return toChatMessage(summary);
@@ -100,26 +104,31 @@ public class JdbcConversationMemorySummaryService implements ConversationMemoryS
         return ChatMessage.system(wrapped);
     }
 
+    //2. 什么时候开始做摘要？
     private void doCompressIfNeeded(String conversationId, String userId) {
         long startTime = System.currentTimeMillis();
-        int triggerTurns = memoryProperties.getSummaryStartTurns();
+        int triggerTurns = memoryProperties.getSummaryStartTurns();//第9轮开始摘要
         int maxTurns = memoryProperties.getHistoryKeepTurns();
         if (maxTurns <= 0 || triggerTurns <= 0) {
             return;
         }
 
+        //3. 分布式锁，避免同一会话重复压缩
         String lockKey = SUMMARY_LOCK_PREFIX + buildLockKey(conversationId, userId);
-        RLock lock = redissonClient.getLock(lockKey);
-        if (!lock.tryLock()) {
+        RLock lock = redissonClient.getLock(lockKey);   //加锁
+        if (!lock.tryLock()) {  //非阻塞式，如果当前会话正有另一个异步任务或请求在生成摘要，本线程不会等待，而是直接放弃
             return;
         }
         try {
             long total = conversationGroupService.countUserMessages(conversationId, userId);
+            //不到8轮，直接返回
             if (total < triggerTurns) {
                 return;
             }
 
+            //查数据库最新的一条摘要记录
             ConversationSummaryDO latestSummary = conversationGroupService.findLatestSummary(conversationId, userId);
+            //4.  找到“最近要保留的原文窗口”
             List<ConversationMessageDO> latestUserTurns = conversationGroupService.listLatestUserOnlyMessages(
                     conversationId,
                     userId,
@@ -128,17 +137,20 @@ public class JdbcConversationMemorySummaryService implements ConversationMemoryS
             if (latestUserTurns.isEmpty()) {
                 return;
             }
-            String historyStartId = resolveHistoryStartId(latestUserTurns);
+            // 已经可以被“摘要覆盖”| [ historyStartId, | 保留在原文窗口里 ]
+            String historyStartId = resolveHistoryStartId(latestUserTurns);//historyStartId：保留给大模型的原文窗口中，最老的那条消息的 ID。
             if (StrUtil.isBlank(historyStartId)) {
                 return;
             }
-
+            //5. 找到“上次摘要覆盖到哪里”, afterId：上一次摘要已经覆盖到的最后一条消息的 ID（即本次压缩的起点）。
             String afterId = resolveSummaryStartId(conversationId, userId, latestSummary);
+            
+            //如果上一轮摘要已经覆盖到了目前原文窗口最早的那条消息，说明这部分已经被总结过，不需要再做
             if (afterId != null && Long.parseLong(afterId) >= Long.parseLong(historyStartId)) {
                 return;
             }
+            //6. 重叠滑动窗口的关键：只压缩“即将滑出”的那一段
 
-            // 摘要覆盖约一半原文窗口；只有这段重叠滑出窗口后才再次生成摘要
             String summaryCutoffId = resolveSummaryCutoffId(latestUserTurns);
             if (StrUtil.isBlank(summaryCutoffId)) {
                 return;
@@ -177,6 +189,17 @@ public class JdbcConversationMemorySummaryService implements ConversationMemoryS
             }
         }
     }
+
+        /*
+        7. LLM摘要：
+            把待压缩的消息转为 ChatMessage
+            把之前的摘要也传给模型
+            告诉模型：
+            以新对话为准
+            旧摘要仅用于合并去重
+            不能把它当成新增事实来源
+            最后要求模型输出一行摘要，长度不超过 summaryMaxChars
+        */
 
     private String summarizeMessages(List<ConversationMessageDO> messages, String existingSummary) {
         List<ChatMessage> histories = toHistoryMessages(messages);
@@ -252,6 +275,7 @@ public class JdbcConversationMemorySummaryService implements ConversationMemoryS
         if (summary == null) {
             return null;
         }
+        //拿上一条摘要的最后覆盖位置：
         if (summary.getLastMessageId() != null) {
             return summary.getLastMessageId();
         }
@@ -262,7 +286,7 @@ public class JdbcConversationMemorySummaryService implements ConversationMemoryS
         }
         return conversationGroupService.findMaxMessageIdAtOrBefore(conversationId, userId, after);
     }
-
+    //从已经倒序排好的消息列表中，拿到【最早一条消息的 ID】，作为历史会话起始 ID。
     private String resolveHistoryStartId(List<ConversationMessageDO> latestUserTurns) {
         if (CollUtil.isEmpty(latestUserTurns)) {
             return null;
@@ -277,6 +301,7 @@ public class JdbcConversationMemorySummaryService implements ConversationMemoryS
         if (CollUtil.isEmpty(latestUserTurns)) {
             return null;
         }
+        //本次摘要的截止边界。代码通过 resolveSummaryCutoffId 覆盖约一半的保留窗口，确保消息滑出保留窗口时，能够平滑过渡到摘要中
 
         ConversationMessageDO overlapBoundary = latestUserTurns.get((latestUserTurns.size() - 1) / 2);
         return overlapBoundary == null ? null : overlapBoundary.getId();
@@ -292,6 +317,7 @@ public class JdbcConversationMemorySummaryService implements ConversationMemoryS
         return null;
     }
 
+    //8. 把生成的摘要写回表 t_conversation_summary 
     private void createSummary(String conversationId,
                                String userId,
                                String content,

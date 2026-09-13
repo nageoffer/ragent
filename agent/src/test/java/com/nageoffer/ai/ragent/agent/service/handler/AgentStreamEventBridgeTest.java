@@ -18,6 +18,7 @@
 package com.nageoffer.ai.ragent.agent.service.handler;
 
 import com.nageoffer.ai.ragent.agent.dto.AgentBlock;
+import com.nageoffer.ai.ragent.agent.enums.AgentSSEEventType;
 import com.nageoffer.ai.ragent.agent.service.AgentConversationService;
 import com.nageoffer.ai.ragent.agent.tool.AgentToolCatalog.ResolvedCatalog;
 import com.nageoffer.ai.ragent.framework.web.SseEmitterSender;
@@ -30,13 +31,17 @@ import io.agentscope.core.message.ToolResultState;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -76,8 +81,19 @@ class AgentStreamEventBridgeTest {
 
         bridge.onError(new IllegalStateException("上游炸了"));
 
+        // 失败态不再 completeWithError 触发全局异常处理器刷屏：错误经 SSE error 事件交前端后正常关闭
         verify(taskManager).unregister(TASK_ID);
-        verify(sender).fail(any(Throwable.class));
+        verify(sender, never()).fail(any());
+
+        ArgumentCaptor<Object> errorCaptor = ArgumentCaptor.forClass(Object.class);
+        InOrder order = inOrder(sender);
+        order.verify(sender).sendEvent(eq(AgentSSEEventType.ERROR.value()), errorCaptor.capture());
+        order.verify(sender).sendEvent(eq(AgentSSEEventType.DONE.value()), "[DONE]");
+        order.verify(sender).complete();
+
+        Object payload = errorCaptor.getValue();
+        assertThat(payload).isInstanceOf(Map.class);
+        assertThat(((Map<?, ?>) payload).get("error")).asString().contains("上游炸了");
     }
 
     @Test

@@ -56,6 +56,11 @@ public enum AgentSSEEventType {
     DONE("done"),
 
     /**
+     * 流式会话失败：错误经 SSE 事件通道告知前端（流已以 text/event-stream 提交，无法回写 HTTP 错误体）
+     */
+    ERROR("error"),
+
+    /**
      * 用户取消
      */
     CANCEL("cancel");

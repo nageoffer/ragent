@@ -88,12 +88,14 @@ public class RetrievalEngine {
 
         // 一次算好检索预算：全 subquestion 共用。最终条数即配置的 default-top-k（启动已校验 >0），是 contextTopK 段唯一真源，
         // 不再被 max(意图节点 topK) 抬高（node.topK 只覆盖向量定向路的召回深度，见 VectorSearchChannel.resolveDirectedBudget）
-        int contextTopK = searchProperties.getDefaultTopK();
+        int contextTopK = searchProperties.getDefaultTopK();   
+        //计算预算
         RetrievalBudget budget = new RetrievalBudget(
                 searchProperties.resolveRecallBudget(contextTopK),
                 searchProperties.getFusion().getRerankCandidateLimit(),
                 contextTopK
         );
+        //为每一个subIntent(si)异步并行创建上下文，专用线程池ragContextExecutor
         List<CompletableFuture<SubQuestionContext>> tasks = subIntents.stream()
                 .map(si -> CompletableFuture.supplyAsync(
                         () -> {
@@ -110,12 +112,16 @@ public class RetrievalEngine {
                         ragContextExecutor
                 ))
                 .toList();
+        //join()：等所有子问题完成
         List<SubQuestionContext> contexts = tasks.stream()
                 .map(CompletableFuture::join)
                 .toList();
 
+        //多个子问题各自得到的 chunks 合并起来。
         Map<String, List<RetrievedChunk>> mergedIntentChunks = new LinkedHashMap<>();
+        //记录所有允许参与后续处理的 intent ID。Set<A,B,A,C,B)-->(A,B,C)
         Set<String> eligibleIntentIds = new LinkedHashSet<>();
+        
         for (SubQuestionContext context : contexts) {
             eligibleIntentIds.addAll(context.eligibleIntentIds());
             if (CollUtil.isNotEmpty(context.intentChunks())) {
@@ -134,22 +140,22 @@ public class RetrievalEngine {
         String kbContext;
         String mcpContext;
 
-        if (singleQuestion) {
+        if (singleQuestion) {//单个子问题无需包装
             SubQuestionContext only = contexts.get(0);
             kbContext = StrUtil.emptyIfNull(only.kbContext()).trim();
             mcpContext = StrUtil.emptyIfNull(only.mcpContext()).trim();
         } else {
             StringBuilder kbBuilder = new StringBuilder();
             StringBuilder mcpBuilder = new StringBuilder();
-            int globalIndex = 0;
+            int globalIndex = 0;    //全局编号
             for (SubQuestionContext context : contexts) {
                 boolean hasKb = StrUtil.isNotBlank(context.kbContext());
                 boolean hasMcp = StrUtil.isNotBlank(context.mcpContext());
-                if (hasKb || hasMcp) {
+                if (hasKb || hasMcp) {  //如果这个子问题至少有一个上下文，就给它一个编号。
                     globalIndex++;
                 }
                 if (hasKb) {
-                    appendSection(kbBuilder, "sub-question-kb-wrapper", globalIndex, context.question(), context.kbContext());
+                    appendSection(kbBuilder, "sub-question-kb-wrapper", globalIndex, context.question(), context.kbContext());  //包装到kbBuilder
                 }
                 if (hasMcp) {
                     appendSection(mcpBuilder, "sub-question-mcp-wrapper", globalIndex, context.question(), context.mcpContext());
@@ -170,9 +176,9 @@ public class RetrievalEngine {
     private SubQuestionContext buildSubQuestionContext(SubQuestionIntent intent, RetrievalBudget budget) {
         List<NodeScore> kbIntents = NodeScoreFilters.kb(intent.nodeScores());
         List<NodeScore> mcpIntents = NodeScoreFilters.mcp(intent.nodeScores());
-
+        //KB 意图
         KbResult kbResult = retrieveAndRerank(intent, kbIntents, budget);
-
+        //MCP 
         String mcpContext = CollUtil.isNotEmpty(mcpIntents)
                 ? executeMcpAndMerge(intent.subQuestion(), mcpIntents)
                 : "";
@@ -209,15 +215,17 @@ public class RetrievalEngine {
         // 使用多通道检索引擎（是否启用全局检索由置信度阈值决定）
         KnowledgeRetrievalResult retrievalResult =
                 multiChannelRetrievalEngine.retrieveKnowledgeChannels(intent, budget);
+        //获取检索出来的 Chunk
         List<RetrievedChunk> chunks = retrievalResult.chunks();
+        //从 kbIntents 中筛选出真正允许参与本次知识检索结果组织的意图 ID。
         Set<String> eligibleIntentIds = retrievalResult.eligibleIntentIds(kbIntents);
 
         if (CollUtil.isEmpty(chunks)) {
             return new KbResult("", Map.of(), eligibleIntentIds);
         }
-
+        //把检索出来的 Chunk 按照意图进行归类。
         Map<String, List<RetrievedChunk>> intentChunks = retrievalResult.groupByIntent(MULTI_CHANNEL_KEY);
-
+        //groupByIntent() 可能支持不同的分组方式
         String groupedContext = contextFormatter.formatKbContext(
                 kbIntents, eligibleIntentIds, chunks, budget.contextTopK());
         return new KbResult(groupedContext, intentChunks, eligibleIntentIds);

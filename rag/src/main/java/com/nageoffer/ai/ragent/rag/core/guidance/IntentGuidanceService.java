@@ -66,34 +66,37 @@ public class IntentGuidanceService {
 
     @RagTraceNode(name = "guidance-detect", type = "GUIDANCE")
     public GuidanceDecision detectAmbiguity(String question, List<SubQuestionIntent> subIntents) {
+        //1. 若全局未开启歧义引导，直接结束。
         if (!Boolean.TRUE.equals(guidanceProperties.getEnabled())) {
             return GuidanceDecision.none();
         }
 
+        //2. 规则层找“候选重名路径”，排除大部分无关情况
         AmbiguityGroup group = findAmbiguityGroup(question, subIntents);
         if (group == null || CollUtil.isEmpty(group.ranked())) {
             return GuidanceDecision.none();
         }
 
+        // 真正的“是否歧义”由 LLM 判定
         String prompt = buildPrompt(group.topicName(), group.ranked());
         return GuidanceDecision.prompt(prompt);
     }
 
     private AmbiguityGroup findAmbiguityGroup(String question, List<SubQuestionIntent> subIntents) {
+        //排除多子问题及单意图场景（意图唯一，根本无歧义）。
         if (CollUtil.isEmpty(subIntents) || subIntents.size() != 1) {
             return null;
         }
-
         List<NodeScore> ranked = rankCandidates(filterCandidates(subIntents.get(0).nodeScores()));
         if (ranked.size() < 2) {
             return null;
         }
-
+        //即使存在多个候选意图，若它们在业务树/分类树路径上无互斥冲突（例如同属于可叠加的次级意图），直接排除
         PathConflict conflict = collectPathConflicts(question, ranked);
         if (conflict == null) {
             return null;
         }
-
+        //仅对满足“单一问题 + 多候选意图 + 静态路径冲突”的极少数疑难请求，调用 LLM 判定真实语义。
         if (!ambiguityLLMChecker.checkAmbiguity(question, conflict.ranked())) {
             log.info("LLM 判定候选路径不构成歧义, 跳过澄清, question={}", question);
             return null;

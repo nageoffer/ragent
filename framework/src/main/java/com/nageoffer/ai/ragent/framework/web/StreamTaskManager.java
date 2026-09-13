@@ -71,6 +71,10 @@ public class StreamTaskManager {
         this.redissonClient = redissonClient;
     }
 
+    /*
+     * Redisson RTopic（Redis 的发布‑订阅 Pub/Sub）作用：
+        集群环境下订阅「任务取消广播」，Redis 做消息总线，集群里所有服务节点都能收到取消事件，执行本地任务取消。
+     */
     @PostConstruct
     public void subscribe() {
         RTopic topic = redissonClient.getTopic(CANCEL_TOPIC);
@@ -82,16 +86,16 @@ public class StreamTaskManager {
             // 滚动升级期老节点仍广播裸 taskId，它在发布前已做过同样的属主校验，按系统侧收
             String taskId = separator < 0 ? payload : payload.substring(0, separator);
             String requester = separator < 0 ? SYSTEM_REQUESTER : payload.substring(separator + 1);
-            cancelLocal(taskId, requester);
+            cancelLocal(taskId, requester); //本地取消
         });
     }
 
     @PreDestroy
     public void unsubscribe() {
-        if (listenerId == -1) {
+        if (listenerId == -1) { //listenerId == -1表示未订阅过，就不取消
             return;
         }
-        redissonClient.getTopic(CANCEL_TOPIC).removeListener(listenerId);
+        redissonClient.getTopic(CANCEL_TOPIC).removeListener(listenerId);//取消订阅
     }
 
     /**
@@ -168,15 +172,17 @@ public class StreamTaskManager {
      * 标记可能先于注册到达，那一刻还没有属主可比对，只能推到这里复核
      */
     private boolean isTaskCancelledInRedis(String taskId, StreamTaskInfo taskInfo) {
+        //本地校验是否取消
         if (taskInfo.cancelled.get()) {
             return true;
         }
-
+        // Redis 校验是否取消
         RBucket<String> bucket = redissonClient.getBucket(cancelKey(taskId));
         String requester = bucket.get();
         if (requester == null) {
             return false;
         }
+        //权限校验：校验发起取消的 requester 是否有权限取消这个任务
         if (!isRequesterAllowed(taskInfo, requester)) {
             log.warn("忽略非属主埋下的取消标记，taskId：{}，属主：{}，发起方：{}", taskId, taskInfo.ownerUserId, requester);
             return false;
@@ -190,9 +196,15 @@ public class StreamTaskManager {
      * 这正是预埋标记要在 register 那一刻复核的窗口，本地放过去反而绕开了复核
      */
     private boolean isRequesterAllowed(StreamTaskInfo taskInfo, String requester) {
+        //系统请求直接放行
         if (SYSTEM_REQUESTER.equals(requester)) {
             return true;
         }
+        /**
+         * 用户发起取消：必须同时满足两点
+         * 1.taskInfo的ownerUserId不为空（任务属主已经落地注册完成）
+         * 2.发起取消的requester 和任务属主完全相等
+         */
         return StrUtil.isNotBlank(taskInfo.ownerUserId) && taskInfo.ownerUserId.equals(requester);
     }
 
@@ -224,6 +236,7 @@ public class StreamTaskManager {
         }
     }
 
+    //注销，清理本地缓存和 Redis 标记，避免占用内存和 Redis 空间
     public void unregister(String taskId) {
         // 清理本地缓存
         tasks.invalidate(taskId);
@@ -233,11 +246,11 @@ public class StreamTaskManager {
         redissonClient.getBucket(ownerKey(taskId)).deleteAsync();
     }
 
-    private String cancelKey(String taskId) {
+    private String cancelKey(String taskId) {   // 取消标记落地注册时写入 Redis，取消时比对
         return CANCEL_KEY_PREFIX + taskId;
     }
 
-    private String ownerKey(String taskId) {
+    private String ownerKey(String taskId) {    // 属主落地注册时写入 Redis，取消时比对
         return OWNER_KEY_PREFIX + taskId;
     }
 
@@ -248,8 +261,8 @@ public class StreamTaskManager {
 
     private static final class StreamTaskInfo {
         private final AtomicBoolean cancelled = new AtomicBoolean(false);
-        private volatile String ownerUserId;
+        private volatile String ownerUserId;    // 属主用户 ID，注册时落地，取消时比对
         private volatile Runnable cancelAction;
-        private volatile Runnable finalizer;
+        private volatile Runnable finalizer;    // 收尾回调：补发终止事件、结束响应流、落库等
     }
 }

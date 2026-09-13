@@ -40,11 +40,11 @@ import java.util.stream.Collectors;
 @Component
 public class AssetMcpExecutor {
 
-    private static final String TOOL_ID = "asset_query";
+    private static final String TOOL_ID = "asset_query";// 资产查询工具
 
     private static final String DEFAULT_EMPLOYEE = "张三";
 
-    private static final List<String> CATEGORIES = List.of("笔记本电脑", "台式机", "显示器", "扩展坞", "移动硬盘", "测试手机");
+    private static final List<String> CATEGORIES = List.of("笔记本电脑", "台式机", "显示器", "扩展坞", "移动硬盘", "测试手机"); // 资产类别
     private static final List<String> STATUSES = List.of("在用", "维修中", "借用中", "待归还");
 
     private static final Map<String, Integer> SERVICE_LIMIT_MONTHS = Map.of(

@@ -24,7 +24,7 @@ import org.apache.tika.Tika;
 /**
  * MIME 探测器：字节语义的唯一权威源，产出只服务解析路由，不参与展示
  */
-@NoArgsConstructor(access = AccessLevel.PRIVATE)
+@NoArgsConstructor(access = AccessLevel.PRIVATE)    //工具类，只提供静态方法，禁止外部 new 实例化对象
 public final class MimeTypeDetector {
 
     private static final Tika TIKA = new Tika();

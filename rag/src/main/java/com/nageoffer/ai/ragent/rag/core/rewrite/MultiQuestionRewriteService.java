@@ -87,6 +87,8 @@ public class MultiQuestionRewriteService implements QueryRewriteService {
         // 开关关闭：直接做规则归一化 + 规则拆分
         if (!ragConfigProperties.getQueryRewriteEnabled()) {
             String normalized = queryTermMappingService.normalize(userQuestion);
+
+            //兜底拆分，按照分隔符
             List<String> subs = ruleBasedSplit(normalized);
             return new RewriteResult(normalized, subs);
         }
@@ -98,9 +100,18 @@ public class MultiQuestionRewriteService implements QueryRewriteService {
         // 兜底：使用归一化结果 + 规则拆分
     }
 
+    //LLM进行改写+拆分
     private RewriteResult callLLMRewriteAndSplit(String normalizedQuestion,
                                                  String originalQuestion,
                                                  List<ChatMessage> history) {
+                                                    
+        //加载改写的提示词
+        /*  只做“最小必要改写”
+            不回答问题
+            对指代词做消解
+            省略续问继承上一轮用户问题意图
+            只有明确多问才拆分，不要随意拆分
+            如果不拆分，sub_questions 只有 1 条，且等于 rewrite */
         String systemPrompt = promptTemplateLoader.load(QUERY_REWRITE_AND_SPLIT_PROMPT_PATH);
         ChatRequest req = buildRewriteRequest(systemPrompt, normalizedQuestion, history);
 
@@ -192,7 +203,7 @@ public class MultiQuestionRewriteService implements QueryRewriteService {
     }
 
     private List<String> ruleBasedSplit(String question) {
-        // 兜底：按常见分隔符拆分
+        // 兜底：按常见分隔符拆分（?？。；;\\n）
         List<String> parts = Arrays.stream(question.split("[?？。；;\\n]+"))
                 .map(String::trim)
                 .filter(StrUtil::isNotBlank)

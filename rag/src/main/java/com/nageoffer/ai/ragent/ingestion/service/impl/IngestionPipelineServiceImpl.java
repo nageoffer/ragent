@@ -60,8 +60,8 @@ public class IngestionPipelineServiceImpl implements IngestionPipelineService {
 
     private final IngestionPipelineMapper pipelineMapper;
     private final IngestionPipelineNodeMapper nodeMapper;
-    private final ObjectMapper objectMapper;
-    private final BizChangeLogContext bizChangeLogContext;
+    private final ObjectMapper objectMapper;        //序列化：Java 对象 ↔ JSON 字符串 / 文件 / 字节流；
+    private final BizChangeLogContext bizChangeLogContext;  //业务变更日志上下文
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -189,6 +189,7 @@ public class IngestionPipelineServiceImpl implements IngestionPipelineService {
                 .build();
     }
 
+    //更新‑插入节点【先删除后插入】
     private void upsertNodes(String pipelineId, List<IngestionPipelineNodeRequest> nodes) {
         if (nodes == null) {
             return;
@@ -242,7 +243,6 @@ public class IngestionPipelineServiceImpl implements IngestionPipelineService {
                 .nextNodeId(node.getNextNodeId())
                 .build();
     }
-
     private String toJson(JsonNode node) {
         if (node == null || node.isNull()) {
             return null;
@@ -261,6 +261,7 @@ public class IngestionPipelineServiceImpl implements IngestionPipelineService {
         }
     }
 
+    //校验节点类型是否有效，并返回标准化的节点类型值
     private String normalizeNodeType(String nodeType) {
         if (!StringUtils.hasText(nodeType)) {
             return nodeType;

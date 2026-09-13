@@ -27,6 +27,18 @@ import java.util.Date;
 
 /**
  * 长期记忆控制面 Mapper，提交期的串行点就在这张表的行锁上
+ * 
+ * [开启数据库事务 @Transactional]
+       │
+       ├──► 1. mapper.ensureExists(userId, now);   // 确保行记录必定存在
+       │
+       ├──► 2. mapper.selectForUpdate(userId);     // 关键！锁定该行，其他并发事务在此排队
+       │
+       ├──► 3. 执行记忆写入操作 (如插入 t_agent_memory)
+       │
+       ├──► 4. mapper.bumpRevision(userId);        // 记忆有更新，版本号 +1
+       │
+[提交数据库事务 COMMIT]                            // 释放行锁，允许下一个排队事务进入
  */
 @SuppressWarnings({"SqlDialectInspection", "SqlNoDataSourceInspection", "SqlResolve"})
 public interface AgentMemoryControlMapper {
@@ -49,7 +61,7 @@ public interface AgentMemoryControlMapper {
     AgentMemoryControlDO selectByUserId(@Param("userId") String userId);
 
     /**
-     * 提交事务的第一句：拿到行锁，同用户的提交从这里开始排队
+     * 提交事务的第一句：拿到行锁，同用户的提交从这里开始排队（悲观锁）
      */
     @Select("""
             SELECT user_id, revision, create_time, update_time
@@ -60,7 +72,7 @@ public interface AgentMemoryControlMapper {
     AgentMemoryControlDO selectForUpdate(@Param("userId") String userId);
 
     /**
-     * 记忆集变更后推版本号；NOOP 不走这里，所以单靠版本号挡不住重复写入
+     * 记忆集变更后推版本号；NOOP (空操作)不涨版本号，所以单靠版本号挡不住重复写入
      */
     @Update("""
             UPDATE t_agent_memory_control

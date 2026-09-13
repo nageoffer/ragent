@@ -80,7 +80,7 @@ public class StreamChatPipeline {
      * 执行流式对话管道
      */
     public void execute(StreamChatContext ctx) {
-        loadMemory(ctx);
+        loadMemory(ctx);    
         rewriteQuery(ctx);
         resolveIntents(ctx);
 
@@ -100,7 +100,8 @@ public class StreamChatPipeline {
     }
 
     // ==================== 流水线阶段 ====================
-
+    
+    //1. 写入历史消息（摘要和最新的一条历史消息）：         平衡“长短期记忆”与“上下文 Token 成本”的内存管理策略：（摘要+重叠滑动窗口）
     private void loadMemory(StreamChatContext ctx) {
         List<ChatMessage> history = memoryService.load(ctx.getConversationId(), ctx.getUserId());
         String questionMessageId = memoryService.append(
@@ -109,16 +110,19 @@ public class StreamChatPipeline {
         ctx.setHistory(history);
     }
 
+    //2. 问题改写与拆分
     private void rewriteQuery(StreamChatContext ctx) {
         RewriteResult rewriteResult = queryRewriteService.rewriteWithSplit(ctx.getQuestion(), ctx.getHistory());
         ctx.setRewriteResult(rewriteResult);
     }
 
+    //3，。意图树加载
     private void resolveIntents(StreamChatContext ctx) {
         List<SubQuestionIntent> subIntents = intentResolver.resolve(ctx.getRewriteResult());
         ctx.setSubIntents(subIntents);
     }
 
+    //4.歧义引导
     private boolean handleGuidance(StreamChatContext ctx) {
         GuidanceDecision decision = guidanceService.detectAmbiguity(
                 ctx.getRewriteResult().rewrittenQuestion(),
@@ -132,7 +136,7 @@ public class StreamChatPipeline {
         callback.onComplete();
         return true;
     }
-
+    //5. 只有 SYSTEM 意图
     private boolean handleSystemOnly(StreamChatContext ctx) {
         List<SubQuestionIntent> subIntents = ctx.getSubIntents();
         boolean allSystemOnly = subIntents.stream()
@@ -155,11 +159,12 @@ public class StreamChatPipeline {
         taskManager.bindHandle(ctx.getTaskId(), handle == null ? null : handle::cancel);
         return true;
     }
-
+    // 6. 多通道检索
     private RetrievalContext retrieve(StreamChatContext ctx) {
         return retrievalEngine.retrieve(ctx.getSubIntents());
     }
 
+    //7. 空结果兜底
     private boolean handleEmptyRetrieval(StreamChatContext ctx, RetrievalContext retrievalCtx) {
         if (!retrievalCtx.isEmpty()) {
             return false;
@@ -169,7 +174,7 @@ public class StreamChatPipeline {
         callback.onComplete();
         return true;
     }
-
+    //8.Prompt 组装与流式生成
     private void streamRagResponse(StreamChatContext ctx, RetrievalContext retrievalCtx) {
         // 聚合所有意图用于 prompt 规划
         IntentGroup mergedGroup = intentResolver.mergeIntentGroup(ctx.getSubIntents());

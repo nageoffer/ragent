@@ -1,0 +1,26 @@
+name: postgres-pgvector-stack
+
+services:
+  postgres:
+    container_name: ragent-pg
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ragent
+    volumes:
+      - pgvector-data:/var/lib/postgresql/data
+      # 首次初始化（数据卷为空时）自动按序执行：先建表结构，再灌初始化数据
+      - ../database/schema_pg.sql:/docker-entrypoint-initdb.d/01_schema_pg.sql:ro
+      - ../database/init_data_pg.sql:/docker-entrypoint-initdb.d/02_init_data_pg.sql:ro
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d ragent" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgvector-data:

@@ -50,7 +50,20 @@ import java.util.function.IntSupplier;
 
 /**
  * 分布式公平限流器
- */
+                * [请求到来]
+                │
+                ├── 1. setEntryMarker() ──> 在 Redis 写入心跳标记 (带 TTL)
+                ├── 2. ZSet 排队
+                │
+                [轮到该请求出队]
+                │
+                ├── 3. tryAcquirePermit() ──> 真正从 Redisson 信号量拿 permitId
+                ├── 4. deleteEntryMarker() ──> 删掉心跳标记
+                │
+                [业务执行完毕 (RAG/LLM)]
+                │
+                └── 5. releasePermitQuietly(permitId) ──> 归还 permitId 到信号量池
+                */
 @Slf4j
 public final class FairDistributedRateLimiter {
 
@@ -136,17 +149,23 @@ public final class FairDistributedRateLimiter {
      * 非阻塞地排队抢占一个 permit
      */
     public void acquire(AcquireRequest req) {
+        //封装Ticket状态机
         Ticket ticket = new Ticket(req);
+        //绑定取消回调，前端关闭页面或者 SSE 连接断开时调用，执行Ticket.cancel()
         if (req.cancelBinder() != null) {
             req.cancelBinder().accept(ticket::cancel);
         }
         // entry 存活标记必须先于入队写入，否则 race 窗口内的并发 claim 会把刚入队的条目当僵尸 ZREM
         setEntryMarker(ticket.requestId, req.maxWaitMillis());
+        //ZSet 队列排队 (queue.add)：以自增的序列号 nextQueueSeq() 作为 Score，requestId 作为 Value 入队。
+        //实现先来后到（FIFO）顺序排队
         RScoredSortedSet<String> queue = redissonClient.getScoredSortedSet(queueKey, StringCodec.INSTANCE);
         queue.add(nextQueueSeq(), ticket.requestId);
+        //快道，试探性抢占，────(抢成功)────> [回调 onAcquired] 结束
         if (tryAcquireIfReady(ticket)) {
             return;
         }
+        //(无空闲许可 / 未轮到自己)，慢道，─────> [启动本地/分布式定时器轮询]
         scheduleQueuePoll(ticket);
     }
 
@@ -156,15 +175,15 @@ public final class FairDistributedRateLimiter {
      * 单 CAS 协调点。终态互斥：状态一旦从 PENDING 转走就不再变更，业务回调最多触发一次
      * 资源清理 ({@link Ticket#cleanup()}) 与状态机解耦，幂等执行
      */
-    private enum State {PENDING, GRANTED, TIMED_OUT, CANCELLED}
+    private enum State {PENDING, GRANTED, TIMED_OUT, CANCELLED}//排队等待中、已获得许可、排队超时、已取消
 
     private final class Ticket {
         final String requestId = IdUtil.getSnowflakeNextIdStr();
         final long deadline;
         final AcquireRequest req;
         final AtomicReference<State> state = new AtomicReference<>(State.PENDING);
-        final AtomicReference<String> permitRef = new AtomicReference<>();
-        volatile ScheduledFuture<?> future;
+        final AtomicReference<String> permitRef = new AtomicReference<>();  //保存抢占到的具体许可标识（Token/ID），以便业务完成后释放该许可。
+        volatile ScheduledFuture<?> future;                                 //保存本地超时定时任务，当状态切为 GRANTED 或 CANCELLED 时，用于取消超时的 Timer 任务。
 
         Ticket(AcquireRequest req) {
             this.req = req;
@@ -298,25 +317,33 @@ public final class FairDistributedRateLimiter {
 
     // ==================== 抢占核心 ====================
 
+
+    //试探性抢占
     private boolean tryAcquireIfReady(Ticket ticket) {
+
         if (!ticket.isPending()) {
             return false;
         }
+        //查可用信号量
         int avail = availablePermits();
         if (avail <= 0) {
             return false;
         }
+        //抢占许可，失败为-1，成功返回 排队序列号（Score）
         long claimedScore = claimIfReady(ticket.requestId, avail);
         if (claimedScore < 0L) {
             return false;
         }
+        //抢真实的信号量
         String permitId = tryAcquirePermit();
+
         if (permitId == null) {
             // 队头但无 permit：按原 score 重入队，保留排队位次（公平性）
             // 与 cancel/timeout 的 race：claimIfReady 已 ZREM，cleanup 的 remove 在此刻是 no-op；
             // 必须 add 后回查 state，若已终态则自行回滚，避免僵尸条目永久占据队头窗口
             setEntryMarker(ticket.requestId, Math.max(1, ticket.deadline - System.currentTimeMillis()));
             RScoredSortedSet<String> queue = redissonClient.getScoredSortedSet(queueKey, StringCodec.INSTANCE);
+            //重新入队，但是claimedScore保留排队位次（公平性）
             queue.add(claimedScore, ticket.requestId);
             publishQueueNotify();
             if (!ticket.isPending()) {
@@ -325,6 +352,7 @@ public final class FairDistributedRateLimiter {
             }
             return false;
         }
+
         if (!ticket.isPending()) {
             // claim 与 acquire 之间被取消/超时：必须释放 permit 并通知，否则其他等待者要等下一次 poll
             releasePermitQuietly(permitId);
@@ -335,26 +363,33 @@ public final class FairDistributedRateLimiter {
         return ticket.grant(permitId);
     }
 
+    //
     private void scheduleQueuePoll(Ticket ticket) {
-        int interval = Math.max(50, pollIntervalMsSupplier.getAsInt());
-        Runnable poller = () -> {
+        int interval = Math.max(50, pollIntervalMsSupplier.getAsInt());     //轮询间隔
+        Runnable poller = () -> {                                          //创建一个poller任务
+            //如果Ticket 已经不是 Pending
             if (!ticket.isPending()) {
-                ticket.unregisterFromNotifier();
-                ticket.cancelFutureQuietly();
+                ticket.unregisterFromNotifier();        //从通知器里注销。
+                ticket.cancelFutureQuietly();           //取消定时任务
                 return;
             }
+            //如果超时了，走超时逻辑
             if (System.currentTimeMillis() > ticket.deadline) {
                 ticket.timeout();
                 return;
             }
+            //尝试获取 permit
             tryAcquireIfReady(ticket);
         };
+        //真正的定时器
         ticket.future = scheduler.scheduleAtFixedRate(poller, interval, interval, TimeUnit.MILLISECONDS);
+        //把正在排队的 Ticket 注册进来。
         pollNotifier.register(ticket.requestId, poller);
     }
 
     // ==================== Redis 操作 ====================
 
+    //尝试从分布式信号量中立即（非阻塞 0 秒等待）抢占一个许可。
     private String tryAcquirePermit() {
         RPermitExpirableSemaphore sem = redissonClient.getPermitExpirableSemaphore(semaphoreKey);
         try {
@@ -365,10 +400,12 @@ public final class FairDistributedRateLimiter {
         }
     }
 
+    //查询当前信号量池中还剩多少个空闲的许可。
     private int availablePermits() {
         return redissonClient.getPermitExpirableSemaphore(semaphoreKey).availablePermits();
     }
 
+    //释放许可
     private void releasePermitQuietly(String permitId) {
         try {
             redissonClient.getPermitExpirableSemaphore(semaphoreKey).release(permitId);
@@ -378,7 +415,7 @@ public final class FairDistributedRateLimiter {
     }
 
     /**
-     * 写入 entry 存活标记，TTL = 等待预算 + 缓冲。JVM 崩溃后 Key 自然过期，
+     * 写入 entry 存活标记，{TTL} = {剩余等待时间} + {5000 ms 缓冲}。JVM 崩溃后 Key 自然过期，
      * 后续 {@link #claimIfReady} 在 Lua 内会把对应 ZSet 条目当僵尸清理掉，避免永久占据队头窗口
      */
     private void setEntryMarker(String requestId, long remainingMillis) {
@@ -391,6 +428,7 @@ public final class FairDistributedRateLimiter {
         }
     }
 
+    //清理entry 存活标记
     private void deleteEntryMarker(String requestId) {
         try {
             redissonClient.getBucket(entryKeyPrefix + requestId, StringCodec.INSTANCE).delete();
@@ -402,20 +440,45 @@ public final class FairDistributedRateLimiter {
     /**
      * @return 成功返回 ticket 的原始 score（用于失败时按原位次重入队），未 claim 返回 -1
      */
+    
     private long claimIfReady(String requestId, int availablePermits) {
         RScript script = redissonClient.getScript(StringCodec.INSTANCE);
+        /* *
+                
+                            │      执行 claimLua脚本     │
+                            └───────────┬────────────┘
+                                        │
+                            [ 1. 清理队首僵尸节点 ]
+                                        │
+                                        ▼
+                        [ 2. 检查排队顺位与许可数 ]
+                        /                        \
+                (不满足条件)                   (满足条件)
+                    /                                \
+                    ▼                                  ▼
+            [返回 0 / 失败]                    [ 3. 移除当前节点 (ZREM) ]
+                                                        │
+                                                        ▼
+                                                [ 4. 返回 1 及 Score ]
+        **/
+       
+
         List<Object> result = script.eval(
-                RScript.Mode.READ_WRITE,
-                claimLua,
-                RScript.ReturnType.LIST,
-                List.of(queueKey),
-                requestId,
-                String.valueOf(availablePermits),
-                entryKeyPrefix
+                RScript.Mode.READ_WRITE,   // 读写模式（因为会修改 ZSet）
+                claimLua,                  // 具体的 Lua 脚本内容
+                RScript.ReturnType.LIST,   // 返回值解析为 List 列表
+                List.of(queueKey),         // KEYS[1]: 队列的 Redis Key (ZSet)
+                requestId,                 // ARGV[1]: 当前请求 ID
+                String.valueOf(availablePermits), // ARGV[2]: 当前可用许可数
+                entryKeyPrefix             // ARGV[3]: 存活 Marker Key 的前缀
         );
+
+        // 结果校验：如果返回空或第 0 个元素不为 1，说明抢占失败，返回 -1
         if (result == null || result.isEmpty() || parseLong(result.get(0)) != 1L) {
             return -1L;
         }
+
+        // 抢占成功：返回当前的排队序列号（Score）
         return result.size() >= 2 ? parseLong(result.get(1)) : nextQueueSeq();
     }
 
@@ -424,6 +487,7 @@ public final class FairDistributedRateLimiter {
         return seq.incrementAndGet();
     }
 
+    //通知队列发生变化
     private void publishQueueNotify() {
         redissonClient.getTopic(notifyTopicKey).publish("permit_changed");
     }
@@ -467,14 +531,16 @@ public final class FairDistributedRateLimiter {
     // ==================== 公开类型 ====================
 
     /**
-     * 抢占请求参数
+     * 抢占请求record（不可变数据载体），主要作用是：封装一次异步排队获取资源（如信号量 Permit / 并发许可）的请求上下文与回调策略。
      */
     @Builder
-    public record AcquireRequest(long maxWaitMillis,
-                                 Runnable onAcquired,
-                                 Runnable onTimeout,
-                                 Executor onAcquiredExecutor,
-                                 Consumer<Runnable> cancelBinder) {
+    public record AcquireRequest(long maxWaitMillis,    // 最大等待时间，超过则触发 onTimeout 
+                                 Runnable onAcquired,   // 成功抢到许可后要执行的业务逻辑
+                                 Runnable onTimeout,    // 等待超时被拒绝后要执行的业务逻辑
+                                 Executor onAcquiredExecutor,// 指定 onAcquired 回调在哪个线程池中异步执行，避免在限流器自己的调度线程中执行耗时业务，防止卡死限流器本身。
+                                 Consumer<Runnable> cancelBinder)  // 取消订阅/排队的绑定器，前端关闭页面或者 SSE 连接断开时调用，从排队队列中移除当前请求，避免占用资源
+    { 
+                                  
         public AcquireRequest {
             Objects.requireNonNull(onAcquired);
             Objects.requireNonNull(onTimeout);
@@ -493,7 +559,7 @@ public final class FairDistributedRateLimiter {
      * <p>通过 {@code firing} CAS + {@code pendingNotifications} 计数做合并：连续到达的多次通知
      * 只触发一次扫描，避免风暴。复用外部 scheduler 执行扫描，无需独立线程
      */
-    private static final class PollNotifier {
+    private static final class PollNotifier {//“permit 释放后，立即唤醒当前进程里正在排队的 Ticket，让它们不要傻等下一次定时轮询。
 
         private final IntSupplier permitSupplier;
         private final Executor executor;
@@ -506,7 +572,8 @@ public final class FairDistributedRateLimiter {
             this.executor = executor;
         }
 
-        void register(String requestId, Runnable poller) {
+        
+        void register(String requestId, Runnable poller) {  
             pollers.put(requestId, poller);
         }
 
@@ -515,8 +582,8 @@ public final class FairDistributedRateLimiter {
         }
 
         void fire() {
-            pendingNotifications.incrementAndGet();
-            if (!firing.compareAndSet(false, true)) {
+            pendingNotifications.incrementAndGet();     //pendingNotifications计数
+            if (!firing.compareAndSet(false, true)) {   //false = 当前没有扫描任务 true  = 已经有一个扫描任务在处理
                 return;
             }
             executor.execute(() -> {
@@ -537,7 +604,7 @@ public final class FairDistributedRateLimiter {
                     } finally {
                         firing.set(false);
                     }
-                } while (pendingNotifications.get() > 0 && firing.compareAndSet(false, true));
+                } while (pendingNotifications.get() > 0 && firing.compareAndSet(false, true));      
             });
         }
 

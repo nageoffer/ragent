@@ -41,10 +41,10 @@ public class AgentChatController {
     private final AgentChatService agentChatService;
     private final AgentProperties agentProperties;
 
-    @GetMapping(value = "/agent/v1/chat", produces = "text/event-stream;charset=UTF-8")
+    @GetMapping(value = "/agent/v1/chat", produces = "text/event-stream;charset=UTF-8") // SSE（Server‑Sent‑Events） 流式响应,基于 HTTP，服务端→客户端单向流式；长连接。
     public SseEmitter chat(@RequestParam @ChatQuestion String question,
                            @RequestParam(required = false) String conversationId) {
-        SseEmitter emitter = new SseEmitter(agentProperties.getSseTimeoutMs());
+        SseEmitter emitter = new SseEmitter(agentProperties.getSseTimeoutMs());  //question->agent:1. 新建一个 SseEmitter 对象，用于向客户端发送事件流。超时时间由配置文件中的 sseTimeoutMs 属性指定。
         agentChatService.streamChat(question, conversationId, emitter);
         return emitter;
     }

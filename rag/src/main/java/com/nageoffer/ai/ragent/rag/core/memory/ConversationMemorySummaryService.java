@@ -25,5 +25,5 @@ public interface ConversationMemorySummaryService {
 
     ChatMessage loadLatestSummary(String conversationId, String userId);
 
-    ChatMessage decorateIfNeeded(ChatMessage summary);
+    ChatMessage decorateIfNeeded(ChatMessage summary);  //需要包装
 }

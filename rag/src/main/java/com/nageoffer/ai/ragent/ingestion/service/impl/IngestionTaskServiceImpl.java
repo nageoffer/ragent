@@ -166,6 +166,7 @@ public class IngestionTaskServiceImpl implements IngestionTaskService {
         return nodes.stream().map(this::toNodeVO).toList();
     }
 
+    //摄取任务执行的核心逻辑，包含创建任务记录、执行流水线、保存节点日志、更新任务状态等。
     private IngestionResult executeInternal(String pipelineId,
                                             DocumentSource source,
                                             byte[] rawBytes,
@@ -252,6 +253,7 @@ public class IngestionTaskServiceImpl implements IngestionTaskService {
         }
     }
 
+    //根据流水线节点的 nextNodeId 链表关系，计算每个节点的执行先后顺序。
     private Map<String, Integer> buildNodeOrderMap(PipelineDefinition pipeline) {
         Map<String, Integer> orderMap = new HashMap<>();
         if (pipeline == null || pipeline.getNodes() == null || pipeline.getNodes().isEmpty()) {

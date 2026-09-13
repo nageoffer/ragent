@@ -39,7 +39,7 @@ import java.util.Random;
 @Component
 public class LeaveMcpExecutor {
 
-    private static final String TOOL_ID = "leave_query";
+    private static final String TOOL_ID = "leave_query";// 请假查询工具
 
     private static final String DEFAULT_EMPLOYEE = "张三";
 
