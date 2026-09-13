@@ -42,6 +42,8 @@ import java.util.function.Function;
  * 记忆接线点：推理前裁剪/压缩上下文并同步上行列表
  * <p>
  * 两层按水位分工：50% 裁工具结果，80% 压缩摘要；实例被单例 Agent 共享，不持有 per-call 字段
+ * 裁剪层：把过老的工具结果换成等长占位说明（带原入参），不碰 IO、不改列表长度、只替换 tool_result 不动 tool_use，
+ * 因此不会产生孤儿结果块。按工具循环切分，保护本轮和最近 N 个循环。
  */
 @Slf4j
 @Component
@@ -49,25 +51,26 @@ import java.util.function.Function;
 @RequiredArgsConstructor
 public class AgentContextCompactionMiddleware implements MiddlewareBase {
 
-    private final AgentContextTrimmer trimmer;
-    private final AgentContextCompactor compactor;
-    private final AgentMemoryProperties memoryProperties;
+    private final AgentContextTrimmer trimmer;  
+    private final AgentContextCompactor compactor;      
+    private final AgentMemoryProperties memoryProperties;      
 
     @Override
     public Flux<AgentEvent> onReasoning(Agent agent, RuntimeContext runtimeContext, ReasoningInput input,
                                         Function<ReasoningInput, Flux<AgentEvent>> next) {
-        return Flux.defer(() -> dispatch(agent, runtimeContext, input, next));
+        return Flux.defer(() -> dispatch(agent, runtimeContext, input, next));//调度，派发
     }
 
     private Flux<AgentEvent> dispatch(Agent agent, RuntimeContext runtimeContext, ReasoningInput input,
                                       Function<ReasoningInput, Flux<AgentEvent>> next) {
         List<Msg> context;
         try {
+            //读取AgentState（智能体会话状态）
             AgentState state = RuntimeContext.resolveAgentState(runtimeContext, agent);
-            context = state == null ? null : state.contextMutable();
+            context = state == null ? null : state.contextMutable();//获取可变上下文消息列表
         } catch (Exception e) {
             log.warn("会话状态取不到, 本轮按原列表推理, sessionId: {}", sessionId(runtimeContext), e);
-            return next.apply(input);
+            return next.apply(input);//降级
         }
         if (context == null) {
             return next.apply(input);

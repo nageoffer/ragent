@@ -112,6 +112,7 @@ public class ConversationGroupServiceImpl implements ConversationGroupService {
         if (StrUtil.isBlank(conversationId) || StrUtil.isBlank(userId)) {
             return null;
         }
+        //从未删除的消息里选择最新消息（倒序第一条）
         return summaryMapper.selectOne(
                 Wrappers.lambdaQuery(ConversationSummaryDO.class)
                         .eq(ConversationSummaryDO::getConversationId, conversationId)

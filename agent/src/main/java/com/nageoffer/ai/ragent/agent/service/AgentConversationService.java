@@ -35,6 +35,9 @@ public interface AgentConversationService {
      */
     String touchConversation(String conversationId, String userId, String question);
 
+    /**
+     * 数据库写入用户提问消息，返回这条消息的 messageId，后续 Agent 回复要关联这条消息。
+     */
     String addUserMessage(String conversationId, String userId, String content);
 
     String addAssistantMessage(String conversationId, String userId, String content, String thinkingContent,

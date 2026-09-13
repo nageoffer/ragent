@@ -38,7 +38,7 @@ import java.util.Random;
 @Component
 public class WeatherMcpExecutor {
 
-    private static final String TOOL_ID = "weather_query";
+    private static final String TOOL_ID = "weather_query";// 天气查询工具
 
     private static final Map<String, double[]> CITY_COORDINATES = new LinkedHashMap<>();
 

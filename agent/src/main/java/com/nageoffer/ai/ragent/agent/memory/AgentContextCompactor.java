@@ -37,7 +37,9 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * 前缀压缩：把早期原文换成一条摘要消息，切点只落用户轮起点
+ * 压缩层：把早期原文换成一条摘要消息，切点只落在用户轮起点；
+ * 检查孤儿 tool_result、可替换素材过半才动手；摘要落库审计。
+ * 
  */
 @Slf4j
 @Component

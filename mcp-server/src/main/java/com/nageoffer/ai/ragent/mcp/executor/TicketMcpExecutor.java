@@ -40,7 +40,7 @@ import java.util.stream.Collectors;
 @Component
 public class TicketMcpExecutor {
 
-    private static final String TOOL_ID = "ticket_query";
+    private static final String TOOL_ID = "ticket_query";// 工单查询工具
 
     private static final List<String> REGIONS = List.of("华东", "华南", "华北", "西南", "西北");
     private static final List<String> PRODUCTS = List.of("企业版", "专业版", "基础版");

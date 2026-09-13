@@ -68,6 +68,7 @@ public class AgentChatServiceImpl implements AgentChatService {
     private final AgentMemoryPipeline memoryPipeline;
 
     @Override
+    //question->agent:2  streamChat(）
     public void streamChat(String question, String conversationId, SseEmitter emitter) {
         String userId = UserContext.getUserId();
         String actualConversationId = StrUtil.isBlank(conversationId)
@@ -76,7 +77,7 @@ public class AgentChatServiceImpl implements AgentChatService {
         String taskId = IdUtil.getSnowflakeNextIdStr();
 
         // 闸门先于一切副作用：被拒的请求不该留下 META 事件、会话行与任务登记
-        Runnable releaseGate = runGate.acquire(userId, taskId, actualConversationId);
+        Runnable releaseGate = runGate.acquire(userId, taskId, actualConversationId);//question->agent:2.1. releaseGate并发信号量
         boolean started = false;
         try {
             startRun(question, userId, actualConversationId, taskId, emitter, releaseGate);
@@ -93,16 +94,19 @@ public class AgentChatServiceImpl implements AgentChatService {
 
     private void startRun(String question, String userId, String conversationId, String taskId,
                           SseEmitter emitter, Runnable releaseGate) {
+        //question->agent: 2.2 封装 SSE 发送工具，第一条 SSE 消息下发 meta 元数据事件，把会话 ID、任务 ID 推给前端，前端拿到上下文标识。
         SseEmitterSender sender = new SseEmitterSender(emitter);
         sender.sendEvent(AgentSSEEventType.META.value(), new AgentMetaPayload(conversationId, taskId));
-
+        //question->agent:2.3 建/碰会话行，title=截断首问
         String title = conversationService.touchConversation(conversationId, userId, question);
-        // 下界先于消息：控制行建晚一步，本轮这句话就被划成「历史」永久漏抽，时钟口径见 ensureControl
-        if (memoryProperties.isLongTermEnabled()) {
-            memoryPipeline.ensureExtractionBaseline(userId);
-        }
-        String questionMessageId = conversationService.addUserMessage(conversationId, userId, question);
 
+        //question->agent:2.4 下界先于消息：控制行建晚一步，本轮这句话就被划成「历史」永久漏抽，时钟口径见 ensureControl
+        if (memoryProperties.isLongTermEnabled()) {
+            memoryPipeline.ensureExtractionBaseline(userId);    //抽取记忆基线
+        }
+        //question->agent:2.5 ★问题落“业务表” t_agent_message(role=user) 展示层
+        String questionMessageId = conversationService.addUserMessage(conversationId, userId, question);
+        //question->agent:2.6 建 AgentRunHandle + 绑 emitter 超时/错误/完成 三条取消路
         AgentRunHandle runHandle = new AgentRunHandle(taskId, sender, taskManager);
         runHandle.onRelease(releaseGate);
         // 记忆常驻内存是确定性泄漏，流一结束就驱逐：三条收尾路都会执行，换来内存上界
@@ -111,7 +115,7 @@ public class AgentChatServiceImpl implements AgentChatService {
         // 登记在闸门钩子之后：钩子按序跑，此时名额已归还
         runHandle.onRelease(() -> scheduleMemoryExtraction(userId, conversationId));
         bindEmitterLifecycle(emitter, runHandle, taskId);
-        // 实例与目录快照成对取出：事件展示名与 Toolkit 出自同一次解析
+        //question->agent:2.7  ReActAgent 单例（懒重建） ── 人设/模型/工具/中间件/状态存储装配好 ★实例与目录快照成对取出：事件展示名与 Toolkit 出自同一次解析
         ActiveAgent activeAgent = agentProvider.getAgent();
         AgentStreamEventBridge bridge = new AgentStreamEventBridge(AgentStreamEventBridge.Params.builder()
                 .runHandle(runHandle)
@@ -126,10 +130,12 @@ public class AgentChatServiceImpl implements AgentChatService {
 
         @SuppressWarnings("resource")
         ReActAgent agent = activeAgent.agent();
+        //question->agent:2.8 事件流订阅 ── 事件流是 ReActAgent 的输出，SSE 是前端的输入，桥接两者
         Flux<AgentEvent> events = agent.streamEvents(question, RuntimeContext.builder()
                 .userId(userId)
                 .sessionId(conversationId)
                 .build());
+        
         Disposable disposable = events.subscribe(bridge::onEvent, bridge::onError, bridge::onComplete);
 
         // 取消动作先断流再置中断旗标，收尾（落库 + cancel/done 事件）由 finalizer 完成
@@ -174,8 +180,8 @@ public class AgentChatServiceImpl implements AgentChatService {
                 taskManager.cancel(taskId);
             }
         };
-        emitter.onTimeout(recycleUpstream);
-        emitter.onError(e -> recycleUpstream.run());
+        emitter.onTimeout(recycleUpstream); // SSE 服务端超时
+        emitter.onError(e -> recycleUpstream.run());// SSE发生IO异常：网络断开、写响应失败
         // 客户端关页时写失败走的是 completeWithError，容器既不报超时也不报错，只有 completion 兜得住
         emitter.onCompletion(recycleUpstream);
     }

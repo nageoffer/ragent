@@ -86,12 +86,12 @@ public class YouComSearchMcpExecutor {
     String apiUrl = "https://ydc-index.io/v1/search";
 
     @Bean
-    public McpServerFeatures.SyncToolSpecification youComSearchToolSpecification() {
+    public McpServerFeatures.SyncToolSpecification youComSearchToolSpecification() {// MCP 工具注册（McpServer 实例）
         return new McpServerFeatures.SyncToolSpecification(buildTool(),
                 (exchange, request) -> handleCall(request));
     }
 
-    private Tool buildTool() {
+    private Tool buildTool() {// MCP 工具规格对象（描述工具能力、参数、返回值等）
         Map<String, Object> properties = new LinkedHashMap<>();
 
         properties.put("query", Map.of(
@@ -121,7 +121,8 @@ public class YouComSearchMcpExecutor {
                 .build();
     }
 
-    CallToolResult handleCall(CallToolRequest request) {
+    // MCP 工具调用处理逻辑
+    CallToolResult handleCall(CallToolRequest request) {    
         long startMs = System.currentTimeMillis();
         try {
             Map<String, Object> args = request.arguments() != null ? request.arguments() : Map.of();
@@ -186,7 +187,7 @@ public class YouComSearchMcpExecutor {
      * 把响应格式化为编号的 标题/链接/摘录 文本
      * <p>
      * 响应中 results.web 与 results.news 均可能缺失；
-     * 每条结果中除 url/title/description/snippets 之外的字段均视为可选，防御式读取
+     * 每条结果中除 url/title/description/snippets（多个高亮关键文本片段） 之外的字段均视为可选，防御式读取
      * <p>
      * You.com 的 count 是「每 section」语义（web、news 各最多 count 条），合并两段后统一截断到 count，
      * 使 count 对外表达「返回结果总条数上限」，与直觉一致，也避免多余结果占用 LLM token

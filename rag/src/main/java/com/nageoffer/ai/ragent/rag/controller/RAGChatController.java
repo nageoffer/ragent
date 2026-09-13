@@ -52,7 +52,7 @@ public class RAGChatController {
     public SseEmitter chat(@RequestParam @ChatQuestion String question,
                            @RequestParam(required = false) String conversationId,
                            @RequestParam(required = false, defaultValue = "false") Boolean deepThinking) {
-        SseEmitter emitter = new SseEmitter(ragDefaultProperties.getSseTimeoutMs());
+        SseEmitter emitter = new SseEmitter(ragDefaultProperties.getSseTimeoutMs());    // 设置 SSE 超时时间
         ragChatService.streamChat(question, conversationId, deepThinking, emitter);
         return emitter;
     }

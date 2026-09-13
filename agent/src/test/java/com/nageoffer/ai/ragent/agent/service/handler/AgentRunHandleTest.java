@@ -95,6 +95,18 @@ class AgentRunHandleTest {
     }
 
     @Test
+    void shouldCloseChannelNormallyOnFail() {
+        // 失败态不再 completeWithError（避免全局异常处理器在已提交的 event-stream 上刷 No converter），
+        // 改为与 complete/cancel 一致正常关闭，失败告知由调用方以 SSE error 事件发出
+        handle.fail(new IllegalStateException("上游炸了"), () -> {
+        });
+
+        verify(taskManager).unregister(TASK_ID);
+        verify(sender).complete();
+        verify(sender, never()).fail(any());
+    }
+
+    @Test
     void shouldSettleOnlyOnceAcrossThreeExits() {
         AtomicInteger released = new AtomicInteger();
         handle.onRelease(released::incrementAndGet);

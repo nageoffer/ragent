@@ -61,9 +61,11 @@ public class AgentToolCatalog {
 
     /**
      * 把注册表与提示词解析一次并定格：同一次请求的指纹与 Toolkit 都从这份快照派生
+     * 
+     * @return ResolvedCatalog 供上层缓存
      */
     public ResolvedCatalog resolve() {
-        List<String> unavailableToolIds = new ArrayList<>();
+        List<String> unavailableToolIds = new ArrayList<>();    //不可用的 MCP 工具 ID
         List<McpToolBinding> bindings = resolveMcpToolBindings(unavailableToolIds);
         return new ResolvedCatalog(resolveKnowledgeToolDescription(), resolveMemoryToolDescription(),
                 bindings, unavailableToolIds);
@@ -232,6 +234,7 @@ public class AgentToolCatalog {
         }
     }
 
+    
     public record McpToolFingerprint(
             String toolId,
             String displayName,

@@ -24,6 +24,9 @@ import org.apache.ibatis.annotations.Param;
 
 public interface IngestionPipelineNodeMapper extends BaseMapper<IngestionPipelineNodeDO> {
 
+    /**
+     * 根据 pipelineId 物理删除该流水线下全部节点记录表中的数据
+     */
     @Delete("DELETE FROM t_ingestion_pipeline_node WHERE pipeline_id = #{pipelineId}")
     int physicalDeleteByPipelineId(@Param("pipelineId") String pipelineId);
 }

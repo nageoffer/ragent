@@ -2,11 +2,14 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
+
+    <!-- //Lyz自己写的chunker切片.jar -->
     <parent>
         <groupId>com.nageoffer.ai</groupId>
         <artifactId>ragent</artifactId>
         <version>0.0.1-SNAPSHOT</version>
     </parent>
+    
 
     <!-- Agent 执行架构（v2 ReAct）：仅通过窄接口消费 rag 的检索门面与人设解析 -->
     <artifactId>agent</artifactId>

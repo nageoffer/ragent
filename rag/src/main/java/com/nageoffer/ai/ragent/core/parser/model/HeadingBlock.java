@@ -23,8 +23,8 @@ package com.nageoffer.ai.ragent.core.parser.model;
  * @param level markdown 标题级别，1-6
  */
 public record HeadingBlock(
-        Provenance provenance,
-        int level,
-        String text
+        Provenance provenance,// 文档原貌位置
+        int level,            // markdown 标题级别，1-6
+        String text           // 标题文本，去掉 markdown 语法标记后的纯文本
 ) implements Block {
 }

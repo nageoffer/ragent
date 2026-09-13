@@ -140,6 +140,7 @@ public class DefaultIntentClassifier implements IntentClassifier, IntentNodeRegi
     }
 
     /**
+     * 串行分类：
      * 对所有"叶子分类节点"做意图识别，由 LLM 输出每个分类的 score
      * - 返回结果已按 score 从高到低排序
      */
@@ -151,7 +152,7 @@ public class DefaultIntentClassifier implements IntentClassifier, IntentNodeRegi
             log.debug("意图树没有可用叶子节点，跳过 LLM 意图识别");
             return List.of();
         }
-
+        //LLM 在一次调用中给所有候选分类打分
         String systemPrompt = buildPrompt(data.leafNodes);
         ChatRequest request = ChatRequest.builder()
                 .messages(List.of(
@@ -175,12 +176,14 @@ public class DefaultIntentClassifier implements IntentClassifier, IntentNodeRegi
     }
 
     /**
+     * 对大模型回答不稳定的鲁棒性五层容错机制：
      * 解析意图打分，按 score 降序返回；任何解析失败/畸形均返回空列表
      */
     private List<NodeScore> parseScores(String raw, IntentTreeData data, String question) {
         try {
-            // 移除可能的 markdown 代码块标记
+            // 1. 移除可能的 markdown 代码块标记
             String cleanedRaw = LLMResponseCleaner.stripMarkdownCodeFence(raw);
+            //2. 兼容两种 JSON 格式兼容（jsoN数组还是包了层对象）
             JsonElement root = JsonParser.parseString(cleanedRaw);
             JsonArray arr;
             if (root.isJsonArray()) {
@@ -194,6 +197,7 @@ public class DefaultIntentClassifier implements IntentClassifier, IntentNodeRegi
             }
 
             List<NodeScore> scores = new ArrayList<>();
+            // 3. 缺失某个字段跳过
             for (JsonElement el : arr) {
                 if (!el.isJsonObject()) continue;
                 JsonObject obj = el.getAsJsonObject();
@@ -201,6 +205,7 @@ public class DefaultIntentClassifier implements IntentClassifier, IntentNodeRegi
                 if (!obj.has("id") || !obj.has("score")) continue;
 
                 String id = obj.get("id").getAsString();
+            //4.  未知 ID 校验
                 IntentNode node = data.id2Node.get(id);
                 if (node == null) {
                     log.warn("LLM 返回了未知的意图节点 ID: {}, 已跳过", id);

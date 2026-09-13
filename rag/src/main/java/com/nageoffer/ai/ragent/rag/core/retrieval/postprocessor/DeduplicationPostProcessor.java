@@ -56,6 +56,7 @@ public class DeduplicationPostProcessor implements SearchResultPostProcessor {
     public List<RetrievedChunk> process(List<RetrievedChunk> chunks,
                                         List<SearchChannelResult> results,
                                         SearchContext context) {
+        //根据唯一标识 Key(id/ chunk.getText() 的文本内容计算 SHA-256 哈希值作为 Key)来去重
         Map<String, RetrievedChunk> chunkMap = new LinkedHashMap<>();
         for (SearchChannelResult result : results) {
             for (RetrievedChunk chunk : result.getChunks()) {

@@ -128,6 +128,7 @@ public class DefaultFileStorageService implements FileStorageService {
 
     @Override
     @SneakyThrows
+    //上传PDF 提取出的图片等公共资产到资产桶
     public StoredFileDTO uploadAsset(byte[] content, String originalFilename, String contentType) {
         Assert.notNull(content, "上传内容不能为空");
         String detected = resolveContentType(originalFilename, contentType);

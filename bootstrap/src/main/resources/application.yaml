@@ -30,11 +30,11 @@ spring:
     redis:
       host: 127.0.0.1
       port: 6379
-      password: 123456
+      password: ruoyi123
 
 ragent:
   engine:
-    type: agent  # 执行架构档位，可选 workflow（v1 编排管线）/ agent（v2 ReAct 架构，RAG 管线降级为主 Agent 的一个 Tool）
+    type: workflow  # 执行架构档位，可选 workflow（v1 编排管线）/ agent（v2 ReAct 架构，RAG 管线降级为主 Agent 的一个 Tool）
   demo-mode: false
   eval:
     enabled: true
@@ -42,8 +42,8 @@ ragent:
 # Agent 执行架构（ragent.engine.type=agent 时生效）；单模型无 fallback，供应商可用性由 provider 侧保障
 agent:
   chat:
-    provider: siliconflow   # 引用 ai.providers 下的供应商，取其 url / api-key / endpoints.chat
-    model: deepseek-ai/DeepSeek-V4-Pro    # 直接传给 OpenAI 兼容端点的模型名
+    provider: bailian   # 引用 ai.providers 下的供应商，取其 url / api-key / endpoints.chat
+    model: qwen-max    # 直接传给 OpenAI 兼容端点的模型名
   max-iters: 10         # ReAct 循环上限，超出后熔断收尾
   max-retries: 2        # 单次模型调用失败重试次数
   sse-timeout-ms: 900000
@@ -145,11 +145,11 @@ rag:
     recall-budget: 20           # ① 每通道召回条数（绝对值，向量意图路/关键词/图谱共用）；须 ≥ default-top-k，0=回退 default-top-k
     # 检索作用域：本次请求该看哪些知识库，与用什么模态检索无关，故与 channels 平级、三条通道共读
     # 判定只看 KB 意图最高分，不看意图个数；关掉任一通道都不影响其余通道的作用域
-    scope:
+    scope:                      #scope检索作用域：搜那些知识库
       min-intent-score: 0.4        # 低于此分的意图节点不参与「是否收窄」的判定
       confidence-threshold: 0.6    # KB 意图最高分低于此值 → 退化为全库检索
       supplement-ratio: 0.25       # 定向时各通道从自身产出额度划给「未命中库」的保底比例，兜住意图判错；0=关闭补充路，命中库已覆盖全库时自动不补
-    channels:
+    channels:                 # 检索通道开关：向量/关键词/图谱/网页搜索，三条通道共读 scope
       timeout-ms: 15000     # 单通道查询超时上限（毫秒）
       vector:
         enabled: true       # 向量通道总开关
@@ -222,7 +222,7 @@ ai:
     failure-threshold: 2
     open-duration-ms: 30000
 
-  stream:
+  stream:         #流式输出
     message-chunk-size: 1
 
   chat:
@@ -244,14 +244,14 @@ ai:
         provider: aihubmix
         model: gpt-5.4
       - id: deepseekv4pro
-        provider: siliconflow
-        model: deepseek-ai/DeepSeek-V4-Pro
+        provider: bailian
+        model: qwen-max
         supports-thinking: true
 
     default-tier: standard
     deep-thinking-tier: deep
 
-    tiers:
+    tiers:     # 分级（模型路由）
       fast:
         candidates: [ qwen-flash, qwen-plus, qwen3-local ]
         timeout-ms: 5000
@@ -293,7 +293,7 @@ ai:
         model: noop
         priority: 100
 
-  vlm:
+  vlm:        #Vision‑Language Model：视觉‑语言大模型，多模态图文模型
     default-model: qwen-vl-max
     candidates:
       - id: qwen-vl-max
@@ -301,7 +301,7 @@ ai:
         model: qwen-vl-max
 
 # MinerU SaaS API 配置（PDF / Word / PPT 走 MinerU 解析）
-mineru:
+mineru:             # MinerU 文档解析：PDF→Markdown
   api-url: https://mineru.net/api/v4
   api-key: ${MINERU_API_KEY:}
   poll-interval-seconds: 5
@@ -315,7 +315,7 @@ mineru:
   max-wait-seconds: 30
   lease-seconds: 900
 
-sa-token:
+sa-token:           #Java 鉴权框架，接口登录 token 控制
   token-name: Authorization
   timeout: 2592000
   is-concurrent: true
@@ -324,11 +324,11 @@ sa-token:
   is-log: false
   is-print: false
 
-rocketmq:
+rocketmq:         #消息队列，异步任务，文档解析、向量入库异步处理
   name-server: 127.0.0.1:9876
   producer:
     group: ragent-producer${unique-name:}_pg
     send-message-timeout: 2000
 
-milvus:
+milvus:         #向量数据库
   uri: http://localhost:19530

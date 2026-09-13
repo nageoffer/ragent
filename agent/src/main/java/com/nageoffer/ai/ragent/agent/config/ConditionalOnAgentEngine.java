@@ -30,7 +30,8 @@ import java.lang.annotation.Target;
  */
 @Documented
 @Target({ElementType.TYPE, ElementType.METHOD})
-@Retention(RetentionPolicy.RUNTIME)
-@ConditionalOnProperty(prefix = "ragent.engine", name = "type", havingValue = "agent")
+@Retention(RetentionPolicy.RUNTIME) // 运行时保留，Spring 扫描时可见
+@ConditionalOnProperty(prefix = "ragent.engine", name = "type", havingValue = "agent") 
 public @interface ConditionalOnAgentEngine {
+    //自定义注解，标记在类/Bean上，表示该类/Bean仅在 ragent.engine.type=agent 时才会被 Spring 扫描和实例化。
 }

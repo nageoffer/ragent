@@ -27,6 +27,12 @@ package com.nageoffer.ai.ragent.rag.core.retrieval;
  *   <li>{@code recallBudget}   — 每通道 fan-out 基数（想大、保召回；各通道再乘自身倍率）</li>
  *   <li>{@code candidateLimit} — 融合后送 Rerank 的候选池上限（成本天花板）</li>
  *   <li>{@code contextTopK}    — 最终进 LLM 的条数（想小而精，即产品语义的 topK）</li>
+    *   | 参数               | 问的问题                | 目标       |
+        | ---------------- | -------------------       | -------- |
+        | `recallBudget`   | **我要找多少？**          | 多找，保证召回率 |
+        | `candidateLimit` | **我要让 Rerank 算多少？** | 控制成本     |
+        | `contextTopK`    | **最后给 LLM 多少？**     | 少而精      |
+
  * </ul>
  * 漏斗单调收窄的不变式 {@code recallBudget ≥ contextTopK} 且 {@code candidateLimit ≥ contextTopK}
  * 由配置侧启动校验兜底（见 {@code SearchChannelProperties}）

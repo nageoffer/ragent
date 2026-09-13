@@ -1,7 +1,7 @@
 name: rocketmq-stack
 
 services:
-  rmqnamesrv:
+  rmqnamesrv:    #NameServer注册中心
     image: apache/rocketmq:5.2.0
     platform: linux/amd64
     container_name: rmqnamesrv
@@ -19,7 +19,7 @@ services:
       timeout: 5s
       retries: 10
 
-  rmqbroker:
+  rmqbroker:    #(Broker+proxy)
     image: apache/rocketmq:5.2.0
     platform: linux/amd64
     container_name: rmqbroker
@@ -57,7 +57,7 @@ services:
       - rocketmq
     restart: unless-stopped
 
-  dashboard:
+  dashboard:   #可视化控制台
     image: apacherocketmq/rocketmq-dashboard:2.1.0
     platform: linux/amd64
     container_name: rocketmq-dashboard

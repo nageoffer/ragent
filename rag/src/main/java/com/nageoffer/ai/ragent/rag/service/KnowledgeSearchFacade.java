@@ -87,6 +87,7 @@ public class KnowledgeSearchFacade {
         String kbContext = citationContextEnricher.stripDocIdAnchors(retrievalCtx.getKbContext());
 
         IntentGroup mergedGroup = intentResolver.mergeIntentGroup(subIntents);
+        //promptContext
         PromptContext promptContext = PromptContext.builder()
                 .question(rewriteResult.rewrittenQuestion())
                 .kbContext(kbContext)

@@ -42,6 +42,7 @@ import static com.nageoffer.ai.ragent.rag.enums.IntentKind.SYSTEM;
 @Slf4j
 @Service
 @RequiredArgsConstructor
+//意图识别
 public class IntentResolver {
 
     @Qualifier("defaultIntentClassifier")
@@ -50,9 +51,11 @@ public class IntentResolver {
 
     @RagTraceNode(name = "intent-resolve", type = "INTENT")
     public List<SubQuestionIntent> resolve(RewriteResult rewriteResult) {
+        //子问题拆分之后，如何做意图识别？
         List<String> subQuestions = CollUtil.isNotEmpty(rewriteResult.subQuestions())
                 ? rewriteResult.subQuestions()
                 : List.of(rewriteResult.rewrittenQuestion());
+        //每个子问题并行运行
         List<CompletableFuture<SubQuestionIntent>> tasks = subQuestions.stream()
                 .map(q -> CompletableFuture.supplyAsync(
                         () -> {
@@ -88,8 +91,10 @@ public class IntentResolver {
                 && nodeScores.get(0).getNode().getKind() == SYSTEM;
     }
 
+    //
     private List<NodeScore> classifyIntents(String question) {
         List<NodeScore> scores = intentClassifier.classifyTargets(question);
+        //过滤出意图INTENT_MIN_SCORE > 0.35 的意图
         return scores.stream()
                 .filter(ns -> ns.getScore() >= INTENT_MIN_SCORE)
                 .limit(MAX_INTENT_COUNT)
@@ -97,6 +102,7 @@ public class IntentResolver {
     }
 
     /**
+     * capTotalIntents() 意图封顶算法
      * 限制总意图数量不超过 MAX_INTENT_COUNT
      * <p>
      * 策略：
@@ -114,10 +120,10 @@ public class IntentResolver {
             return subIntents;
         }
 
-        // 步骤1：收集所有意图，按子问题索引分组
+        // 步骤1：收集所有意图，按子问题索引分组（扁平化列表）
         List<IntentCandidate> allCandidates = collectAllCandidates(subIntents);
 
-        // 步骤2：每个子问题保留最高分意图
+        // 步骤2：每个子问题保留最高分意图（保证多样性）
         List<IntentCandidate> guaranteedIntents = selectTopIntentPerSubQuestion(allCandidates, subIntents.size());
 
         // 步骤3：计算剩余配额
@@ -215,7 +221,7 @@ public class IntentResolver {
         List<SubQuestionIntent> result = new ArrayList<>();
         for (int i = 0; i < originalSubIntents.size(); i++) {
             SubQuestionIntent original = originalSubIntents.get(i);
-            List<NodeScore> retained = groupedByIndex.getOrDefault(i, List.of());
+            List<NodeScore> retained = groupedByIndex.getOrDefault(i, List.of());   //如果某个子问题的意图在 Step 2 和 Step 4 中均未被选中，该子问题不会丢弃，而是保留其原始子问题对象，其对应的意图列表变为空（List.of()）。
             result.add(new SubQuestionIntent(original.subQuestion(), retained));
         }
         return result;

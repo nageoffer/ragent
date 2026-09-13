@@ -70,6 +70,7 @@ public record KnowledgeRetrievalResult(List<RetrievedChunk> chunks,
                 .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
+    // Map<intentId, List<RetrievedChunk>>，按意图归类后的证据
     public Map<String, List<RetrievedChunk>> groupByIntent(String globalKey) {
         Map<String, List<RetrievedChunk>> grouped = new LinkedHashMap<>();
         for (RetrievedChunk chunk : chunks) {

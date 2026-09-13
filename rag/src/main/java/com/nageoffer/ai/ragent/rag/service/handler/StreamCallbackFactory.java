@@ -41,6 +41,8 @@ public class StreamCallbackFactory {
 
     /**
      * 创建聊天事件处理器
+     * 
+     *  StreamChatHandlerParams.builder()建造者模式，避免参数爆炸，便于扩展和维护
      *
      * @param emitter        SSE 发射器
      * @param conversationId 会话ID

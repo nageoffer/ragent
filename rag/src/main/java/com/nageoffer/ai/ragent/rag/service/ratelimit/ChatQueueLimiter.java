@@ -61,23 +61,26 @@ public class ChatQueueLimiter {
     private final ConversationGroupService conversationGroupService;
     private final MemoryProperties memoryProperties;
 
+    // ==================== 入口方法 ====================
     public void enqueue(String question, String conversationId, SseEmitter emitter, Runnable onAcquire) {
+        // 分支1：全局限流未启用，直接执行 onAcquire
         if (!Boolean.TRUE.equals(rateLimitProperties.getGlobalEnabled())) {
             try {
-                chatEntryExecutor.execute(onAcquire);
+                chatEntryExecutor.execute(onAcquire);   //直接跳过许可，执行逻辑
             } catch (RejectedExecutionException ex) {
                 log.warn("直通分支线程池拒绝任务，转 reject 流程", ex);
-                handleReject(question, conversationId, emitter);
+                handleReject(question, conversationId, emitter);//1. 被拒：线程池的任务队列（Queue）和线程数都满了（最常见）
             }
             return;
         }
 
+        //分支2：全局限流开启，分布式公平限流器执行 acquire（非阻塞地排队抢占一个 permit）
         chatRateLimiter.acquire(AcquireRequest.builder()
-                .maxWaitMillis(TimeUnit.SECONDS.toMillis(rateLimitProperties.getGlobalMaxWaitSeconds()))
-                .onAcquired(TtlRunnable.get(onAcquire))
-                .onTimeout(TtlRunnable.get(() -> handleReject(question, conversationId, emitter)))
-                .onAcquiredExecutor(chatEntryExecutor)
-                .cancelBinder(cancel -> {
+                .maxWaitMillis(TimeUnit.SECONDS.toMillis(rateLimitProperties.getGlobalMaxWaitSeconds()))    //传入最大等待时间，超过则触发 onTimeout
+                .onAcquired(TtlRunnable.get(onAcquire))                                                     //传入成功抢到许可后要执行的业务逻辑，使用 TtlRunnable 包装，保证线程上下文传递
+                .onTimeout(TtlRunnable.get(() -> handleReject(question, conversationId, emitter)))          //传入等待超时被拒绝后要执行的业务逻辑
+                .onAcquiredExecutor(chatEntryExecutor)                                                      //传入指定 onAcquired 回调在哪个线程池中异步执行
+                .cancelBinder(cancel -> {                                                                   //取消订阅/排队的绑定器
                     emitter.onCompletion(cancel);
                     emitter.onTimeout(cancel);
                     emitter.onError(e -> cancel.run());

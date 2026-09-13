@@ -69,6 +69,7 @@ public class JdbcConversationMemoryStore implements ConversationMemoryStore {
                 .filter(this::isHistoryMessage)
                 .collect(Collectors.toList());
 
+
         return normalizeHistory(result);
     }
 
@@ -119,6 +120,7 @@ public class JdbcConversationMemoryStore implements ConversationMemoryStore {
         );
     }
 
+    //确保以user开头，不能从中间切开
     private List<ChatMessage> normalizeHistory(List<ChatMessage> messages) {
         if (messages == null || messages.isEmpty()) {
             return List.of();
@@ -139,6 +141,7 @@ public class JdbcConversationMemoryStore implements ConversationMemoryStore {
                 && StrUtil.isNotBlank(message.getContent());
     }
 
+    //保留最近8轮对话（每轮1条user+1条assistant)
     private int resolveMaxHistoryMessages() {
         int maxTurns = memoryProperties.getHistoryKeepTurns();
         return maxTurns * 2;

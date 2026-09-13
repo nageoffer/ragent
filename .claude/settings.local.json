@@ -42,7 +42,10 @@
       "Read(//Users/machen/**)",
       "Read(//tmp/**)",
       "Read(//usr/local/bin/**)",
-      "Skill(deep-research)"
+      "Skill(deep-research)",
+      "Bash(./mvnw -v)",
+      "Bash(docker pull *)",
+      "Bash(docker tag *)"
     ]
   }
 }

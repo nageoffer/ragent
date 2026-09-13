@@ -73,6 +73,7 @@ public class MemoryFlushTool implements AgentTool {
     }
 
     @Override
+    //把老的同步阻塞代码execute（），扔到专门的线程池boundedElastic，包装成响应式 Mono 对外暴露。
     public Mono<ToolResultBlock> callAsync(ToolCallParam param) {
         return Mono.fromCallable(() -> execute(param))
                 .subscribeOn(Schedulers.boundedElastic());
@@ -97,9 +98,10 @@ public class MemoryFlushTool implements AgentTool {
             return buildResult(toolCallId, "当前会话无法整理记忆，本次内容未能写入", true);
         }
         try {
+            // 调用记忆管道执行记忆抽取、合并、落库
             AgentMemoryOutcome outcome = memoryPipeline.extract(userId, conversationId, AgentMemoryTriggerType.FLUSH);
             // 刷新认「记忆集变没变」不认「落了几条决策」：合并落库而决策全灭时 applied 为零、库已经变了
-            if (outcome.mutated()) {
+            if (outcome.mutated()) {            //判断标准：mutated()（记忆集是否发生变更），而不是看applied（本次生效记忆条数）
                 refreshSnapshot(runtimeContext, userId);
             }
             log.info("记忆整理工具调用完成, userId: {}, conversationId: {}, 结局: {}, 落库: {}",
@@ -123,6 +125,7 @@ public class MemoryFlushTool implements AgentTool {
     }
 
     /**
+     * 调用结果渲染成工具结果块：成功/失败的文案都在这里统一写死
      * 没写进去的一律 ERROR，不留 default 确保新增枚举值编译期报错
      */
     private ToolResultBlock render(String toolCallId, AgentMemoryOutcome outcome) {

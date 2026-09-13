@@ -42,19 +42,22 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 public class RAGChatServiceImpl implements RAGChatService {
 
     private final StreamChatPipeline chatPipeline;
-    private final ChatQueueLimiter chatQueueLimiter;
+    private final ChatQueueLimiter chatQueueLimiter;// 主要负责 SSE 全局并发限流
     private final StreamCallbackFactory callbackFactory;
     private final StreamChatTraceRunner traceRunner;
     private final StreamTaskManager taskManager;
 
     @Override
+    //rag 对话服务实现，主要负责处理流式问答和任务取消
     public void streamChat(String question, String conversationId, Boolean deepThinking, SseEmitter emitter) {
         String actualConversationId = StrUtil.isBlank(conversationId) ? IdUtil.getSnowflakeNextIdStr() : conversationId;
         String taskId = IdUtil.getSnowflakeNextIdStr();
+        //工厂模式，对应：一次提问<-->task<--->handler<--->sseEmitter，解耦了各个组件的依赖关系，便于扩展和维护
         StreamCallback callback = callbackFactory.createChatEventHandler(emitter, actualConversationId, taskId);
 
         chatQueueLimiter.enqueue(question, actualConversationId, emitter,
                 () -> traceRunner.run(question, actualConversationId, taskId, callback, traceAware -> {
+                    //拿到请求后通过onAcquire回调过来，traceRunner.run增强以后，进行组装流式对话的上下文
                     StreamChatContext ctx = StreamChatContext.builder()
                             .question(question)
                             .conversationId(actualConversationId)

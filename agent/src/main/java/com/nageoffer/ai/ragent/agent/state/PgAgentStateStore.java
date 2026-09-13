@@ -32,8 +32,15 @@ import java.util.Set;
 
 /**
  * AgentStateStore 的 PostgreSQL 实现
- * 官方 2.0.2 仅有 in-memory / JSON 文件 / Redis / MySQL，本项目主存储为 PG，故自实现挂 t_agent_state
+ * 官方 2.0.2 仅有 in-memory （内存）/ JSON 文件 / Redis / MySQL，本项目主存储为 PG，故自实现挂 t_agent_state
  * payload 是 AgentScope 自有编解码的不透明 JSON，不与业务表建立结构约定
+ * 字段	说明
+    user_id 用户ID，匿名会话为 __anon__/varchar(64)
+    session_id 会话ID，即 AgentScope 的 sessionId/varchar(64)
+    state_key 状态键，AgentScope 侧固定传 agent_state/varchar(64)
+    payload 框架自有编码的状态 JSON，业务侧不解析/jsonb
+    create_time 创建时间/timestamp without time zone
+    update_time 更新时间/timestamp without time zone
  */
 @RequiredArgsConstructor
 public class PgAgentStateStore implements AgentStateStore {
@@ -41,7 +48,7 @@ public class PgAgentStateStore implements AgentStateStore {
     /**
      * 与官方 JsonFileAgentStateStore 对齐的匿名用户哨兵，PG 主键列不可为空
      */
-    private static final String ANONYMOUS_USER = "__anon__";
+    private static final String ANONYMOUS_USER = "__anon__";    //anonymous 的缩写，**匿名用户**
 
     private final AgentStateMapper agentStateMapper;
 

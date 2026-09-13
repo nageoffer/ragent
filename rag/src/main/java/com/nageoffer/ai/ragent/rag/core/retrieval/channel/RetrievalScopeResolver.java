@@ -60,7 +60,7 @@ public class RetrievalScopeResolver {
             log.info("未识别出有效 KB 意图，检索走全局作用域");
             return RetrievalScope.global(topScore, activeCollections);
         }
-        double threshold = properties.getScope().getConfidenceThreshold();
+        double threshold = properties.getScope().getConfidenceThreshold();//0.6
         if (topScore < threshold) {
             log.info("KB 意图置信度过低（{} < {}），检索走全局作用域", topScore, threshold);
             return RetrievalScope.global(topScore, activeCollections);

@@ -67,7 +67,7 @@ public class AgentStreamEventBridge {
      * 防跑飞护栏，正常不会触发
      */
     private static final int TOOL_RESULT_MAX_CHARS = 64_000;
-    private static final String FALLBACK_CALL_KEY = "__anonymous__";
+    private static final String FALLBACK_CALL_KEY = "__anonymous__";    
     /**
      * 跨天回放需全量时刻，不带时区偏移沿用前端约定
      */
@@ -82,7 +82,7 @@ public class AgentStreamEventBridge {
     private final String title;
     private final String replyToMessageId;
 
-    private final Object stateLock = new Object();
+    private final Object stateLock = new Object();  // 状态锁
 
     private final StringBuilder responseBuffer = new StringBuilder();
     private final StringBuilder thinkingBuffer = new StringBuilder();
@@ -109,18 +109,18 @@ public class AgentStreamEventBridge {
         this.replyToMessageId = params.getReplyToMessageId();
     }
 
-    public void onEvent(AgentEvent event) {
+    public void onEvent(AgentEvent event) { // 事件线程按 event.getType() 分发即可针对每类事件做不同处理：
         switch (event.getType()) {
-            case TEXT_BLOCK_DELTA -> onResponseDelta(((TextBlockDeltaEvent) event).getDelta());
-            case THINKING_BLOCK_DELTA -> onThinkingDelta(((ThinkingBlockDeltaEvent) event).getDelta());
-            case TOOL_CALL_START -> onToolStart((ToolCallStartEvent) event);
-            case TOOL_RESULT_TEXT_DELTA -> onToolResultDelta((ToolResultTextDeltaEvent) event);
-            case TOOL_RESULT_END -> onToolEnd((ToolResultEndEvent) event);
-            case HINT_BLOCK -> onHint(((HintBlockEvent) event).getHint());
-            // 达到迭代上限后框架仍会生成总结与 AgentResult，只提示不判失败
-            case EXCEED_MAX_ITERS -> sender.sendEvent(AgentSSEEventType.HINT.value(),
+            case TEXT_BLOCK_DELTA -> onResponseDelta(((TextBlockDeltaEvent) event).getDelta());             //回答增量
+            case THINKING_BLOCK_DELTA -> onThinkingDelta(((ThinkingBlockDeltaEvent) event).getDelta());     //思考增量
+            case TOOL_CALL_START -> onToolStart((ToolCallStartEvent) event);                                //工具调用开始
+            case TOOL_RESULT_TEXT_DELTA -> onToolResultDelta((ToolResultTextDeltaEvent) event);         //工具调用结果增量
+            case TOOL_RESULT_END -> onToolEnd((ToolResultEndEvent) event);                               //工具调用结束  
+            case HINT_BLOCK -> onHint(((HintBlockEvent) event).getHint());                              //提示块
+            // 达到迭代上限后框架仍会生成总结与 AgentResult，只提示不判失败 
+            case EXCEED_MAX_ITERS -> sender.sendEvent(AgentSSEEventType.HINT.value(),                   //最大迭代提示
                     new AgentHintPayload(HINT_MAX_ITERATIONS, "已达到最大迭代次数，正在生成当前执行结果的总结"));
-            case AGENT_RESULT -> onAgentResult(((AgentResultEvent) event).getResult());
+            case AGENT_RESULT -> onAgentResult(((AgentResultEvent) event).getResult());                 //AgentResult 事件在流式增量之后才发，保证落库时有完整的增量
             default -> {
             }
         }
@@ -129,9 +129,9 @@ public class AgentStreamEventBridge {
     public void onComplete() {
         runHandle.complete(() -> {
             String streamed;
-            synchronized (stateLock) {
+            synchronized (stateLock) {          
                 streamed = responseBuffer.toString();
-            }
+            }   
             // 以流式增量为准，为空时回落终答消息
             String content = StrUtil.isNotBlank(streamed) ? streamed : fallbackContent();
             // 非流式兜底路径没有增量，一次性补发
@@ -143,7 +143,7 @@ public class AgentStreamEventBridge {
             }
             String messageId = persistAssistantMessage(content, AgentMessageStatus.NORMAL);
             sender.sendEvent(AgentSSEEventType.FINISH.value(),
-                    new AgentCompletionPayload(messageId, title, AgentMessageStatus.NORMAL.name()));
+                    new AgentCompletionPayload(messageId, title, AgentMessageStatus.NORMAL.name()));    //完成事件
             sender.sendEvent(AgentSSEEventType.DONE.value(), "[DONE]");
         });
     }
@@ -153,7 +153,14 @@ public class AgentStreamEventBridge {
         if (runHandle.isCancelled()) {
             return;
         }
-        runHandle.fail(throwable, () -> log.error("Agent 流式会话异常, taskId: {}", runHandle.getTaskId(), throwable));
+        // 流已以 text/event-stream 提交后，错误无法经全局异常处理器以 JSON 回写（无 converter）。
+        // 失败态与取消态同款协议收尾：error 事件告知前端 → [DONE] → 正常关闭连接，
+        // 避免 completeWithError 触发容器 error dispatch，在已提交响应上刷 No converter 噪音。
+        runHandle.fail(throwable, () -> {
+            log.error("Agent 流式会话异常, taskId: {}", runHandle.getTaskId(), throwable);
+            sender.sendEvent(AgentSSEEventType.ERROR.value(), Map.of("error", buildErrorMessage(throwable)));
+            sender.sendEvent(AgentSSEEventType.DONE.value(), "[DONE]");
+        });
     }
 
     /**
@@ -172,10 +179,22 @@ public class AgentStreamEventBridge {
                 messageId = persistAssistantMessage(content, AgentMessageStatus.INTERRUPTED);
             }
             sender.sendEvent(AgentSSEEventType.CANCEL.value(),
-                    new AgentCompletionPayload(messageId, title, AgentMessageStatus.INTERRUPTED.name()));
+                    new AgentCompletionPayload(messageId, title, AgentMessageStatus.INTERRUPTED.name()));   //取消事件
             sender.sendEvent(AgentSSEEventType.DONE.value(), "[DONE]");
         });
     }
+
+    /**
+     * 大模型Agent引擎异步回调
+    ├─ onResponseDelta → 累积responseBuffer → SSE推送回答增量（前端打字机）
+    ├─ onThinkingDelta → 累积thinkingBuffer → SSE推送思考增量
+    ├─ onAgentResult → 保存最终完整消息(本地)
+    ├─ onToolStart → 创建running工具块、闭合文本块 → SSE通知【工具开始】
+    ├─ onToolResultDelta → 内存累积工具输出delta（不推前端）
+    └─ onToolEnd → 取出拼接好的工具结果、截断、更新块状态 → SSE推送【工具结束+结果】
+
+     **/
+
 
     private void onResponseDelta(String delta) {
         if (StrUtil.isEmpty(delta)) {
@@ -199,7 +218,7 @@ public class AgentStreamEventBridge {
         sender.sendEvent(AgentSSEEventType.MESSAGE.value(), new AgentMessageDelta(DELTA_TYPE_THINK, delta));
     }
 
-    private void onAgentResult(Msg result) {
+    private void onAgentResult(Msg result) {   //保存完整消息到内存
         synchronized (stateLock) {
             resultMsg = result;
         }
@@ -210,6 +229,7 @@ public class AgentStreamEventBridge {
         if (isInternalTool(toolName)) {
             return;
         }
+        // 构建 AgentBlock：工具调用块，存入会话块列表
         AgentBlock block = AgentBlock.builder()
                 .kind("tool")
                 .at(LocalDateTime.now().format(BLOCK_TIME))
@@ -220,8 +240,10 @@ public class AgentStreamEventBridge {
                 .toolCallId(StrUtil.blankToDefault(event.getToolCallId(), null))
                 .build();
         synchronized (stateLock) {
+            // 工具调用开始即封口文本块，避免工具输出混入文本块
             sealOpenTextBlock();
             blocks.add(block);
+            // 保存正在运行中的工具块
             openToolBlocks.put(callKey(event.getToolCallId()), block);
         }
         sender.sendEvent(AgentSSEEventType.TOOL.value(),
@@ -233,6 +255,7 @@ public class AgentStreamEventBridge {
             return;
         }
         synchronized (stateLock) {
+            //// 不存在就新建StringBuilder，把工具返回delta累积起来
             toolResultBuffers.computeIfAbsent(callKey(event.getToolCallId()), ignored -> new StringBuilder())
                     .append(event.getDelta());
         }
@@ -246,10 +269,11 @@ public class AgentStreamEventBridge {
         boolean ok = event.getState() == ToolResultState.SUCCESS;
         String result;
         synchronized (stateLock) {
-            sealOpenTextBlock();
-            String callKey = callKey(event.getToolCallId());
-            StringBuilder buffer = toolResultBuffers.remove(callKey);
-            result = buffer == null ? null : StrUtil.sub(buffer.toString(), 0, TOOL_RESULT_MAX_CHARS);
+            sealOpenTextBlock();    
+            String callKey = callKey(event.getToolCallId());    
+            StringBuilder buffer = toolResultBuffers.remove(callKey);   //取出并移除该工具的缓冲区
+            result = buffer == null ? null : StrUtil.sub(buffer.toString(), 0, TOOL_RESULT_MAX_CHARS);  //截断工具结果，防止过长
+            // 取出正在运行的工具块，修改状态+回填结果
             AgentBlock block = openToolBlocks.remove(callKey);
             if (block != null) {
                 block.setStatus(ok ? "done" : "failed");
@@ -271,7 +295,7 @@ public class AgentStreamEventBridge {
         if (StrUtil.isBlank(hint)) {
             return;
         }
-        sender.sendEvent(AgentSSEEventType.HINT.value(), new AgentHintPayload(HINT_AGENT, hint));
+        sender.sendEvent(AgentSSEEventType.HINT.value(), new AgentHintPayload(HINT_AGENT, hint));   //提示
     }
 
     /**
@@ -308,6 +332,17 @@ public class AgentStreamEventBridge {
         openTextBlock.setText(openTextBuffer.toString());
         openTextBlock = null;
         openTextBuffer = null;
+    }
+
+    /**
+     * 前端可展示的失败文案：截断异常 message，为空时给通用文案
+     */
+    private String buildErrorMessage(Throwable throwable) {
+        String message = throwable == null ? null : throwable.getMessage();
+        if (StrUtil.isNotBlank(message)) {
+            return StrUtil.sub(message, 0, 200);
+        }
+        return "生成失败，请稍后重试";
     }
 
     private String fallbackContent() {

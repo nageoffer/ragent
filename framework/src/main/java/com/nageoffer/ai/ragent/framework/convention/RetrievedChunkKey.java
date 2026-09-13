@@ -21,6 +21,7 @@ import cn.hutool.core.util.StrUtil;
 import cn.hutool.crypto.digest.DigestUtil;
 
 public final class RetrievedChunkKey {
+    //
 
     private RetrievedChunkKey() {
     }

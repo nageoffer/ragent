@@ -49,7 +49,7 @@ public class RoutingEmbeddingService implements EmbeddingService {
             ModelSelector selector,
             ModelRoutingExecutor executor,
             List<EmbeddingClient> clients) {
-        this.selector = selector;
+        this.selector = selector;//
         this.executor = executor;
         this.clientsByProvider = clients.stream()
                 .collect(Collectors.toMap(EmbeddingClient::provider, Function.identity()));

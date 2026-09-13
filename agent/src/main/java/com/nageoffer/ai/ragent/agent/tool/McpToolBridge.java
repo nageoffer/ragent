@@ -40,6 +40,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
+ * 协议解耦：AgentScope 工具协议 ↔ MCP 协议隔离
  * MCP 工具桥：把 rag 已连接的 MCP 执行器适配为 AgentScope 原生工具
  * 不走 AgentScope 自带 MCP 客户端（SDK 版本被压制），路由描述优先取意图树配置
  */
@@ -60,7 +61,7 @@ public class McpToolBridge implements AgentTool {
     }
 
     @Override
-    public String getDescription() {
+    public String getDescription() {  //支持描述覆盖
         if (StrUtil.isNotBlank(descriptionOverride)) {
             return descriptionOverride;
         }
@@ -68,7 +69,7 @@ public class McpToolBridge implements AgentTool {
     }
 
     @Override
-    public Map<String, Object> getParameters() {
+    public Map<String, Object> getParameters() {//读取 MCP 工具的`inputSchema(JsonSchema)`，转换成 AgentScope 需要的 JSON‑Schema 参数结构（type/properties/required）。
         JsonSchema schema = executor.getToolDefinition().inputSchema();
         Map<String, Object> parameters = new LinkedHashMap<>();
         parameters.put("type", schema == null || StrUtil.isBlank(schema.type()) ? "object" : schema.type());
@@ -90,6 +91,7 @@ public class McpToolBridge implements AgentTool {
     }
 
     @Override
+    //把老的同步阻塞代码execute（），扔到专门的线程池boundedElastic，包装成响应式 Mono 对外暴露。
     public Mono<ToolResultBlock> callAsync(ToolCallParam param) {
         return Mono.fromCallable(() -> execute(param))
                 .subscribeOn(Schedulers.boundedElastic());
@@ -98,7 +100,7 @@ public class McpToolBridge implements AgentTool {
     private ToolResultBlock execute(ToolCallParam param) {
         String toolCallId = param.getToolUseBlock() == null ? null : param.getToolUseBlock().getId();
         try {
-            CallToolResult result = executor.execute(new HashMap<>(param.getInput()));
+            CallToolResult result = executor.execute(new HashMap<>(param.getInput()));//调用桥接：AgentScope 工具调用 → 转发给 McpToolExecutor 执行
             boolean isError = result != null && Boolean.TRUE.equals(result.isError());
             return buildResult(toolCallId, extractText(result), isError);
         } catch (Exception e) {
@@ -115,7 +117,7 @@ public class McpToolBridge implements AgentTool {
                 .state(isError ? ToolResultState.ERROR : ToolResultState.SUCCESS)
                 .build();
     }
-
+    //MCP 返回结果解析，转换成 AgentScope 的 ToolResultBlock
     private String extractText(CallToolResult result) {
         if (result == null || CollUtil.isEmpty(result.content())) {
             return "（工具无返回内容）";
