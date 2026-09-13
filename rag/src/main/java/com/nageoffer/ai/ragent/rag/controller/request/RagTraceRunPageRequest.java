@@ -18,13 +18,14 @@
 package com.nageoffer.ai.ragent.rag.controller.request;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.nageoffer.ai.ragent.rag.dao.entity.RagTraceRunDO;
 import lombok.Data;
 
 /**
  * RAG Trace 运行记录分页请求
  */
 @Data
-public class RagTraceRunPageRequest extends Page {
+public class RagTraceRunPageRequest extends Page<RagTraceRunDO> {
 
     private String traceId;
 
