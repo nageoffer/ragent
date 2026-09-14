@@ -190,7 +190,9 @@ public class KnowledgeDocumentController {
         String fileType = doc.getFileType() != null ? doc.getFileType().toLowerCase() : "";
         String contentType = CONTENT_TYPE_MAP.getOrDefault(fileType, "application/octet-stream");
         response.setContentType(contentType);
-        response.setHeader("Content-Disposition", "inline; filename=\"" + URLEncoder.encode(doc.getDocName(), StandardCharsets.UTF_8) + "\"");
+        // svg 被直接打开时会在站点同源上下文顶层渲染并执行内嵌脚本，改为下载；<img> 等子资源加载不受影响
+        String disposition = "svg".equals(fileType) ? "attachment" : "inline";
+        response.setHeader("Content-Disposition", disposition + "; filename=\"" + URLEncoder.encode(doc.getDocName(), StandardCharsets.UTF_8) + "\"");
         try (InputStream in = fileStorageService.openStream(doc.getFileUrl())) {
             StreamUtils.copy(in, response.getOutputStream());
         }
