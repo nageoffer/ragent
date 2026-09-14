@@ -32,7 +32,10 @@ import okhttp3.ResponseBody;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 
 /**
  * MinerU SaaS HTTP 客户端
@@ -53,6 +56,12 @@ import java.io.IOException;
 public class MinerUClient {
 
     private static final MediaType JSON_MEDIA = MediaType.parse("application/json; charset=utf-8");
+
+    /** 单个结果 zip 的下载上限 */
+    private static final long MAX_ZIP_BYTES = 512L * 1024 * 1024;
+
+    /** 上游响应体进日志的前缀长度 */
+    private static final int LOG_BODY_LIMIT = 500;
 
     private final OkHttpClient httpClient;
     private final ObjectMapper objectMapper;
@@ -103,16 +112,19 @@ public class MinerUClient {
         JsonNode data = root.path("data");
         String batchId = data.path("batch_id").asText(null);
         if (batchId == null || batchId.isBlank()) {
-            throw new ServiceException("MinerU requestUpload 返回缺少 batch_id, body=" + root);
+            log.warn("MinerU requestUpload 返回缺少 batch_id, body={}", truncate(root.toString()));
+            throw new ServiceException("MinerU requestUpload 返回缺少 batch_id");
         }
 
         JsonNode fileUrls = data.path("file_urls");
         if (!fileUrls.isArray() || fileUrls.isEmpty()) {
-            throw new ServiceException("MinerU requestUpload 返回缺少 file_urls, body=" + root);
+            log.warn("MinerU requestUpload 返回缺少 file_urls, body={}", truncate(root.toString()));
+            throw new ServiceException("MinerU requestUpload 返回缺少 file_urls");
         }
         String uploadUrl = fileUrls.get(0).asText(null);
         if (uploadUrl == null || uploadUrl.isBlank()) {
-            throw new ServiceException("MinerU requestUpload 返回的 file_urls[0] 为空, body=" + root);
+            log.warn("MinerU requestUpload 返回的 file_urls[0] 为空, body={}", truncate(root.toString()));
+            throw new ServiceException("MinerU requestUpload 返回的 file_urls[0] 为空");
         }
 
         log.info("MinerU 申请上传链接成功 batchId={} fileName={}", batchId, request.fileName());
@@ -143,8 +155,8 @@ public class MinerUClient {
                 .build();
         try (Response response = httpClient.newCall(httpRequest).execute()) {
             if (!response.isSuccessful()) {
-                String body = readBodySafe(response);
-                throw new ServiceException("MinerU uploadFile 失败 code=" + response.code() + " body=" + body);
+                log.warn("MinerU uploadFile 失败 code={}, body={}", response.code(), readBodyForLog(response));
+                throw new ServiceException("MinerU uploadFile 失败 code=" + response.code());
             }
             log.info("MinerU 文件上传成功 size={} url={}", content.length, uploadUrl);
         } catch (IOException e) {
@@ -197,20 +209,42 @@ public class MinerUClient {
         Request httpRequest = new Request.Builder().url(zipUrl).get().build();
         try (Response response = httpClient.newCall(httpRequest).execute()) {
             if (!response.isSuccessful()) {
-                String body = readBodySafe(response);
-                throw new ServiceException("MinerU downloadZip 失败 code=" + response.code() + " body=" + body);
+                log.warn("MinerU downloadZip 失败 code={}, body={}", response.code(), readBodyForLog(response));
+                throw new ServiceException("MinerU downloadZip 失败 code=" + response.code());
             }
             ResponseBody body = response.body();
             if (body == null) {
                 throw new ServiceException("MinerU downloadZip 响应体为空");
             }
-            return body.bytes();
+            if (body.contentLength() > MAX_ZIP_BYTES) {
+                throw new ServiceException("MinerU zip 响应超过上限: " + MAX_ZIP_BYTES + " bytes");
+            }
+            return readAtMost(body.byteStream(), MAX_ZIP_BYTES);
         } catch (IOException e) {
             throw new ServiceException("MinerU downloadZip 网络异常: " + e.getMessage());
         }
     }
 
     // ============== private helpers ==============
+
+    /**
+     * 限量读取：Content-Length 不可知时（为 -1）由这里兜底
+     */
+    private static byte[] readAtMost(InputStream in, long maxBytes) throws IOException {
+        try (InputStream stream = in; ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            byte[] buf = new byte[8192];
+            long total = 0;
+            int n;
+            while ((n = stream.read(buf)) != -1) {
+                total += n;
+                if (total > maxBytes) {
+                    throw new ServiceException("MinerU zip 响应超过上限: " + maxBytes + " bytes");
+                }
+                out.write(buf, 0, n);
+            }
+            return out.toByteArray();
+        }
+    }
 
     private void requireApiKey() {
         if (properties.getApiKey() == null || properties.getApiKey().isBlank()) {
@@ -239,13 +273,14 @@ public class MinerUClient {
         try (Response response = httpClient.newCall(request).execute()) {
             String body = readBodySafe(response);
             if (!response.isSuccessful()) {
-                throw new ServiceException(String.format(
-                        "MinerU %s HTTP 异常 code=%d, body=%s", opName, response.code(), body));
+                log.warn("MinerU {} HTTP 异常 code={}, body={}", opName, response.code(), truncate(body));
+                throw new ServiceException("MinerU " + opName + " HTTP 异常 code=" + response.code());
             }
             try {
                 return objectMapper.readTree(body);
             } catch (IOException e) {
-                throw new ServiceException("MinerU " + opName + " 响应非 JSON: " + body);
+                log.warn("MinerU {} 响应非 JSON: {}", opName, truncate(body));
+                throw new ServiceException("MinerU " + opName + " 响应非 JSON");
             }
         } catch (IOException e) {
             throw new ServiceException("MinerU " + opName + " 网络异常: " + e.getMessage());
@@ -273,5 +308,29 @@ public class MinerUClient {
         } catch (IOException e) {
             return "";
         }
+    }
+
+    /**
+     * 只为日志读取响应体前缀：既不把上游错误页整段读进堆，也不再回显给调用方
+     */
+    private String readBodyForLog(Response response) {
+        try {
+            ResponseBody body = response.body();
+            if (body == null) {
+                return "";
+            }
+            try (InputStream in = body.byteStream()) {
+                return new String(in.readNBytes(LOG_BODY_LIMIT), StandardCharsets.UTF_8);
+            }
+        } catch (IOException e) {
+            return "";
+        }
+    }
+
+    private static String truncate(String text) {
+        if (text == null) {
+            return "";
+        }
+        return text.length() <= LOG_BODY_LIMIT ? text : text.substring(0, LOG_BODY_LIMIT) + "...";
     }
 }
