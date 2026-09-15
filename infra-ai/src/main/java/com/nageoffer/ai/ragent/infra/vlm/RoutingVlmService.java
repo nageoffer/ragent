@@ -41,6 +41,9 @@ import org.springframework.stereotype.Service;
 import java.io.IOException;
 import java.util.Base64;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 路由式 VLM 服务实现类
@@ -58,6 +61,7 @@ public class RoutingVlmService implements VlmService {
 
     private final ModelSelector selector;
     private final OkHttpClient syncHttpClient;
+    private final Map<Long, OkHttpClient> syncClientByTimeout = new ConcurrentHashMap<>();
 
     public RoutingVlmService(ModelSelector selector,
                              @Qualifier("syncHttpClient") OkHttpClient syncHttpClient) {
@@ -82,7 +86,7 @@ public class RoutingVlmService implements VlmService {
                 .build();
 
         JsonObject respJson;
-        try (Response response = syncHttpClient.newCall(request).execute()) {
+        try (Response response = resolveSyncClient(target.timeoutMs()).newCall(request).execute()) {
             if (!response.isSuccessful()) {
                 String body = HttpResponseHelper.readBody(response.body());
                 log.warn("VLM 请求失败: status={}, body={}", response.code(), body);
@@ -99,6 +103,19 @@ public class RoutingVlmService implements VlmService {
         }
 
         return extractContent(respJson);
+    }
+
+    /**
+     * VLM 推理通常显著慢于普通同步请求，按模型组预算覆盖 read/call 超时。
+     */
+    private OkHttpClient resolveSyncClient(Long timeoutMs) {
+        if (timeoutMs == null) {
+            return syncHttpClient;
+        }
+        return syncClientByTimeout.computeIfAbsent(timeoutMs, ms -> syncHttpClient.newBuilder()
+                .readTimeout(ms, TimeUnit.MILLISECONDS)
+                .callTimeout(ms, TimeUnit.MILLISECONDS)
+                .build());
     }
 
     private ModelTarget resolveTarget() {

@@ -85,15 +85,16 @@ public class ModelSelector {
     }
 
     public List<ModelTarget> selectEmbeddingCandidates() {
-        return selectCandidates(properties.getEmbedding());
+        return selectCandidates(properties.getEmbedding(), null);
     }
 
     public List<ModelTarget> selectRerankCandidates() {
-        return selectCandidates(properties.getRerank());
+        return selectCandidates(properties.getRerank(), null);
     }
 
     public List<ModelTarget> selectVlmCandidates() {
-        return selectCandidates(properties.getVlm());
+        AIModelProperties.ModelGroup group = properties.getVlm();
+        return selectCandidates(group, group == null ? null : group.getTimeoutMs());
     }
 
     // ==================== chat：档位机制 ====================
@@ -185,13 +186,13 @@ public class ModelSelector {
 
     // ==================== embedding/rerank/vlm：defaultModel + priority ====================
 
-    private List<ModelTarget> selectCandidates(AIModelProperties.ModelGroup group) {
+    private List<ModelTarget> selectCandidates(AIModelProperties.ModelGroup group, Long timeoutMs) {
         if (group == null || group.getCandidates() == null) {
             return List.of();
         }
         List<AIModelProperties.ModelCandidate> orderedCandidates =
                 filterAndSortCandidates(group.getCandidates(), group.getDefaultModel());
-        return buildAvailableTargets(orderedCandidates);
+        return buildAvailableTargets(orderedCandidates, timeoutMs);
     }
 
     /**
@@ -211,12 +212,11 @@ public class ModelSelector {
                 .collect(Collectors.toList());
     }
 
-    private List<ModelTarget> buildAvailableTargets(List<AIModelProperties.ModelCandidate> candidates) {
+    private List<ModelTarget> buildAvailableTargets(List<AIModelProperties.ModelCandidate> candidates, Long timeoutMs) {
         Map<String, AIModelProperties.ProviderConfig> providers = properties.getProviders();
 
-        // embedding/rerank/vlm 无档位预算，超时走 HTTP 客户端默认
         return candidates.stream()
-                .map(candidate -> buildModelTarget(candidate, providers, null))
+                .map(candidate -> buildModelTarget(candidate, providers, timeoutMs))
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList());
     }

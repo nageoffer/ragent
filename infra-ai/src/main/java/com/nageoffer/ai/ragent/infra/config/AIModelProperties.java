@@ -83,6 +83,11 @@ public class AIModelProperties {
         private String defaultModel;
 
         /**
+         * 同步调用超时预算（毫秒，当前用于 VLM）
+         */
+        private Long timeoutMs;
+
+        /**
          * 候选模型列表
          * <p>
          * chat 组下退化为"物理模型注册表"：只登记 id→provider/model，档位排序由 tiers 决定
