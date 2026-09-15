@@ -101,6 +101,13 @@ public class MultiQuestionRewriteService implements QueryRewriteService {
     private RewriteResult callLLMRewriteAndSplit(String normalizedQuestion,
                                                  String originalQuestion,
                                                  List<ChatMessage> history) {
+        // 纯反馈短句（致谢 / 确认 / 纠正等）跳过 LLM 改写，避免被改写为上一轮业务问题后错误路由
+        if (ShortFeedbackGuard.isShortFeedback(originalQuestion)) {
+            RewriteResult bypass = new RewriteResult(normalizedQuestion, List.of(normalizedQuestion));
+            log.info("检测到短反馈消息，跳过查询改写：{}", originalQuestion);
+            return bypass;
+        }
+
         String systemPrompt = promptTemplateLoader.load(QUERY_REWRITE_AND_SPLIT_PROMPT_PATH);
         ChatRequest req = buildRewriteRequest(systemPrompt, normalizedQuestion, history);
 
