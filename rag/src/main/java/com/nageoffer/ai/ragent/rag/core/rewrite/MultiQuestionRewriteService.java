@@ -181,7 +181,13 @@ public class MultiQuestionRewriteService implements QueryRewriteService {
             if (StrUtil.isBlank(rewrite)) {
                 return null;
             }
-            if (CollUtil.isEmpty(subs)) {
+            JsonElement shouldSplit = obj.get("should_split");
+            if (shouldSplit != null
+                    && shouldSplit.isJsonPrimitive()
+                    && shouldSplit.getAsJsonPrimitive().isBoolean()
+                    && !shouldSplit.getAsBoolean()) {
+                subs = List.of(rewrite);
+            } else if (CollUtil.isEmpty(subs)) {
                 subs = List.of(rewrite);
             }
             return new RewriteResult(rewrite, subs);
