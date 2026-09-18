@@ -15,57 +15,12 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.rag.enums;
-
-import lombok.RequiredArgsConstructor;
+package com.nageoffer.ai.ragent.rag.dto;
 
 /**
- * SSE 事件类型枚举
+ * 流式对话错误事件载荷
+ *
+ * @param error 面向用户的错误提示
  */
-@RequiredArgsConstructor
-public enum SSEEventType {
-
-    /**
-     * 会话与任务的元信息事件
-     */
-    META("meta"),
-
-    /**
-     * 增量消息事件
-     */
-    MESSAGE("message"),
-
-    /**
-     * 模型回复完成事件
-     */
-    FINISH("finish"),
-
-    /**
-     * 完成事件
-     */
-    DONE("done"),
-
-    /**
-     * 取消事件
-     */
-    CANCEL("cancel"),
-
-    /**
-     * 错误事件
-     */
-    ERROR("error"),
-
-    /**
-     * 拒绝事件
-     */
-    REJECT("reject");
-
-    private final String value;
-
-    /**
-     * SSE 事件名称（与前端约定一致）
-     */
-    public String value() {
-        return value;
-    }
+public record StreamErrorPayload(String error) {
 }
