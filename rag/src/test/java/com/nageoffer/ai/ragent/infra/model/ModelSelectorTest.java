@@ -161,4 +161,18 @@ class ModelSelectorTest {
         List<ModelTarget> targets = selector.selectChatCandidates(false);
         assertEquals(List.of("qwen3-local", "gpt-5.4"), ids(targets));
     }
+
+    @Test
+    void vlm_候选携带模型组超时预算() {
+        AIModelProperties.ModelGroup vlm = new AIModelProperties.ModelGroup();
+        vlm.setDefaultModel("qwen-vl-max");
+        vlm.setTimeoutMs(120000L);
+        vlm.setCandidates(List.of(cand("qwen-vl-max", "bailian", "qwen-vl-max", false)));
+        properties.setVlm(vlm);
+
+        List<ModelTarget> targets = selector.selectVlmCandidates();
+
+        assertEquals(1, targets.size());
+        assertEquals(120000L, targets.get(0).timeoutMs());
+    }
 }
