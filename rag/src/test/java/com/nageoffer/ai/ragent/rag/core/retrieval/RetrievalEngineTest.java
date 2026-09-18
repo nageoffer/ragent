@@ -42,6 +42,7 @@ import java.util.Set;
 
 import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.MULTI_CHANNEL_KEY;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -197,6 +198,30 @@ class RetrievalEngineTest {
         verify(registry).getExecutor("cancel_order");
     }
 
+    @Test
+    void intentChunksMatchPromptEvidenceWhenCandidatesExceedContextTopK() {
+        // 关闭 Rerank 时候选池（rerank-candidate-limit）不会在上游被截到 contextTopK
+        RetrievedChunk first = chunk("c1", "第一篇资料").toBuilder().docId("doc-1").build();
+        RetrievedChunk second = chunk("c2", "第二篇资料").toBuilder().docId("doc-2").build();
+        RetrievedChunk third = chunk("c3", "第三篇资料").toBuilder().docId("doc-3").build();
+        MultiChannelRetrievalEngine multiChannel = mock(MultiChannelRetrievalEngine.class);
+        when(multiChannel.retrieveKnowledgeChannels(
+                any(SubQuestionIntent.class), any(RetrievalBudget.class)))
+                .thenReturn(new KnowledgeRetrievalResult(List.of(first, second, third), Map.of(), Set.of()));
+        SearchChannelProperties properties = new SearchChannelProperties();
+        properties.setDefaultTopK(2);
+        ContextFormatter contextFormatter = new DefaultContextFormatter(
+                new PromptTemplateLoader(new DefaultResourceLoader()));
+
+        RetrievalContext result = engine(properties, multiChannel, contextFormatter).retrieve(List.of(
+                new SubQuestionIntent("问题", List.of())
+        ));
+
+        assertTrue(result.getKbContext().contains("第二篇资料"));
+        assertFalse(result.getKbContext().contains("第三篇资料"));
+        assertEquals(List.of(first, second), result.getIntentChunks().get(MULTI_CHANNEL_KEY));
+    }
+
     private Set<String> eligibleAfterTwoQuestions(KnowledgeRetrievalResult first,
                                                    KnowledgeRetrievalResult second) {
         MultiChannelRetrievalEngine multiChannel = mock(MultiChannelRetrievalEngine.class);
@@ -221,10 +246,27 @@ class RetrievalEngineTest {
                                    McpToolRegistry mcpToolRegistry,
                                    McpParameterExtractor mcpParameterExtractor,
                                    OrchestrationMode mode) {
+        return engine(new SearchChannelProperties(), multiChannel, contextFormatter,
+                mcpToolRegistry, mcpParameterExtractor, mode);
+    }
+
+    private RetrievalEngine engine(SearchChannelProperties properties,
+                                   MultiChannelRetrievalEngine multiChannel,
+                                   ContextFormatter contextFormatter) {
+        return engine(properties, multiChannel, contextFormatter, mock(McpToolRegistry.class),
+                mock(McpParameterExtractor.class), OrchestrationMode.WORKFLOW);
+    }
+
+    private RetrievalEngine engine(SearchChannelProperties properties,
+                                   MultiChannelRetrievalEngine multiChannel,
+                                   ContextFormatter contextFormatter,
+                                   McpToolRegistry mcpToolRegistry,
+                                   McpParameterExtractor mcpParameterExtractor,
+                                   OrchestrationMode mode) {
         OrchestrationProperties orchestration = new OrchestrationProperties();
         orchestration.setType(mode.name().toLowerCase());
         return new RetrievalEngine(
-                new SearchChannelProperties(),
+                properties,
                 orchestration,
                 contextFormatter,
                 mock(PromptTemplateLoader.class),

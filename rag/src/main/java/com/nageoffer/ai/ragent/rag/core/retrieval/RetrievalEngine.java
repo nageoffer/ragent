@@ -218,14 +218,19 @@ public class RetrievalEngine {
         // 使用多通道检索引擎（是否启用全局检索由置信度阈值决定）
         KnowledgeRetrievalResult retrievalResult =
                 multiChannelRetrievalEngine.retrieveKnowledgeChannels(intent, budget);
-        List<RetrievedChunk> chunks = retrievalResult.chunks();
         Set<String> eligibleIntentIds = retrievalResult.eligibleIntentIds(kbIntents);
 
-        if (CollUtil.isEmpty(chunks)) {
+        if (CollUtil.isEmpty(retrievalResult.chunks())) {
             return new KbResult("", Map.of(), eligibleIntentIds);
         }
 
-        Map<String, List<RetrievedChunk>> intentChunks = retrievalResult.groupByIntent(MULTI_CHANNEL_KEY);
+        // 关闭 Rerank 时上游不会截到 contextTopK，这里统一截断，保证来源面板与提示词证据是同一批 Chunk
+        List<RetrievedChunk> chunks = retrievalResult.chunks().stream()
+                .limit(budget.contextTopK())
+                .toList();
+        Map<String, List<RetrievedChunk>> intentChunks = new KnowledgeRetrievalResult(
+                chunks, retrievalResult.intentIdsByChunkKey(), retrievalResult.directedIntentIds())
+                .groupByIntent(MULTI_CHANNEL_KEY);
 
         String groupedContext = contextFormatter.formatKbContext(
                 kbIntents, eligibleIntentIds, chunks, budget.contextTopK());
