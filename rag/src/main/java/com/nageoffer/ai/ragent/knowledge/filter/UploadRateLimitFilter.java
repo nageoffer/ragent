@@ -33,6 +33,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -96,8 +97,8 @@ public class UploadRateLimitFilter extends OncePerRequestFilter {
         }
     }
 
-    private static final String UPLOAD_PATH_PATTERN = "/knowledge-base/";
-    private static final String UPLOAD_PATH_SUFFIX = "/docs/upload";
+    /** 需要上传并发限流的端点后缀 */
+    private static final List<String> UPLOAD_PATH_SUFFIXES = List.of("/docs/upload", "/tasks/upload");
 
     /**
      * 判断是否是文档上传请求
@@ -107,6 +108,6 @@ public class UploadRateLimitFilter extends OncePerRequestFilter {
             return false;
         }
         String uri = request.getRequestURI();
-        return uri != null && uri.contains(UPLOAD_PATH_PATTERN) && uri.endsWith(UPLOAD_PATH_SUFFIX);
+        return uri != null && UPLOAD_PATH_SUFFIXES.stream().anyMatch(uri::endsWith);
     }
 }
