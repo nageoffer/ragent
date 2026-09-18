@@ -17,6 +17,7 @@
 
 package com.nageoffer.ai.ragent.rag.service.impl;
 
+import cn.hutool.core.util.StrUtil;
 import com.nageoffer.ai.ragent.framework.convention.ChatMessage;
 import com.nageoffer.ai.ragent.framework.convention.ChatRequest;
 import com.nageoffer.ai.ragent.framework.trace.RagTraceNode;
@@ -73,7 +74,7 @@ public class ConversationTitleGenerator {
             return llmService.chat(request, Tier.FAST);
         } catch (Exception ex) {
             log.warn("生成会话标题失败", ex);
-            return "新对话";
+            return StrUtil.sub(StrUtil.emptyIfNull(question).trim(), 0, maxLen);
         }
     }
 }

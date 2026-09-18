@@ -37,6 +37,7 @@ import com.nageoffer.ai.ragent.agent.service.handler.AgentRunGate;
 import com.nageoffer.ai.ragent.agent.state.PgAgentStateStore;
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.framework.web.StreamTaskManager;
+import com.nageoffer.ai.ragent.rag.service.impl.ConversationTitleGenerator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
@@ -60,7 +61,6 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class AgentConversationServiceImpl implements AgentConversationService {
 
-    private static final int TITLE_MAX_LENGTH = 30;
     private static final int RENAME_MAX_LENGTH = 128;
     private static final String ROLE_USER = "user";
     private static final String ROLE_ASSISTANT = "assistant";
@@ -75,6 +75,7 @@ public class AgentConversationServiceImpl implements AgentConversationService {
     private final PgAgentStateStore agentStateStore;
     private final AgentRunGate runGate;
     private final StreamTaskManager taskManager;
+    private final ConversationTitleGenerator titleGenerator;
     /**
      * 延迟获取，避免与 ReActAgentProvider 循环依赖
      */
@@ -88,8 +89,7 @@ public class AgentConversationServiceImpl implements AgentConversationService {
         }
         purgeResidue(conversationId, userId);
 
-        // v1 简化：截断首问作标题，不走 LLM 生成
-        String title = StrUtil.sub(StrUtil.emptyIfNull(question).trim(), 0, TITLE_MAX_LENGTH);
+        String title = titleGenerator.generate(StrUtil.trimToEmpty(question));
         AgentConversationDO conversation = AgentConversationDO.builder()
                 .conversationId(conversationId)
                 .userId(userId)
