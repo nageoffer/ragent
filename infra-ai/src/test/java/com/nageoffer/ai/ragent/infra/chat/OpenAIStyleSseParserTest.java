@@ -45,10 +45,11 @@ class OpenAIStyleSseParserTest {
     }
 
     @Test
-    void blankContentShouldNotBeRecognizedAsContent() {
+    void whitespaceContentShouldBePreservedAsContent() {
         OpenAIStyleSseParser.ParsedEvent event = OpenAIStyleSseParser.parseLine(
-                "data: {\"choices\":[{\"delta\":{\"content\":\"   \"}}]}", GSON, false);
-        assertFalse(event.hasContent());
+                "data: {\"choices\":[{\"delta\":{\"content\":\"\\n\\n\"}}]}", GSON, false);
+        assertTrue(event.hasContent());
+        assertEquals("\n\n", event.content());
     }
 
     @Test
