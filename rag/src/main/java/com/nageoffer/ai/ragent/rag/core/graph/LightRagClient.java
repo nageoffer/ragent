@@ -57,6 +57,11 @@ public class LightRagClient {
 
     private static final MediaType JSON = MediaType.parse("application/json");
 
+    /**
+     * /documents/paginated 的服务端页大小上限
+     */
+    private static final int LIST_PAGE_SIZE = 200;
+
     private final OkHttpClient httpClient;
     private final ObjectMapper objectMapper;
     private final GraphProperties properties;
@@ -238,32 +243,13 @@ public class LightRagClient {
     /**
      * 列举文档、按 file_path 谓词匹配出 LightRAG doc_id 后批量删除
      * <p>
-     * LightRAG 删除按其内部 doc_id（内容派生），故先 GET /documents 反查、再 DELETE /documents/delete_document；
-     * 全量列举后在内存匹配，语料很大时可改用 /documents/paginated 过滤。best-effort，任一步异常只记 warn
+     * LightRAG 删除按其内部 doc_id（内容派生），故先反查、再 DELETE /documents/delete_document；
+     * 反查走 POST /documents/paginated 逐页拉取：GET /documents 在 1.5.7 已下线，非 2xx 经 execute 变 null，
+     * 于是删除整步静默跳过、旧实体永久残留。best-effort，任一步异常只记 warn
      */
     private void deleteMatching(Predicate<String> filePathMatch, String logKey) {
         try {
-            JsonNode docs = get("/documents");
-            if (docs == null) {
-                return;
-            }
-            List<String> docIds = new ArrayList<>();
-            JsonNode statuses = docs.path("statuses");
-            if (statuses.isObject()) {
-                statuses.forEach(group -> {
-                    if (group.isArray()) {
-                        for (JsonNode d : group) {
-                            String filePath = d.path("file_path").asText("");
-                            if (StrUtil.isNotBlank(filePath) && filePathMatch.test(filePath)) {
-                                String id = d.path("id").asText("");
-                                if (StrUtil.isNotBlank(id)) {
-                                    docIds.add(id);
-                                }
-                            }
-                        }
-                    }
-                });
-            }
+            List<String> docIds = listDocIds(filePathMatch);
             if (docIds.isEmpty()) {
                 return;
             }
@@ -272,6 +258,32 @@ public class LightRagClient {
             delete("/documents/delete_document", body);
         } catch (Exception e) {
             log.warn("LightRAG 文档删除失败 {}: {}", logKey, e.getMessage());
+        }
+    }
+
+    /**
+     * 分页翻出 file_path 命中谓词的文档 id，页大小取服务端上限 200
+     */
+    private List<String> listDocIds(Predicate<String> filePathMatch) throws Exception {
+        List<String> docIds = new ArrayList<>();
+        for (int page = 1; ; page++) {
+            ObjectNode query = objectMapper.createObjectNode();
+            query.put("page", page);
+            query.put("page_size", LIST_PAGE_SIZE);
+            JsonNode root = post("/documents/paginated", query);
+            if (root == null) {
+                return docIds;
+            }
+            for (JsonNode doc : root.path("documents")) {
+                String filePath = doc.path("file_path").asText("");
+                String id = doc.path("id").asText("");
+                if (StrUtil.isNotBlank(filePath) && StrUtil.isNotBlank(id) && filePathMatch.test(filePath)) {
+                    docIds.add(id);
+                }
+            }
+            if (page >= root.path("pagination").path("total_pages").asInt(1)) {
+                return docIds;
+            }
         }
     }
 
@@ -292,10 +304,6 @@ public class LightRagClient {
     private JsonNode post(String path, JsonNode body) throws Exception {
         return execute(auth(new Request.Builder().url(url(path))
                 .post(RequestBody.create(objectMapper.writeValueAsString(body), JSON))), path);
-    }
-
-    private JsonNode get(String path) throws Exception {
-        return execute(auth(new Request.Builder().url(url(path)).get()), path);
     }
 
     private JsonNode delete(String path, JsonNode body) throws Exception {
