@@ -23,6 +23,7 @@ import com.nageoffer.ai.ragent.rag.dao.entity.ConversationDO;
 import com.nageoffer.ai.ragent.rag.dto.CompletionPayload;
 import com.nageoffer.ai.ragent.rag.dto.MessageDelta;
 import com.nageoffer.ai.ragent.rag.dto.MetaPayload;
+import com.nageoffer.ai.ragent.rag.dto.StreamErrorPayload;
 import com.nageoffer.ai.ragent.rag.enums.SSEEventType;
 import com.nageoffer.ai.ragent.framework.context.UserContext;
 import com.nageoffer.ai.ragent.framework.convention.ChatMessage;
@@ -44,6 +45,7 @@ public class StreamChatEventHandler implements StreamCallback {
 
     private static final String TYPE_THINK = "think";
     private static final String TYPE_RESPONSE = "response";
+    private static final String ERROR_MESSAGE = "生成失败，请稍后重试";
 
     private final int messageChunkSize;
     private final SseEmitterSender sender;
@@ -237,8 +239,10 @@ public class StreamChatEventHandler implements StreamCallback {
         if (taskManager.isCancelled(taskId)) {
             return;
         }
+        log.error("流式对话失败，conversationId：{}，taskId：{}", conversationId, taskId, t);
         taskManager.unregister(taskId);
-        sender.fail(t);
+        sender.sendEvent(SSEEventType.ERROR.value(), new StreamErrorPayload(ERROR_MESSAGE));
+        sender.complete();
     }
 
     private void sendChunked(String type, String content) {
