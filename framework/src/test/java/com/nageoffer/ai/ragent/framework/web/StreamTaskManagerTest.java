@@ -44,7 +44,8 @@ import static org.mockito.Mockito.when;
 
 class StreamTaskManagerTest {
 
-    private static final String TASK_ID = "t-1001";
+    // 雪花 ID 串形状（#150 起用户侧 stop 合同：[1-9][0-9]{0,18}）
+    private static final String TASK_ID = "1234567890123456789";
     private static final String OWNER_ID = "u-1";
     private static final String OTHER_ID = "u-2";
     private static final String CANCEL_TOPIC = "ragent:stream:cancel";
@@ -196,6 +197,37 @@ class StreamTaskManagerTest {
 
         assertThat(taskManager.isCancelled(TASK_ID)).isFalse();
         assertThat(cancelled.get()).isZero();
+    }
+
+    // ==================== #150：taskId 形状校验 + 待定标记短 TTL（审计 F-5） ====================
+
+    @Test
+    void 拒绝非法形状taskId且零副作用() {
+        login(OWNER_ID);
+        // 字母前缀 / 前导零 / 20 位超长 / 带空白 / 空串 / null：全部不触达 Redis 与广播
+        for (String malformed : new String[]{"t-1001", "0123", "12345678901234567890", "123 456", ""}) {
+            assertThatThrownBy(() -> taskManager.cancelByUser(malformed))
+                    .as("taskId 形状非法：%s", malformed)
+                    .isInstanceOf(ClientException.class)
+                    .hasMessageContaining("任务标识非法");
+        }
+        assertThatThrownBy(() -> taskManager.cancelByUser(null))
+                .isInstanceOf(ClientException.class);
+        verify(cancelBucket, never()).set(anyString(), any(Duration.class));
+        verify(topic, never()).publish(any());
+    }
+
+    @Test
+    void 属主未命中埋秒级待定标记而非长键() {
+        // 属主键不存在：注册竞态窗口——标记 TTL 只盖住真实注册窗口（排队 15s 上限+调度余量）
+        when(ownerBucket.get()).thenReturn(null);
+        login(OWNER_ID);
+
+        taskManager.cancelByUser(TASK_ID);
+
+        verify(cancelBucket).set(OWNER_ID, Duration.ofSeconds(60));
+        verify(cancelBucket, never()).set(anyString(), eq(Duration.ofMinutes(30)));
+        verify(topic).publish(TASK_ID + "|" + OWNER_ID);
     }
 
     /**

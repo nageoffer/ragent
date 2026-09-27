@@ -33,6 +33,7 @@ import org.springframework.stereotype.Component;
 
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.regex.Pattern;
 
 /**
  * 流式任务跨节点取消管理器
@@ -48,6 +49,20 @@ public class StreamTaskManager {
     private static final String CANCEL_KEY_PREFIX = "ragent:stream:cancel:";
     private static final String OWNER_KEY_PREFIX = "ragent:stream:owner:";
     private static final Duration CANCEL_TTL = Duration.ofMinutes(30);
+
+    /**
+     * 属主未命中时的待定取消标记 TTL：只求盖住「入队→排队上限（chat 队列 max-wait-seconds=15）
+     * →入口线程池调度→register 落地」的真实注册窗口，60s 留足余量；代替旧的 30 分钟键，
+     * 使随机 taskId 的喷射无法在共享 noeviction Redis 里堆积长命键（审计 F-5）
+     */
+    private static final Duration PENDING_CANCEL_TTL = Duration.ofSeconds(60);
+
+    /**
+     * 用户侧 taskId 合同：雪花 ID 串形状（正整数、最多 19 位、无前导零）——四处生成点
+     * （rag/agent 的 chat 与 confirm）均为 {@code IdUtil.getSnowflakeNextIdStr()}。
+     * 非法形状在触达 Redis 与广播前即拒，零副作用
+     */
+    private static final Pattern SNOWFLAKE_TASK_ID = Pattern.compile("[1-9][0-9]{0,18}");
 
     /**
      * 系统侧回收的发起方占位，与任何用户 ID 都不会撞（用户 ID 是雪花数字串）
@@ -134,16 +149,14 @@ public class StreamTaskManager {
     }
 
     /**
-     * 系统侧回收（SSE 超时、客户端断连），容器回调线程上没有登录用户可比对
-     */
-    public void cancel(String taskId) {
-        publishCancel(taskId, SYSTEM_REQUESTER);
-    }
-
-    /**
-     * 用户主动停止：taskId 是雪花 ID，时间有序可预测，不是访问凭证，必须比对属主
+     * 用户主动停止：taskId 是雪花 ID，时间有序可预测，不是访问凭证，必须比对属主。
+     * 非法形状的 taskId 一律拒绝且零副作用（不落任何 Redis 键、不发布任何消息）——
+     * 否则停止端点沦为向共享 noeviction Redis 写任意基数键的写槽
      */
     public void cancelByUser(String taskId) {
+        if (taskId == null || !SNOWFLAKE_TASK_ID.matcher(taskId).matches()) {
+            throw new ClientException("任务标识非法");
+        }
         String requester = UserContext.requireUser().getUserId();
         RBucket<String> owner = redissonClient.getBucket(ownerKey(taskId));
         String ownerUserId = owner.get();
@@ -152,14 +165,22 @@ public class StreamTaskManager {
             // 不区分「不存在」与「非属主」，免得停止接口变成他人任务的探测器
             throw new ClientException("任务不存在或已结束");
         }
-        // 属主查不到多半是任务已结束，也可能是注册还没落地，故标记带上发起方交给注册那一刻复核
-        publishCancel(taskId, requester);
+        // 属主查不到多半是任务已结束，也可能是注册还没落地，故标记带上发起方交给注册那一刻复核；
+        // 属主未命中只埋短 TTL 待定标记：盖住注册竞态窗口即可，不留 30 分钟长键
+        publishCancel(taskId, requester, StrUtil.isNotBlank(ownerUserId) ? CANCEL_TTL : PENDING_CANCEL_TTL);
     }
 
-    private void publishCancel(String taskId, String requester) {
+    /**
+     * 系统侧回收（SSE 超时、客户端断连），容器回调线程上没有登录用户可比对
+     */
+    public void cancel(String taskId) {
+        publishCancel(taskId, SYSTEM_REQUESTER, CANCEL_TTL);
+    }
+
+    private void publishCancel(String taskId, String requester, Duration markerTtl) {
         // 先设置 Redis 标记，再发布消息
         RBucket<String> bucket = redissonClient.getBucket(cancelKey(taskId));
-        bucket.set(requester, CANCEL_TTL);
+        bucket.set(requester, markerTtl);
 
         // 发布消息通知所有节点（包括本地）
         // 本地节点也通过监听器统一处理，避免重复调用 cancelLocal
