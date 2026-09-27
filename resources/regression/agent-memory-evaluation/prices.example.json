@@ -1,0 +1,8 @@
+{
+  "date": "2026-09-26",
+  "currency": "USD",
+  "source": "https://api-docs.deepseek.com/quick_start/pricing/ (2026-09-26 Saturday off-peak snapshot; verify before future runs)",
+  "models": {
+    "deepseek-flash": { "cachedInput": 0.003, "uncachedInput": 0.15, "output": 0.6 }
+  }
+}

@@ -40,7 +40,7 @@ public class RedisKeySerializer implements RedisSerializer<String> {
     @Override
     public byte[] serialize(String key) throws SerializationException {
         String builderKey = keyPrefix + key;
-        return builderKey.getBytes();
+        return builderKey.getBytes(StandardCharsets.UTF_8);
     }
 
     @Override

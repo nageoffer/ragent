@@ -119,7 +119,6 @@ class AgentScopeSkillActivationLifecycleTest {
         when(memoryProperties.resolveCompactTriggerChars()).thenReturn(1);
         when(memoryProperties.resolveKeepRecentChars()).thenReturn(1);
         when(memoryProperties.resolveTrimTriggerChars()).thenReturn(Integer.MAX_VALUE);
-        when(memoryProperties.resolveClearAtLeastRatio()).thenReturn(0.2D);
         AgentConversationSummarizer summarizer = mock(AgentConversationSummarizer.class);
         when(summarizer.summarize(anyList(), nullable(String.class)))
                 .thenReturn("已压缩的早期对话，不保留退货手册正文。");

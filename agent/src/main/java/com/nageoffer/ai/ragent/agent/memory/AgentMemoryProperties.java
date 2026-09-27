@@ -56,11 +56,6 @@ public class AgentMemoryProperties {
     private static final int KEEP_RECENT_CYCLES = 2;
 
     /**
-     * 可回收量低于当前上下文的这个比例就不动
-     */
-    private static final double CLEAR_AT_LEAST_RATIO = 0.2D;
-
-    /**
      * 摘要正文上限：0.1×预算 夹进 [1500, 6000]
      * 上限受同步阻塞预算约束，六千字符折约四千 token 输出已接近 STANDARD 档时限
      */
@@ -126,10 +121,6 @@ public class AgentMemoryProperties {
 
     public int resolveKeepRecentCycles() {
         return KEEP_RECENT_CYCLES;
-    }
-
-    public double resolveClearAtLeastRatio() {
-        return CLEAR_AT_LEAST_RATIO;
     }
 
     /**

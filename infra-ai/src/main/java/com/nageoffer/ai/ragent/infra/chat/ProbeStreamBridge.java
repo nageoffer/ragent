@@ -43,13 +43,17 @@ public final class ProbeStreamBridge implements StreamCallback {
 
     @Override
     public void onContent(String content) {
-        probe.complete(ProbeResult.success());
+        if (content != null && !content.isBlank()) {
+            probe.complete(ProbeResult.success());
+        }
         bufferOrDispatch(() -> downstream.onContent(content));
     }
 
     @Override
     public void onThinking(String content) {
-        probe.complete(ProbeResult.success());
+        if (content != null && !content.isBlank()) {
+            probe.complete(ProbeResult.success());
+        }
         bufferOrDispatch(() -> downstream.onThinking(content));
     }
 

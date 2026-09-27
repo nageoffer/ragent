@@ -113,6 +113,20 @@ class AgentPromptResolverTest {
     }
 
     /**
+     * 空 Map 是无效缓存：必须回源数据库，不能当作已命中的提示词快照直接返回
+     */
+    @Test
+    void reloadsFromDbWhenCachedPromptsAreEmpty() {
+        when(cacheManager.getFromCache()).thenReturn(Map.of());
+        stubProfiles(profile(BUILTIN_ID, 1, 0), null);
+        stubPromptCalls(List.of(prompt(BUILTIN_ID, AgentPromptSlot.AGENT_MAIN, "内置 Agent 人设")));
+
+        Map<String, String> resolved = resolver.resolveAll();
+
+        assertEquals("内置 Agent 人设", resolved.get(AgentPromptSlot.AGENT_MAIN.name()));
+    }
+
+    /**
      * 连内置都缺失时 resolve 返回空串而非 null，避免下游拼出字面量 null
      */
     @Test

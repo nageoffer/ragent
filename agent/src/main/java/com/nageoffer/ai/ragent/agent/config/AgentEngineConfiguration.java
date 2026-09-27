@@ -70,9 +70,17 @@ public class AgentEngineConfiguration {
         return builder.build();
     }
 
-    /**
-     * 按供应商挂官方 formatter：DeepSeek 工具定义不认 strict，且思考模式下 reasoning_content
-     * 需按「本轮 + 含工具调用的历史段」保留，通用 formatter 两条都不做
+    /*
+     * DeepSeek 使用专用 formatter，与通用实现有两处差异：
+     *
+     * 1. reasoning_content：本轮完整回传，历史仅回传调过工具的轮次；
+     *    通用实现则全部回传
+     * 2. strict：移除 DeepSeek 不支持的工具定义字段；
+     *    当前未设置该字段，仅作防御性处理
+     *
+     * 兼容性注意：文档要求带 tools 时完整回传历史思考
+     * 上述筛选当前实测未报错，但不属于协议保证
+     * 若服务端收紧校验，因缺失 reasoning_content 返回 400，可回退通用 formatter，恢复全量回传
      */
     private void applyProviderFormatter(OpenAIChatModel.Builder builder, String providerId) {
         if (ModelProvider.DEEP_SEEK.matches(providerId)) {

@@ -23,7 +23,6 @@ final class AgentMemoryRegressionMain {
     private static final double TRIM_TRIGGER_RATIO = 0.5D;
     private static final double COMPACT_TRIGGER_RATIO = 0.8D;
     private static final double KEEP_RECENT_RATIO = 0.2D;
-    private static final double CLEAR_AT_LEAST_RATIO = 0.2D;
     private static final double SUMMARY_MAX_RATIO = 0.1D;
     private static final int SUMMARY_MAX_FLOOR_CHARS = 1500;
     private static final int SUMMARY_MAX_CEIL_CHARS = 6000;
@@ -155,15 +154,15 @@ final class AgentMemoryRegressionMain {
 
         int evicted = mainLast == null ? 0 : mainLast.evictedToolResults();
         int peakChars = mainPeak == null ? 0 : mainPeak.contextChars();
-        // 裁剪不看摘要开关，没触发要么没到门要么可回收量不够二成
+        // 裁剪不看摘要开关；超过水位且有净缩短的候选就执行
         checks.add(new Check("短期", "工具结果裁剪已实际触发", "short-term",
                 evicted > 0 ? Status.PASS : Status.UNCOVERED,
                 evicted > 0 ? "已裁剪 " + evicted + " 块"
                         : peakChars <= trimTriggerChars(context)
-                        ? "峰值 ≈" + peakChars + " 字符未到裁剪门 " + trimTriggerChars(context)
+                        ? "峰值 ≈" + peakChars + " 字符未超过裁剪门 " + trimTriggerChars(context)
                         + "，按 README 调低 context-window-chars 重跑"
-                        : "已过裁剪门 " + trimTriggerChars(context) + " 但一块没裁，可回收量不到当前总量的二成；"
-                        + "看校准表「可回收量粗估」，要加的是撑量轮不是继续压预算"));
+                        : "快照峰值已过裁剪门 " + trimTriggerChars(context) + "，末轮未保留裁剪占位；"
+                        + "核对检查时的水位、工具白名单、保护窗口及结果替换后是否净缩短，并结合日志确认是否裁过"));
 
         // 摘要没生成是覆盖度问题，不判死；硬断言在 t09 召回上
         boolean midHit = mainLast != null && mainLast.summaryMessages() > 0;
@@ -242,8 +241,8 @@ final class AgentMemoryRegressionMain {
         System.out.println("  派生门限        裁剪 " + trimTriggerChars(context)
                 + " → 压缩 " + compactTriggerChars(context)
                 + "，压缩后保留 " + keepRecentChars(context)
-                + "；裁剪最小回收量 " + CLEAR_AT_LEAST_RATIO + "（占当前上下文的比例，只管裁剪那一层）"
                 + "，摘要正文上限 " + summaryMaxChars(context));
+        System.out.println("  裁剪条件        超过裁剪水位后，清理白名单内、保护窗口外且替换后净缩短的工具结果");
         // 压缩层的素材过半判定写死在 AgentContextCompactor 里
         System.out.println("  压缩层另一道门  素材字符须过总量的一半，否则打「可换出字符不过半」跳过本轮");
         System.out.println("  剧本            " + script.turns().size() + " 轮，锚点 " + script.anchor());
@@ -272,7 +271,7 @@ final class AgentMemoryRegressionMain {
         }
         System.out.println("  说明：「摘要」列从 0 变 1 的那一轮就是压缩落点，同一轮的「消息数」与「≈字符」会同时掉下来；");
         System.out.println("        ≈字符按 AgentContextTrimmer 的口径在 SQL 侧复算，tool_use 入参长度算法不同，属近似值，");
-        System.out.println("        精确值以服务端日志「上下文裁剪完成 / 上下文裁剪跳过 / 上下文压缩完成」为准。");
+        System.out.println("        精确值以服务端日志「上下文裁剪完成 / 上下文压缩完成」为准。");
     }
 
     private static void printCalibration(RegressionContext context, List<TurnRecord> records) {
@@ -299,20 +298,15 @@ final class AgentMemoryRegressionMain {
         System.out.println("  ③ 输入 token 峰值   " + peak.maxInputTokens()
                 + "（供应商回填，权威读数；含人设与工具 schema，不可直接除②算折算比）");
         System.out.println("  ④ 命中缓存峰值      " + peak.maxCachedTokens()
-                + " token；两层都会改写前缀让缓存失效，这个数掉下来说明这次回收不值那次击穿");
+                + " token；两层改写前缀可能影响缓存命中，单看命中下降不能判断收益，需结合实际费用与延迟");
         System.out.println("  ⑤ 工具循环          " + peak.toolCycles() + " 个循环 / "
                 + peak.toolUseBlocks() + " 次调用，thinking 块 " + peak.thinkingBlocks() + " 个（永不清理）");
         int sum = 0;
         for (int value : chars) {
             sum += value;
         }
-        int newest = 0;
-        for (int index = chars.size() - 1; index >= 0 && index >= chars.size() - 2; index--) {
-            newest += chars.get(index);
-        }
-        System.out.println("  可回收量粗估        tool_result 合计 " + sum + " 字符，其中最大两块 " + newest
-                + "；按峰值折算的下限 ≈" + (int) Math.ceil(peak.contextChars() * CLEAR_AT_LEAST_RATIO)
-                + " 字符，要低于「合计 - 受保护循环」才可能触发");
+        System.out.println("  工具结果存量        tool_result 合计 " + sum
+                + " 字符；含受保护、非白名单及已清理块，不等于本轮可回收量");
 
         Snapshot last = last(records, false);
         // 压缩门 0.8、保留段 0.2，越过门时素材天然过半，卡住只因尾段太肥

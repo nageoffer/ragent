@@ -54,6 +54,8 @@ final class ApplicationYamlConfig {
         result.setProperty("execution.expected-vector-type", value(yaml, "rag.vector.type", ""));
         result.setProperty("execution.expected-storage-type", value(yaml, "rag.storage.type", ""));
         result.setProperty("execution.engine-type", value(yaml, "ragent.engine.type", ""));
+        result.setProperty("agent.chat.provider", value(yaml, "agent.chat.provider", ""));
+        result.setProperty("agent.chat.model", value(yaml, "agent.chat.model", ""));
 
         // 记忆回归台要在报告里同时给出「服务端在用的阈值」和「本次实测量」，阈值只能来自这一份 yaml
         // 四道门已收敛成窗口的固定比例，这里只搬窗口本身；派生用的比例在 AgentMemoryRegressionMain 里另有一份手抄副本

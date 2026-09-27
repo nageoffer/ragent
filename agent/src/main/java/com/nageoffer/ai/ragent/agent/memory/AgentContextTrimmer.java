@@ -78,14 +78,11 @@ public class AgentContextTrimmer {
         Set<Integer> protectedCycles = protectedCycles(context, cycles, memoryProperties.resolveKeepRecentCycles());
         List<Candidate> candidates = collectCandidates(context, cycles, protectedCycles,
                 memoryProperties.getEvictableTools());
-        int reclaimable = candidates.stream().mapToInt(Candidate::reclaimable).sum();
-        // 可回收量不够下限就整次放弃
-        int clearAtLeast = (int) Math.ceil(totalChars * memoryProperties.resolveClearAtLeastRatio());
-        if (reclaimable < clearAtLeast) {
-            log.debug("上下文裁剪跳过, 总字符: {}, 可回收: {}, 下限: {}", totalChars, reclaimable, clearAtLeast);
+        if (candidates.isEmpty()) {
             return TrimResult.UNCHANGED;
         }
 
+        int reclaimable = candidates.stream().mapToInt(Candidate::reclaimable).sum();
         Map<Msg, Msg> replacements = apply(context, candidates);
         log.info("上下文裁剪完成, 总字符: {} -> {}, 命中消息: {}, 工具结果: {}",
                 totalChars, totalChars - reclaimable, replacements.size(), candidates.size());
