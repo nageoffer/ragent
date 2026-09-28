@@ -48,3 +48,5 @@ resources/docker/graphrag/.env
 .output/
 docs/temp
 .claude/
+# 本机专用覆盖配置，内含密钥，禁止提交
+bootstrap/src/main/resources/application-local.yaml

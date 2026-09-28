@@ -57,7 +57,7 @@ agent:
     long-term-enabled: true
     evictable-tools: [ search_knowledge ]
   trace:
-    enabled: false  # 开启前先起 resources/docker/langfuse 那套服务
+    enabled: true  # 开启前先起 resources/docker/langfuse 那套服务
     capture-content: true  # 记录提示词与工具出入参；纯骨架改 false
     endpoint: http://localhost:3000/api/public/otel/v1/traces
     public-key: pk-lf-ragent-local     # 与 compose 里的 LANGFUSE_INIT_PROJECT_PUBLIC_KEY 一致
@@ -90,7 +90,7 @@ rag:
     type: pg  # 可选 milvus / pg
 
   keyword:
-    type: none  # 可选 none / es
+    type: es  # 可选 none / es
     es:
       uris: http://127.0.0.1:9200
       index: rag_keyword_store  # 全库共享索引，按 collection_name 字段区分知识库
@@ -98,7 +98,7 @@ rag:
       search-analyzer: ik_smart
 
   graph:
-    type: none  # 图谱后端总开关，可选 none / lightrag。lightrag 即接入后端供「后台可视化 / 检索读取」；是否参与检索、是否写入分别由 rag.search.channels.graph.enabled 与下方 ingestion.enabled 独立控制
+    type: lightrag  # 图谱后端总开关，可选 none / lightrag。lightrag 即接入后端供「后台可视化 / 检索读取」；是否参与检索、是否写入分别由 rag.search.channels.graph.enabled 与下方 ingestion.enabled 独立控制
     lightrag:
       base-url: http://127.0.0.1:9621
       query-mode: hybrid
@@ -163,7 +163,7 @@ rag:
       vector:
         enabled: true       # 向量通道总开关
       keyword:
-        enabled: false      # 检索范围读引擎解析好的作用域，与向量通道同源
+        enabled: true      # 检索范围读引擎解析好的作用域，与向量通道同源
       graph:
         enabled: false    # 图谱检索通道开关：false 不参与问答召回（后端仍在，后台可视化照常）；置 true 前需先开 rag.graph.type=lightrag
       web-search:
@@ -253,7 +253,7 @@ ai:
         model: gpt-5.4
       - id: deepseek-flash
         provider: deepseek
-        model: deepseek-flash
+        model: deepseek-v4-flash
         supports-thinking: true
 
     default-tier: standard
