@@ -252,7 +252,7 @@ public class S3ObjectStorageClient implements ObjectStorageClient {
     }
 
     /**
-     * 预签名 URL 的查询参数包含临时凭据与签名，异常会进入日志和失败审计，排障信息只能保留请求目标。
+     * 预签名 URL 的查询参数包含临时凭据与签名，异常会进入日志和失败审计，排障信息只能保留请求目标
      */
     private String safeUploadTarget(PresignedPutObjectRequest presignedReq) {
         var url = presignedReq.url();
