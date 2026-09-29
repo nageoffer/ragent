@@ -29,6 +29,7 @@ import com.nageoffer.ai.ragent.agent.dto.AgentConfirmSettlement;
 import com.nageoffer.ai.ragent.agent.enums.AgentMessageStatus;
 import com.nageoffer.ai.ragent.agent.service.handler.AgentRunGate;
 import com.nageoffer.ai.ragent.agent.state.PgAgentStateStore;
+import com.nageoffer.ai.ragent.rag.service.impl.ConversationTitleGenerator;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -80,13 +81,14 @@ class AgentConversationServiceImplTest {
         messageMapper = mock(AgentMessageMapper.class);
         agentStateStore = mock(PgAgentStateStore.class);
         runGate = mock(AgentRunGate.class);
+        ConversationTitleGenerator titleGenerator = mock(ConversationTitleGenerator.class);
         agentProvider = mock(ReActAgentProvider.class);
         ObjectProvider<ReActAgentProvider> agentProviderRef = mock(ObjectProvider.class);
         when(agentProviderRef.getIfAvailable()).thenReturn(agentProvider);
         when(conversationMapper.delete(any())).thenReturn(1);
         when(messageMapper.delete(any())).thenReturn(1);
         service = new AgentConversationServiceImpl(
-                conversationMapper, messageMapper, agentStateStore, runGate, agentProviderRef);
+                conversationMapper, messageMapper, agentStateStore, runGate, titleGenerator, agentProviderRef);
     }
 
     @AfterEach
