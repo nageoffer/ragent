@@ -33,6 +33,8 @@ import java.net.URL;
 import java.net.URLDecoder;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -144,8 +146,7 @@ public class HttpClientHelper {
         String fileName = null;
         String extendedFileName = null;
         if (disposition != null) {
-            String[] parts = disposition.split(";");
-            for (String part : parts) {
+            for (String part : splitDispositionParameters(disposition)) {
                 String trimmed = part.trim();
                 int separator = trimmed.indexOf('=');
                 if (separator <= 0) {
@@ -159,10 +160,10 @@ public class HttpClientHelper {
                     fileName = decodePercentEncoded(raw);
                 }
             }
-            if (extendedFileName != null) {
+            if (extendedFileName != null && !extendedFileName.isBlank()) {
                 return extendedFileName;
             }
-            if (fileName != null) {
+            if (fileName != null && !fileName.isBlank()) {
                 return fileName;
             }
         }
@@ -178,6 +179,30 @@ public class HttpClientHelper {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    private List<String> splitDispositionParameters(String disposition) {
+        List<String> parts = new ArrayList<>();
+        StringBuilder part = new StringBuilder();
+        boolean quoted = false;
+        boolean escaped = false;
+        for (int i = 0; i < disposition.length(); i++) {
+            char current = disposition.charAt(i);
+            if (escaped) {
+                escaped = false;
+            } else if (quoted && current == '\\') {
+                escaped = true;
+            } else if (current == '"') {
+                quoted = !quoted;
+            } else if (current == ';' && !quoted) {
+                parts.add(part.toString());
+                part.setLength(0);
+                continue;
+            }
+            part.append(current);
+        }
+        parts.add(part.toString());
+        return parts;
     }
 
     private String decodeExtendedFileName(String value) {
@@ -197,7 +222,15 @@ public class HttpClientHelper {
 
     private String stripQuotes(String value) {
         if (value.startsWith("\"") && value.endsWith("\"") && value.length() > 1) {
-            return value.substring(1, value.length() - 1);
+            StringBuilder unquoted = new StringBuilder();
+            for (int i = 1; i < value.length() - 1; i++) {
+                char current = value.charAt(i);
+                if (current == '\\' && i + 1 < value.length() - 1) {
+                    current = value.charAt(++i);
+                }
+                unquoted.append(current);
+            }
+            return unquoted.toString();
         }
         return value;
     }

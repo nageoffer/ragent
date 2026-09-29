@@ -92,6 +92,88 @@ class HttpClientHelperTest {
         assertEquals("C++ Guide.pdf", response.fileName());
     }
 
+    @Test
+    @DisplayName("Empty extended filename falls back to the plain filename")
+    void emptyExtendedFilenameFallsBack() {
+        server.enqueue(responseWithDisposition(
+                "attachment; filename=\"report.pdf\"; filename*=UTF-8''"));
+
+        HttpClientHelper.HttpFetchResponse response =
+                httpClientHelper.get(server.url("/fallback.bin").toString(), Map.of());
+
+        assertEquals("report.pdf", response.fileName());
+    }
+
+    @Test
+    @DisplayName("Whitespace-only extended filename falls back on HEAD")
+    void blankExtendedFilenameFallsBackOnHead() {
+        server.enqueue(responseWithDisposition(
+                "attachment; filename=\"report.pdf\"; filename*=UTF-8''%20"));
+
+        HttpClientHelper.HttpHeadResponse response =
+                httpClientHelper.head(server.url("/fallback.bin").toString(), Map.of());
+
+        assertEquals("report.pdf", response.fileName());
+    }
+
+    @Test
+    @DisplayName("Unusable filename parameters fall back to the URL path")
+    void blankFilenamesFallBackToUrl() {
+        server.enqueue(responseWithDisposition("attachment; filename=\" \"; filename*=UTF-8''%20"));
+
+        HttpClientHelper.HttpFetchResponse response =
+                httpClientHelper.get(server.url("/path%20name.pdf").toString(), Map.of());
+
+        assertEquals("path name.pdf", response.fileName());
+    }
+
+    @Test
+    @DisplayName("A quoted parameter cannot inject a filename parameter")
+    void quotedParameterDoesNotInjectFilename() {
+        server.enqueue(responseWithDisposition(
+                "attachment; filename=\"report.pdf\"; note=\"x; filename*=UTF-8''wrong.docx; y\""));
+
+        HttpClientHelper.HttpFetchResponse response =
+                httpClientHelper.get(server.url("/fallback.bin").toString(), Map.of());
+
+        assertEquals("report.pdf", response.fileName());
+    }
+
+    @Test
+    @DisplayName("A quoted filename can contain semicolons and escaped quotes")
+    void quotedFilenameKeepsSemicolonsAndEscapedQuotes() {
+        server.enqueue(responseWithDisposition("attachment; filename=\"report; \\\"final\\\".pdf\""));
+
+        HttpClientHelper.HttpFetchResponse response =
+                httpClientHelper.get(server.url("/fallback.bin").toString(), Map.of());
+
+        assertEquals("report; \"final\".pdf", response.fileName());
+    }
+
+    @Test
+    @DisplayName("A quoted parameter cannot inject a filename into stream downloads")
+    void quotedParameterDoesNotInjectFilenameOnStream() {
+        server.enqueue(responseWithDisposition(
+                "attachment; filename=\"report.pdf\"; note=\"x; filename*=UTF-8''wrong.docx; y\""));
+
+        try (HttpClientHelper.HttpFetchStream response =
+                     httpClientHelper.openStream(server.url("/fallback.bin").toString(), Map.of(), 1024)) {
+            assertEquals("report.pdf", response.fileName());
+        }
+    }
+
+    @Test
+    @DisplayName("An escaped quote inside another parameter does not expose a fake filename")
+    void escapedQuoteDoesNotExposeFilenameParameter() {
+        server.enqueue(responseWithDisposition(
+                "attachment; filename=\"report.pdf\"; note=\"escaped \\\"; filename*=UTF-8''wrong.docx\""));
+
+        HttpClientHelper.HttpFetchResponse response =
+                httpClientHelper.get(server.url("/fallback.bin").toString(), Map.of());
+
+        assertEquals("report.pdf", response.fileName());
+    }
+
     private MockResponse responseWithDisposition(String disposition) {
         return new MockResponse.Builder()
                 .setHeader("Content-Disposition", disposition)
