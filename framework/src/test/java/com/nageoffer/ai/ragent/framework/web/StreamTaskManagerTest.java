@@ -141,11 +141,17 @@ class StreamTaskManagerTest {
     }
 
     @Test
-    void shouldMarkSystemCancelAsSystem() {
+    void shouldCancelSystemTaskLocallyWithoutRedisRoundTrip() {
+        AtomicInteger interrupted = new AtomicInteger();
+        AtomicInteger finalized = new AtomicInteger();
+        taskManager.register(TASK_ID, OWNER_ID, finalized::incrementAndGet);
+        taskManager.bindHandle(TASK_ID, interrupted::incrementAndGet);
         taskManager.cancel(TASK_ID);
-
-        verify(cancelBucket).set("__system__", Duration.ofMinutes(30));
-        verify(topic).publish(TASK_ID + "|__system__");
+        taskManager.cancel(TASK_ID);
+        assertThat(interrupted.get()).isOne();
+        assertThat(finalized.get()).isOne();
+        verify(cancelBucket, never()).set(anyString(), any(Duration.class));
+        verify(topic, never()).publish(any());
     }
 
     @Test

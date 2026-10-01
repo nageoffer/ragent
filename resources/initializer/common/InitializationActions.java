@@ -810,6 +810,8 @@ final class InitializationActions {
                 + "AND update_time >= NOW() - INTERVAL '" + interval + "')";
         long runningRows = context.jdbc().queryLong(sql);
         int activeRedis = context.redis().scan("ragent:agent:running:*").size()
+                + context.redis().scan("ragent:agent:run-lock:*").size()
+                + context.redis().scan("ragent:agent:run-permit:*").size()
                 + context.redis().scan("ragent:stream:owner:*").size();
         require(runningRows == 0 && activeRedis == 0,
                 "检测到运行中的任务，拒绝初始化: db=" + runningRows + ", redis=" + activeRedis);

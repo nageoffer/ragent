@@ -37,7 +37,10 @@ final class ConcurrencyProbe {
     private static final String REDIS_READ_SCRIPT = """
             local result = {}
             for _, key in ipairs(KEYS) do
-              local value = redis.call('GET', key)
+              local kind = redis.call('TYPE', key).ok
+              local value = nil
+              if kind == 'hash' then value = table.concat(redis.call('HKEYS', key), '|') end
+              if kind == 'string' then value = redis.call('GET', key) end
               local hex = ''
               if value then
                 hex = (string.gsub(value, '.', function(c) return string.format('%02x', string.byte(c)) end))
@@ -170,7 +173,12 @@ final class ConcurrencyProbe {
         List<String> users = distinctIds(userIds);
         List<String> tasks = distinctIds(taskIds);
         List<String> keys = new ArrayList<>();
-        for (String user : users) keys.add("ragent:agent:running:" + user);
+        int permits = config.getInt("agent.max-concurrent-runs-per-user", 5);
+        for (String user : users) {
+            for (int slot = 0; slot < permits; slot++) {
+                keys.add("ragent:agent:run-permit:" + user + ":" + slot);
+            }
+        }
         for (String task : tasks) {
             keys.add("ragent:stream:owner:" + task);
             keys.add("ragent:stream:cancel:" + task);
@@ -189,14 +197,21 @@ final class ConcurrencyProbe {
         List<Object> userRows = new ArrayList<>();
         int activeCount = 0;
         for (int i = 0; i < users.size(); i++) {
-            Map<String, Object> state = redisState(keys.get(i), values.get(i));
+            List<Map<String, Object>> slots = new ArrayList<>();
+            for (int slot = 0; slot < permits; slot++) {
+                int offset = i * permits + slot;
+                slots.add(redisState(keys.get(offset), values.get(offset)));
+            }
+            Map<String, Object> state = new LinkedHashMap<>();
             state.put("userId", users.get(i));
+            state.put("slots", slots);
+            state.put("exists", slots.stream().anyMatch(s -> Boolean.TRUE.equals(s.get("exists"))));
             if (Boolean.TRUE.equals(state.get("exists"))) activeCount++;
             userRows.add(state);
         }
         List<Object> taskRows = new ArrayList<>();
         for (int i = 0; i < tasks.size(); i++) {
-            int offset = users.size() + 2 * i;
+            int offset = users.size() * permits + 2 * i;
             taskRows.add(Map.of("taskId", tasks.get(i),
                     "owner", redisState(keys.get(offset), values.get(offset)),
                     "cancel", redisState(keys.get(offset + 1), values.get(offset + 1))));

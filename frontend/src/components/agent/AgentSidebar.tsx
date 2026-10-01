@@ -69,9 +69,8 @@ export function AgentSidebar() {
   const {
     sessions,
     currentSessionId,
-    isStreaming,
     sessionsLoaded,
-    isLoading,
+    isLoadingSessions: isLoading,
     startNewChat,
     loadMessages,
     loadSessions,
@@ -132,7 +131,7 @@ export function AgentSidebar() {
   };
 
   const openSession = (sessionId: string) => {
-    if (isStreaming || sessionId === currentSessionId) return;
+    if (sessionId === currentSessionId) return;
     loadMessages(sessionId).catch(() => null);
     navigate(`/chat/${sessionId}`);
   };

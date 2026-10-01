@@ -156,7 +156,7 @@ public class AgentConversationServiceImpl implements AgentConversationService {
 
     @Override
     public AgentConfirmSettlement settlePendingConfirm(String conversationId, String userId,
-                                                      String messageId, boolean approved) {
+                                                       String messageId, boolean approved) {
         AgentConversationDO conversation = selectConversation(conversationId, userId);
         if (conversation == null) {
             throw new ClientException("会话不存在");
@@ -327,8 +327,7 @@ public class AgentConversationServiceImpl implements AgentConversationService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void delete(String conversationId, String userId) {
-        // 在途流收尾会把状态和消息写回来，必须先拦住
-        if (runGate.runningTaskId(userId, conversationId) != null) {
+        if (runGate.isRunning(userId, conversationId)) {
             throw new ClientException("该会话消息正在生成中，请先停止后再删除");
         }
         conversationMapper.delete(Wrappers.lambdaQuery(AgentConversationDO.class)

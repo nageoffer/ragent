@@ -54,14 +54,18 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Sinks;
+import reactor.core.scheduler.Scheduler;
+import reactor.core.scheduler.Schedulers;
 
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -79,6 +83,7 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
@@ -533,7 +538,7 @@ class AgentChatServiceImplTest {
 
         service.streamChat("问题", CONVERSATION_ID, new SseEmitter());
 
-        // 闸门不还，该用户到 TTL 过期前发不出下一轮
+        // 会话锁未归还会持续续期，当前会话无法开始下一轮
         assertThat(gateReleased.get()).isOne();
     }
 
@@ -582,7 +587,7 @@ class AgentChatServiceImplTest {
         assertThatThrownBy(() -> service.streamChat("问题", CONVERSATION_ID, new SseEmitter()))
                 .isInstanceOf(NoClassDefFoundError.class);
 
-        // 只接 RuntimeException 的话，启动段抛 Error 会把该用户挡到 TTL 过期（默认半小时）
+        // 启动段抛 Error 也要归还会话锁和名额，否则看门狗会一直续期
         assertThat(gateReleased.get()).isOne();
     }
 
@@ -842,7 +847,7 @@ class AgentChatServiceImplTest {
     @Test
     void shouldNotStartRunWhenGateRejects() {
         when(runGate.acquire(anyString(), anyString(), anyString()))
-                .thenThrow(new ClientException("当前会话处理中，请稍后再发起新的对话"));
+                .thenThrow(new ClientException("当前会话正在处理中，请稍后重试"));
 
         assertThatThrownBy(() -> service.streamChat("问题", CONVERSATION_ID, new SseEmitter()))
                 .isInstanceOf(ClientException.class);
@@ -867,7 +872,7 @@ class AgentChatServiceImplTest {
         callbacks.getAllValues().forEach(Runnable::run);
 
         // 超时只关响应不回收上游，ReAct 会在无人消费的情况下跑满迭代上限
-        verify(taskManager).cancel(taskId.getValue());
+        verify(taskManager, org.mockito.Mockito.timeout(1000)).cancel(taskId.getValue());
     }
 
     @Test
@@ -882,7 +887,7 @@ class AgentChatServiceImplTest {
         verify(emitter, atLeastOnce()).onError(callbacks.capture());
         callbacks.getAllValues().forEach(callback -> callback.accept(new IOException("客户端断开")));
 
-        verify(taskManager).cancel(taskId.getValue());
+        verify(taskManager, org.mockito.Mockito.timeout(1000)).cancel(taskId.getValue());
     }
 
     @Test
@@ -898,7 +903,42 @@ class AgentChatServiceImplTest {
         callbacks.getAllValues().forEach(Runnable::run);
 
         // 关页导致写失败时容器不报超时也不报错，只有 completion 回调兜得住
-        verify(taskManager).cancel(taskId.getValue());
+        verify(taskManager, org.mockito.Mockito.timeout(1000)).cancel(taskId.getValue());
+    }
+
+    @Test
+    void shouldRetryLocalCancellationAfterSchedulerRejectsSubmission() {
+        when(agent.streamEvents(any(Msg.class), any(RuntimeContext.class))).thenReturn(Flux.never());
+        SseEmitter emitter = mock(SseEmitter.class);
+        ArgumentCaptor<String> taskId = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<Runnable> timeoutCallback = ArgumentCaptor.forClass(Runnable.class);
+        ArgumentCaptor<Consumer<Throwable>> errorCallback = ArgumentCaptor.forClass(Consumer.class);
+        ArgumentCaptor<Runnable> completionCallback = ArgumentCaptor.forClass(Runnable.class);
+        service.streamChat("问题", CONVERSATION_ID, emitter);
+        verify(taskManager).register(taskId.capture(), anyString(), any());
+        verify(emitter, atLeastOnce()).onTimeout(timeoutCallback.capture());
+        verify(emitter, atLeastOnce()).onError(errorCallback.capture());
+        verify(emitter, atLeastOnce()).onCompletion(completionCallback.capture());
+
+        Scheduler scheduler = mock(Scheduler.class);
+        AtomicReference<Runnable> queued = new AtomicReference<>();
+        when(scheduler.schedule(any(Runnable.class)))
+                .thenThrow(new RejectedExecutionException("取消执行器繁忙"))
+                .thenAnswer(invocation -> {
+                    queued.set(invocation.getArgument(0));
+                    return mock(Disposable.class);
+                });
+        try (var schedulers = mockStatic(Schedulers.class)) {
+            schedulers.when(Schedulers::boundedElastic).thenReturn(scheduler);
+            timeoutCallback.getValue().run();
+            verify(taskManager, never()).cancel(anyString());
+            errorCallback.getValue().accept(new IOException("客户端断开"));
+            completionCallback.getValue().run();
+            verify(scheduler, times(2)).schedule(any(Runnable.class));
+            verify(taskManager, never()).cancel(anyString());
+            queued.get().run();
+            verify(taskManager, times(1)).cancel(taskId.getValue());
+        }
     }
 
     @Test
@@ -911,7 +951,7 @@ class AgentChatServiceImplTest {
         verify(emitter, atLeastOnce()).onCompletion(callbacks.capture());
         callbacks.getAllValues().forEach(Runnable::run);
 
-        // 正常完成也会触发 completion 回调，这里再取消等于每个请求都往 Redis 写一条 30 分钟死标记
+        // 正常完成也会触发 completion 回调，已结算任务无需再次提交本地取消
         verify(taskManager, never()).cancel(anyString());
     }
 }

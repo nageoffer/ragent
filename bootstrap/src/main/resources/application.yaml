@@ -48,9 +48,10 @@ agent:
   chat:
     provider: deepseek   # 引用 ai.providers 下的供应商，取其 url / api-key / endpoints.chat
     model: deepseek-flash    # 直接传给 OpenAI 兼容端点的模型名
-  max-iters: 10         # ReAct 循环上限，超出后熔断收尾
-  max-retries: 1        # 最大尝试次数含首次，1 即不重试
+  max-iters: 10
+  max-retries: 1
   sse-timeout-ms: 900000
+  max-concurrent-runs-per-user: 5
   memory:
     context-window-chars: 100000
     summary-enabled: true

@@ -1,6 +1,6 @@
 # Ragent 回归与测评
 
-用于验证已启动的 Ragent 服务，覆盖记忆行为、机制正确性、质量与用量指标，以及具体问题的真实复现。
+用于验证 Ragent 核心机制和已启动的服务，覆盖记忆行为、机制正确性、质量与用量指标，以及具体问题的真实复现。
 
 | 子目录 | 主要用途 | 适用场景 |
 | --- | --- | --- |
@@ -8,6 +8,7 @@
 | [agent-memory-evaluation](agent-memory-evaluation/README.md) | 数据集测评、指标统计、A/B 报告 | 比较方案、模型或配置的质量、用量与耗时 |
 | [agent-memory-audit](agent-memory-audit/README.md) | 独立账号的真实流程复现、逐轮证据采集 | 核实跨会话覆盖、删除回写、清空和摘要问题 |
 | [agent-concurrency](agent-concurrency/README.md) | 多用户并发、请求隔离与数据库一致性回归 | 验证共享 Agent 的真实服务路径能否并行执行 |
+| [agent-run-gate-audit](agent-run-gate-audit/README.md) | Java 测试与临时 Redis 闸门检查 | 验证会话互斥、用户名额、跨线程释放和看门狗回收 |
 
 各套件的运行条件、命令、配置、数据操作范围和结果解释，见对应子目录的 README。
 

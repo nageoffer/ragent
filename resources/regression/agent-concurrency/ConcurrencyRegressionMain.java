@@ -228,10 +228,13 @@ public final class ConcurrencyRegressionMain {
         boolean running=!active.live.completion().isDone();
         if(!running) { check("gate.overlap-precondition","UNKNOWN","Active request finished before the competing requests."); collect(active); return; }
         Turn same=start("gate-same-conversation",a,"这是一条应被并发闸门拒绝的请求，请只回复收到。",a.conversation,"REJECTED",false);
-        Turn different=start("gate-other-conversation",a,"这是一条应被并发闸门拒绝的新会话请求，请只回复收到。",null,"REJECTED",false);
+        Turn different=start("gate-other-conversation",a,"这是同用户另一个会话的并行请求，请只回复收到。",null,"NORMAL",false);
+        different.live.awaitMeta(Duration.ofSeconds(30));
+        boolean overlapping = !active.live.completion().isDone();
+        evidence.put("gateActiveAtNewConversationMeta", overlapping);
+        check("gate.overlap-precondition",overlapping?"PASS":"UNKNOWN",
+                "The original request must still be active when the new conversation receives META.");
         collect(same); collect(different);
-        check("gate.overlap-precondition",!active.live.completion().isDone()?"PASS":"UNKNOWN",
-                "The original request must remain active until both competing responses have returned.");
         collect(active);
         wave("gate-recovery",List.of(a),u->"请原样回答本会话最早的校验标记。",u->u.conversation,true);
     }

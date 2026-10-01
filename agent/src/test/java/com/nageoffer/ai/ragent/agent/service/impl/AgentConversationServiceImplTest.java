@@ -146,7 +146,7 @@ class AgentConversationServiceImplTest {
 
     @Test
     void shouldRejectDeleteWhileConversationIsRunning() {
-        when(runGate.runningTaskId(USER_ID, CONVERSATION_ID)).thenReturn("t-9001");
+        when(runGate.isRunning(USER_ID, CONVERSATION_ID)).thenReturn(true);
 
         assertThatThrownBy(() -> service.delete(CONVERSATION_ID, USER_ID))
                 .hasMessageContaining("正在生成中");
@@ -160,7 +160,7 @@ class AgentConversationServiceImplTest {
     @Test
     void shouldAllowDeleteWhenAnotherConversationIsRunning() {
         // 该用户确实有流在跑，但跑的是别的会话，不该连累这一个
-        when(runGate.runningTaskId(USER_ID, CONVERSATION_ID)).thenReturn(null);
+        when(runGate.isRunning(USER_ID, CONVERSATION_ID)).thenReturn(false);
 
         service.delete(CONVERSATION_ID, USER_ID);
 
@@ -171,7 +171,7 @@ class AgentConversationServiceImplTest {
     @Test
     void shouldRejectWholeBatchWhenOneConversationIsRunning() {
         TransactionSynchronizationManager.initSynchronization();
-        when(runGate.runningTaskId(USER_ID, "c-3003")).thenReturn("t-9001");
+        when(runGate.isRunning(USER_ID, "c-3003")).thenReturn(true);
 
         assertThatThrownBy(() -> service.deleteBatch(List.of(CONVERSATION_ID, "c-3003"), USER_ID))
                 .hasMessageContaining("正在生成中");

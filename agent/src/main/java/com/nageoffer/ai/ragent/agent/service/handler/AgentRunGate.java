@@ -17,83 +17,76 @@
 
 package com.nageoffer.ai.ragent.agent.service.handler;
 
-import cn.hutool.core.util.StrUtil;
 import com.nageoffer.ai.ragent.agent.config.AgentProperties;
 import com.nageoffer.ai.ragent.agent.config.ConditionalOnAgentEngine;
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import lombok.RequiredArgsConstructor;
-import org.redisson.api.RBucket;
+import lombok.extern.slf4j.Slf4j;
+import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.stereotype.Component;
 
-import java.time.Duration;
+import java.util.concurrent.CompletionException;
 
 /**
- * 用户维度的 Agent 并发闸门：一个用户同一时刻只跑一条流
- * 与 @IdempotentSubmit 的区别是覆盖整个流生命周期，而非控制器返回 emitter 前的同步窗口
+ * 控制 Agent 运行并发：同一会话互斥，并限制单用户并发会话数
  */
+@Slf4j
 @Component
 @ConditionalOnAgentEngine
 @RequiredArgsConstructor
 public class AgentRunGate {
 
-    private static final String RUNNING_KEY_PREFIX = "ragent:agent:running:";
-
-    /**
-     * 运行位存 taskId|conversationId：删会话时要凭它认出在跑的是不是这一个，两段都是雪花数字串，不含竖线
-     */
-    private static final String SLOT_SEPARATOR = "|";
+    private static final String CONVERSATION_KEY_PREFIX = "ragent:agent:run-lock:";
+    private static final String PERMIT_KEY_PREFIX = "ragent:agent:run-permit:";
 
     private final RedissonClient redissonClient;
     private final AgentProperties agentProperties;
 
-    /**
-     * 抢运行位，抢不到直接拒绝；返回的释放动作由调用方挂到收尾路上
-     */
     public Runnable acquire(String userId, String taskId, String conversationId) {
-        String slotValue = taskId + SLOT_SEPARATOR + conversationId;
-        RBucket<String> slot = redissonClient.getBucket(runningKey(userId));
-        if (!slot.setIfAbsent(slotValue, ttl())) {
-            throw new ClientException("当前会话处理中，请稍后再发起新的对话");
+        long owner = Long.parseLong(taskId);
+        RLock conversation = redissonClient.getLock(conversationKey(userId, conversationId));
+        if (!tryAcquire(conversation, owner)) {
+            throw new ClientException("当前会话正在处理中，请稍后重试");
         }
-        return () -> release(userId, slotValue);
-    }
-
-    /**
-     * 该用户此刻正跑的流若属于这个会话，返回它的 taskId，否则返回 null
-     * 运行位的取值格式只有闸门自己知道，外部拿到的始终是 taskId
-     */
-    public String runningTaskId(String userId, String conversationId) {
-        RBucket<String> slot = redissonClient.getBucket(runningKey(userId));
-        String slotValue = slot.get();
-        if (StrUtil.isBlank(slotValue)) {
-            return null;
+        try {
+            int limit = agentProperties.getMaxConcurrentRunsPerUser();
+            for (int slot = 0; slot < limit; slot++) {
+                RLock permit = redissonClient.getLock(PERMIT_KEY_PREFIX + userId + ":" + slot);
+                if (tryAcquire(permit, owner)) {
+                    return () -> {
+                        unlock(permit, owner);
+                        unlock(conversation, owner);
+                    };
+                }
+            }
+            throw new ClientException("并发会话已达上限，请稍后重试");
+        } catch (RuntimeException | Error e) {
+            unlock(conversation, owner);
+            throw e;
         }
-        int separator = slotValue.indexOf(SLOT_SEPARATOR);
-        if (separator < 0 || !slotValue.substring(separator + 1).equals(conversationId)) {
-            return null;
+    }
+
+    public boolean isRunning(String userId, String conversationId) {
+        return redissonClient.getLock(conversationKey(userId, conversationId)).isLocked();
+    }
+
+    private boolean tryAcquire(RLock lock, long owner) {
+        return lock.tryLockAsync(owner).toCompletableFuture().join();
+    }
+
+    private void unlock(RLock lock, long owner) {
+        try {
+            lock.unlockAsync(owner).toCompletableFuture().join();
+        } catch (RuntimeException e) {
+            Throwable cause = e instanceof CompletionException ? e.getCause() : e;
+            if (!(cause instanceof IllegalMonitorStateException)) {
+                log.error("Agent锁释放失败，key: {}, owner: {}", lock.getName(), owner, e);
+            }
         }
-        return slotValue.substring(0, separator);
     }
 
-    /**
-     * 只放自己占的位：运行位若被 TTL 挤掉又被下一轮抢走，无条件删会把别人的闸门放掉
-     * 重复调用天然安全，值对不上就是空操作
-     */
-    private void release(String userId, String slotValue) {
-        RBucket<String> slot = redissonClient.getBucket(runningKey(userId));
-        slot.compareAndSet(slotValue, null);
-    }
-
-    /**
-     * 进程崩溃时没人来释放，TTL 是唯一出路
-     * 取 SSE 超时的两倍：长过任何一条活着的流，又不至于把用户挡到下个小时
-     */
-    private Duration ttl() {
-        return Duration.ofMillis(agentProperties.getSseTimeoutMs() * 2);
-    }
-
-    private String runningKey(String userId) {
-        return RUNNING_KEY_PREFIX + userId;
+    private String conversationKey(String userId, String conversationId) {
+        return CONVERSATION_KEY_PREFIX + userId + ":" + conversationId;
     }
 }

@@ -73,7 +73,7 @@ export function AgentChatPage() {
 
   // 新会话在 meta 事件产生 conversationId 后同步 URL
   React.useEffect(() => {
-    if (currentSessionId && currentSessionId !== sessionId) {
+    if (currentSessionId && !sessionId) {
       navigate(`/chat/${currentSessionId}`, { replace: true });
     }
   }, [currentSessionId, sessionId, navigate]);

@@ -401,9 +401,11 @@ public final class ConcurrencyReportMain {
     private void auditGateAndCancel() {
         Turn active=find("gate-active");
         for(String name:List.of("gate-same-conversation","gate-other-conversation")) {
-            Turn reject=find(name);
-            boolean during=active!=null&&reject!=null&&time(reject,"request")>=time(active,"meta")&&time(reject,"request")<time(active,"ended")&&time(active,"meta")>0;
-            check(name+".overlap-precondition","coverage",during?"PASS":"UNCOVERED","Conflicting request was submitted between active meta and ended timestamps.");
+            Turn competing=find(name);
+            String event=name.equals("gate-other-conversation")?"meta":"request";
+            boolean during=active!=null&&competing!=null&&time(competing,event)>=time(active,"meta")&&time(competing,event)<time(active,"ended")&&time(active,"meta")>0;
+            check(name+".overlap-precondition","coverage",during?"PASS":"UNCOVERED",
+                    "Competing "+event+" occurred between active meta and ended timestamps; same conversation rejects, new conversation succeeds.");
         }
         Turn target=find("cancel-target"),survivor=find("cancel-survivor");String foreign=text(evidence,"foreignStopError");
         boolean denied=foreign.contains("任务不存在或已结束")||foreign.contains("权限")||foreign.contains("403");
@@ -467,7 +469,7 @@ public final class ConcurrencyReportMain {
                 .append("。**\n\n测试用户：").append(markers.size()).append("；HTTP 聊天请求：").append(analysis.get("httpChatRequests")).append("（正常 ")
                 .append(analysis.get("normalRequests")).append("、取消 ").append(analysis.get("cancelRequests")).append("、预期拒绝 ").append(analysis.get("rejectedRequests")).append("）。\n\n")
                 .append("从第一性原理看，共享一个 Agent 对象是否正确，取决于每次执行会修改什么状态、这些状态按什么身份隔离，以及取消与清理能否只作用于目标请求。共享实例本身不能推出必须串行。\n\n")
-                .append("因此本回归分别验证：不同用户有重叠执行证据；回答、历史、工具身份和持久状态归属正确；同用户受闸门约束；取消与清理不会波及其他用户。通过仅代表本次覆盖的运行路径，不代表 SDK 的任意共享可变组件都线程安全。\n\n")
+                .append("因此本回归分别验证：不同用户有重叠执行证据；回答、历史、工具身份和持久状态归属正确；同用户同会话互斥、不同会话可并行；取消与清理不会波及其他用户。通过仅代表本次覆盖的运行路径，不代表 SDK 的任意共享可变组件都线程安全。\n\n")
                 .append("SSE 时间是客户端接收时间，不代表供应商内部推理计时。own-marker 漏复述属于功能/记忆结果，不能据此否定并行；foreign marker 才直接指向测试用户之间的数据污染。\n\n")
                 .append("## 每阶段并行证据\n\n| 阶段 | Redis 最大运行用户 | 所有用户输出共同区间 ms |\n|---|---:|---:|\n");
         Map<String,Object> maxima=map(analysis.get("redisMaxActiveUsersByPhase"));
