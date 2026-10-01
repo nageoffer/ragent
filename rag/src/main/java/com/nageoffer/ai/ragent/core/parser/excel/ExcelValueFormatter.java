@@ -76,7 +76,7 @@ public final class ExcelValueFormatter {
         try {
             CellType cachedType = cell.getCachedFormulaResultType();
             return switch (cachedType) {
-                case NUMERIC -> formatter.formatCellValue(cell).trim();
+                case NUMERIC -> formatCachedNumeric(cell, formatter);
                 case STRING -> cell.getStringCellValue().trim();
                 case BOOLEAN -> String.valueOf(cell.getBooleanCellValue());
                 case ERROR -> "";
@@ -93,6 +93,16 @@ public final class ExcelValueFormatter {
             log.warn("读取公式字符串失败，返回空。cell: {}", describe(cell), e);
             return "";
         }
+    }
+
+    /**
+     * 渲染缓存数值：DataFormatter 对公式 cell 在无 evaluator 时会直接返回公式串，
+     * 故按 cell 自身的数字格式渲染缓存值，与 Excel 中的显示保持一致
+     */
+    private static String formatCachedNumeric(Cell cell, DataFormatter formatter) {
+        CellStyle style = cell.getCellStyle();
+        return formatter.formatRawCellContents(
+                cell.getNumericCellValue(), style.getDataFormat(), style.getDataFormatString()).trim();
     }
 
     /**
