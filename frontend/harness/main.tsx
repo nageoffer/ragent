@@ -487,20 +487,20 @@ const { messages, isStreaming } = buildMessages();
 // 原始帧抽屉预置几条样例帧
 const frames: AgentRawFrame[] = [
   { id: 1, ts: hms(1), name: "meta", data: { conversationId: "s-current", taskId: "t-1024" } },
-  { id: 2, ts: hms(1), name: "message", data: { type: "think", delta: "先检索知识库…" } },
+  { id: 2, ts: hms(1), name: "message", data: { type: "reasoning", delta: "先检索知识库…" } },
   {
     id: 3,
     ts: hms(1),
-    name: "tool",
-    data: { name: "search_knowledge", displayName: "知识库检索", status: "start" }
+    name: "block",
+    data: { kind: "tool", name: "search_knowledge", displayName: "知识库检索", status: "pending" }
   },
   {
     id: 4,
     ts: hms(0),
-    name: "tool",
-    data: { name: "search_knowledge", displayName: "知识库检索", status: "end", ok: true, result: "[…]" }
+    name: "block",
+    data: { kind: "tool", name: "search_knowledge", displayName: "知识库检索", status: "done", ok: true, result: "[…]" }
   },
-  { id: 5, ts: hms(0), name: "message", data: { type: "response", delta: "根据知识库…" } }
+  { id: 5, ts: hms(0), name: "message", data: { type: "answer", delta: "根据知识库…" } }
 ];
 
 useAuthStore.setState({ user: { userId: "1", username: "admin", role } as never });

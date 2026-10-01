@@ -150,9 +150,8 @@ public class AgentStreamEventBridge {
 
     public void onEvent(AgentEvent event) {
         switch (event.getType()) {
-            case TEXT_BLOCK_DELTA -> onTextDelta(TextChannel.ANSWER, ((TextBlockDeltaEvent) event).getDelta());
-            case THINKING_BLOCK_DELTA ->
-                    onTextDelta(TextChannel.REASONING, ((ThinkingBlockDeltaEvent) event).getDelta());
+            case TEXT_BLOCK_DELTA -> onTextDelta(TextKind.ANSWER, ((TextBlockDeltaEvent) event).getDelta());
+            case THINKING_BLOCK_DELTA -> onTextDelta(TextKind.REASONING, ((ThinkingBlockDeltaEvent) event).getDelta());
             case TOOL_CALL_START -> onToolCallStart((ToolCallStartEvent) event);
             case TOOL_RESULT_START -> onToolExecutionStart((ToolResultStartEvent) event);
             case TOOL_RESULT_TEXT_DELTA -> onToolResultDelta((ToolResultTextDeltaEvent) event);
@@ -184,18 +183,18 @@ public class AgentStreamEventBridge {
             String content;
             boolean resend;
             synchronized (stateLock) {
-                String streamed = textOf(TextChannel.ANSWER);
+                String streamed = textOf(TextKind.ANSWER);
                 // 优先用流式增量，为空时回退到终答消息
                 content = StrUtil.isNotBlank(streamed) ? streamed : fallbackText;
                 // 非流式场景没有增量，块和增量都要一次性补发
                 resend = streamed.isEmpty() && StrUtil.isNotBlank(content);
                 if (resend) {
-                    appendTextBlock(TextChannel.ANSWER, content, false);
+                    appendTextBlock(TextKind.ANSWER, content, false);
                 }
             }
             if (resend) {
                 sender.sendEvent(AgentSSEEventType.MESSAGE.value(),
-                        new AgentMessageDelta(TextChannel.ANSWER.deltaType, content));
+                        new AgentMessageDelta(TextKind.ANSWER.kind, content));
             }
             String messageId = settleAndPersistMessage(content, AgentMessageStatus.NORMAL);
             sendTerminal(AgentSSEEventType.FINISH,
@@ -214,14 +213,14 @@ public class AgentStreamEventBridge {
             // 块和当场的增量都要发，只塞进 content 的话历史回放有块就不读 content，刷新后这句就没了
             String content;
             synchronized (stateLock) {
-                String streamed = textOf(TextChannel.ANSWER);
+                String streamed = textOf(TextKind.ANSWER);
                 content = StrUtil.isBlank(streamed)
                         ? NOTICE_INTERRUPTED
                         : streamed + "\n\n" + NOTICE_INTERRUPTED;
-                appendTextBlock(TextChannel.ERROR, NOTICE_INTERRUPTED, false);
+                appendTextBlock(TextKind.ERROR, NOTICE_INTERRUPTED, false);
             }
             sender.sendEvent(AgentSSEEventType.MESSAGE.value(),
-                    new AgentMessageDelta(TextChannel.ERROR.deltaType, NOTICE_INTERRUPTED));
+                    new AgentMessageDelta(TextKind.ERROR.kind, NOTICE_INTERRUPTED));
             // 出错也落库留痕，否则已执行的工具操作在历史里查不到
             String messageId = settleAndPersistMessage(content, AgentMessageStatus.INTERRUPTED);
             // finish 让前端把已流出的内容与工具块定型，口径与落库一致，刷新前后看到的是同一条
@@ -242,7 +241,7 @@ public class AgentStreamEventBridge {
             String content;
             boolean tracked;
             synchronized (stateLock) {
-                content = textOf(TextChannel.ANSWER);
+                content = textOf(TextKind.ANSWER);
                 // 有块就值得落库留痕
                 tracked = !blocks.isEmpty();
             }
@@ -255,14 +254,14 @@ public class AgentStreamEventBridge {
         });
     }
 
-    private void onTextDelta(TextChannel channel, String delta) {
+    private void onTextDelta(TextKind textKind, String delta) {
         if (StrUtil.isEmpty(delta)) {
             return;
         }
         synchronized (stateLock) {
-            appendTextBlock(channel, delta, true);
+            appendTextBlock(textKind, delta, true);
         }
-        sender.sendEvent(AgentSSEEventType.MESSAGE.value(), new AgentMessageDelta(channel.deltaType, delta));
+        sender.sendEvent(AgentSSEEventType.MESSAGE.value(), new AgentMessageDelta(textKind.kind, delta));
     }
 
     private void onAgentResult(Msg result) {
@@ -346,7 +345,7 @@ public class AgentStreamEventBridge {
                 return false;
             }
             pending = pendingConfirmCalls;
-            streamed = textOf(TextChannel.ANSWER);
+            streamed = textOf(TextKind.ANSWER);
         }
         String messageId = settleAndPersistMessage(streamed, AgentMessageStatus.AWAITING_CONFIRM);
         if (messageId == null) {
@@ -385,7 +384,7 @@ public class AgentStreamEventBridge {
             openToolBlocks.put(callKey(event.getToolCallId()), block);
             progress = AgentToolProgress.of(block);
         }
-        sender.sendEvent(AgentSSEEventType.TOOL.value(), progress);
+        sender.sendEvent(AgentSSEEventType.BLOCK.value(), progress);
     }
 
     /**
@@ -414,7 +413,7 @@ public class AgentStreamEventBridge {
             }
             progress = AgentToolProgress.of(block);
         }
-        sender.sendEvent(AgentSSEEventType.TOOL.value(), progress);
+        sender.sendEvent(AgentSSEEventType.BLOCK.value(), progress);
     }
 
     private void onToolResultDelta(ToolResultTextDeltaEvent event) {
@@ -455,7 +454,7 @@ public class AgentStreamEventBridge {
             applyExecutionTimes(block);
             progress = AgentToolProgress.of(block);
         }
-        sender.sendEvent(AgentSSEEventType.TOOL.value(), progress);
+        sender.sendEvent(AgentSSEEventType.BLOCK.value(), progress);
     }
 
     /**
@@ -475,7 +474,7 @@ public class AgentStreamEventBridge {
                 progresses.add(AgentToolProgress.of(block));
             }
         }
-        progresses.forEach(progress -> sender.sendEvent(AgentSSEEventType.TOOL.value(), progress));
+        progresses.forEach(progress -> sender.sendEvent(AgentSSEEventType.BLOCK.value(), progress));
     }
 
     /**
@@ -543,10 +542,10 @@ public class AgentStreamEventBridge {
      * 按块序拼回全文：封过口的块读正文，未封口的那块正文还没回填，读缓冲
      * 调用方需持 stateLock
      */
-    private String textOf(TextChannel channel) {
+    private String textOf(TextKind textKind) {
         StringBuilder text = new StringBuilder();
         for (AgentBlock block : blocks) {
-            if (!channel.kind.equals(block.getKind())) {
+            if (!textKind.kind.equals(block.getKind())) {
                 continue;
             }
             if (block == openTextBlock) {
@@ -562,11 +561,11 @@ public class AgentStreamEventBridge {
      * streamed=false 是一次性补发（非流式终答、中断提示），没有流的过程，不给起止
      * 调用方需持 stateLock
      */
-    private void appendTextBlock(TextChannel channel, String delta, boolean streamed) {
-        if (openTextBlock == null || !channel.kind.equals(openTextBlock.getKind())) {
+    private void appendTextBlock(TextKind textKind, String delta, boolean streamed) {
+        if (openTextBlock == null || !textKind.kind.equals(openTextBlock.getKind())) {
             sealOpenTextBlock();
             openTextBlock = AgentBlock.builder()
-                    .kind(channel.kind)
+                    .kind(textKind.kind)
                     .at(LocalDateTime.now(clock).format(BLOCK_TIME))
                     .startedAt(streamed ? facts.now() : null)
                     .build();
@@ -630,7 +629,7 @@ public class AgentStreamEventBridge {
         List<AgentBlock> settled;
         // 思考文本与块列表在同一个锁内取快照
         synchronized (stateLock) {
-            thinking = textOf(TextChannel.REASONING);
+            thinking = textOf(TextKind.REASONING);
             settled = settleBlocks();
         }
         // 末段封口帧要赶在 finish/confirm/cancel 之前发出去
@@ -668,27 +667,17 @@ public class AgentStreamEventBridge {
     }
 
     /**
-     * 文本通道：协议增量类型与块 kind 一一对应，两套名字只在这里搭一次
+     * 文本类型：增量与块共用，限定为回答、思考和中断提示
      */
     @AllArgsConstructor
-    private enum TextChannel {
+    private enum TextKind {
 
-        ANSWER("response", AgentBlock.KIND_ANSWER),
-
-        REASONING("think", AgentBlock.KIND_REASONING),
-
-        /**
-         * 中断提示单开一路，与模型说的话区分开
-         */
-        ERROR("error", AgentBlock.KIND_ERROR);
+        ANSWER(AgentBlock.KIND_ANSWER),
+        REASONING(AgentBlock.KIND_REASONING),
+        ERROR(AgentBlock.KIND_ERROR);
 
         /**
-         * 发给前端的增量类型
-         */
-        private final String deltaType;
-
-        /**
-         * 落库的块 kind
+         * 发给前端的增量 type 与落库的块 kind 共用的值
          */
         private final String kind;
     }

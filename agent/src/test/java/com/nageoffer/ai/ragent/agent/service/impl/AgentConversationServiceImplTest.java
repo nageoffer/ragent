@@ -18,6 +18,7 @@
 package com.nageoffer.ai.ragent.agent.service.impl;
 
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.nageoffer.ai.ragent.agent.config.ReActAgentProvider;
 import com.nageoffer.ai.ragent.agent.dao.entity.AgentConversationDO;
@@ -25,32 +26,38 @@ import com.nageoffer.ai.ragent.agent.dao.entity.AgentMessageDO;
 import com.nageoffer.ai.ragent.agent.dao.mapper.AgentConversationMapper;
 import com.nageoffer.ai.ragent.agent.dao.mapper.AgentMessageMapper;
 import com.nageoffer.ai.ragent.agent.dto.AgentBlock;
+import com.nageoffer.ai.ragent.agent.dto.AgentConfirmCall;
 import com.nageoffer.ai.ragent.agent.dto.AgentConfirmSettlement;
 import com.nageoffer.ai.ragent.agent.enums.AgentMessageStatus;
 import com.nageoffer.ai.ragent.agent.service.handler.AgentRunGate;
 import com.nageoffer.ai.ragent.agent.state.PgAgentStateStore;
+import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.InOrder;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 class AgentConversationServiceImplTest {
@@ -100,7 +107,7 @@ class AgentConversationServiceImplTest {
     void shouldEvictAgentStateCacheWhenConversationDeleted() {
         service.delete(CONVERSATION_ID, USER_ID);
 
-        // 表清了内存不清，单例 Agent 会带着已删记忆继续对话并把状态写回 PG
+        // 删除数据库状态后同步清理本节点可能残留的会话缓存
         verify(agentProvider).evictStateCache(USER_ID, CONVERSATION_ID);
     }
 
@@ -119,7 +126,7 @@ class AgentConversationServiceImplTest {
 
         service.delete(CONVERSATION_ID, USER_ID);
 
-        // 事务还没提就驱逐内存，一旦回滚就成了表还在记忆没了
+        // 仅在数据库确认删除后失效缓存，回滚时保留原有内存状态
         verify(agentProvider, never()).evictStateCache(USER_ID, CONVERSATION_ID);
         commitCurrentTransaction();
         verify(agentProvider).evictStateCache(USER_ID, CONVERSATION_ID);
@@ -209,39 +216,165 @@ class AgentConversationServiceImplTest {
     }
 
     @Test
-    void shouldPurgeResidueWhenConversationRecreated() {
-        // 会话行查不到就要建：同号的状态与消息只可能是删除后的残骸
-        when(conversationMapper.selectOne(any())).thenReturn(null);
+    void shouldDenyLinkedAwaitingToolInSameMessageUpdate() {
+        AgentBlock tool = toolBlock("call-1", "awaiting");
+        AgentMessageDO message = confirmationWithTools(List.of("call-1"), tool);
 
-        service.touchConversation(CONVERSATION_ID, USER_ID, "本轮提问");
+        AgentConfirmSettlement settlement = service.settlePendingConfirm(CONVERSATION_ID, USER_ID, "m-4004", false);
 
-        verify(agentStateStore).delete(USER_ID, CONVERSATION_ID);
-        verify(messageMapper).delete(any());
-        verify(agentProvider).evictStateCache(USER_ID, CONVERSATION_ID);
+        assertThat(settlement.replyToMessageId()).isEqualTo("m-3003");
+        assertThat(message.getMessageStatus()).isEqualTo("NORMAL");
+        ArgumentCaptor<AgentMessageDO> update = ArgumentCaptor.forClass(AgentMessageDO.class);
+        verify(messageMapper).updateById(update.capture());
+        assertThat(update.getValue().getBlocks()).extracting(AgentBlock::getStatus)
+                .containsExactly("denied", "denied");
+        assertThat(tool.getResult()).isNull();
+        assertThat(tool.getStartedAt()).isNull();
+        assertThat(tool.getEndedAt()).isNull();
+        assertThat(tool.getDurationMs()).isNull();
+        verifyNoInteractions(agentStateStore, agentProvider);
     }
 
     @Test
-    void shouldPurgeBeforeCreatingConversationRow() {
-        when(conversationMapper.selectOne(any())).thenReturn(null);
-        InOrder order = inOrder(agentStateStore, conversationMapper);
+    void shouldOnlyDenyCallsNamedByCardNotOtherSameNameOrBatchTools() {
+        AgentBlock completed = toolBlock("call-done", "done");
+        completed.setResult("原始工具结果");
+        AgentMessageDO message = confirmationWithTools(List.of("call-1", "call-2", "call-done", " "),
+                toolBlock("call-1", "awaiting"), toolBlock("call-2", "awaiting"),
+                toolBlock("call-3", "awaiting"), completed, toolBlock(" ", "awaiting"));
 
-        service.touchConversation(CONVERSATION_ID, USER_ID, "本轮提问");
+        service.settlePendingConfirm(CONVERSATION_ID, USER_ID, "m-4004", false);
 
-        // 清失败就不该建行：留下「会话行是新的、记忆是旧的」比不建更糟，重试还会再清一遍
-        order.verify(agentStateStore).delete(USER_ID, CONVERSATION_ID);
-        order.verify(conversationMapper).insert(any(AgentConversationDO.class));
+        assertThat(message.getBlocks()).extracting(AgentBlock::getStatus)
+                .containsExactly("denied", "denied", "awaiting", "done", "awaiting", "denied");
+        assertThat(completed.getResult()).isEqualTo("原始工具结果");
+        verify(messageMapper).updateById(message);
     }
 
     @Test
-    void shouldNotPurgeWhenConversationStillAlive() {
+    void shouldNotTreatApprovalAsToolSuccess() {
+        AgentMessageDO message = confirmationWithTools(List.of("call-1"), toolBlock("call-1", "awaiting"));
+
+        service.settlePendingConfirm(CONVERSATION_ID, USER_ID, "m-4004", true);
+
+        assertThat(message.getBlocks()).extracting(AgentBlock::getStatus).containsExactly("awaiting", "approved");
+        assertThat(message.getMessageStatus()).isEqualTo("NORMAL");
+        verify(messageMapper).updateById(message);
+    }
+
+    @Test
+    void shouldExpireCardWithoutDenyingToolAndOnlyUpdateOnce() {
+        AgentMessageDO message = confirmationWithTools(List.of("call-1"), toolBlock("call-1", "awaiting"));
+
+        service.expirePendingConfirm(CONVERSATION_ID, USER_ID, "m-4004");
+        service.expirePendingConfirm(CONVERSATION_ID, USER_ID, "m-4004");
+
+        assertThat(message.getBlocks()).extracting(AgentBlock::getStatus).containsExactly("awaiting", "expired");
+        assertThat(message.getMessageStatus()).isEqualTo("NORMAL");
+        verify(messageMapper).updateById(message);
+    }
+
+    @Test
+    void shouldRejectRepeatedDecisionWithoutAnotherUpdate() {
+        AgentMessageDO message = confirmationWithTools(List.of("call-1"), toolBlock("call-1", "awaiting"));
+        service.settlePendingConfirm(CONVERSATION_ID, USER_ID, "m-4004", false);
+
+        for (boolean approved : List.of(false, true)) {
+            assertThatThrownBy(() -> service.settlePendingConfirm(CONVERSATION_ID, USER_ID, "m-4004", approved))
+                    .hasMessageContaining("已处理");
+        }
+        service.expirePendingConfirm(CONVERSATION_ID, USER_ID, "m-4004");
+
+        assertThat(message.getBlocks()).extracting(AgentBlock::getStatus).containsExactly("denied", "denied");
+        verify(messageMapper).updateById(message);
+    }
+
+    private AgentMessageDO confirmationWithTools(List<String> callIds, AgentBlock... tools) {
+        AgentMessageDO message = pendingConfirmation();
+        AgentBlock card = message.getBlocks().get(0);
+        card.setCalls(callIds.stream().map(id -> AgentConfirmCall.builder()
+                .toolCallId(id).name("leave_submit").build()).toList());
+        List<AgentBlock> blocks = new ArrayList<>(List.of(tools));
+        blocks.add(card);
+        message.setBlocks(blocks);
+        when(conversationMapper.selectOne(any())).thenReturn(existingConversation("原会话"));
+        when(messageMapper.selectOne(any())).thenReturn(message);
+        return message;
+    }
+
+    private static AgentBlock toolBlock(String toolCallId, String status) {
+        return AgentBlock.builder().kind("tool").name("leave_submit")
+                .toolCallId(toolCallId).status(status).build();
+    }
+
+    @Test
+    void shouldCreateMissingConversationWithoutPurgingData() {
+        when(conversationMapper.selectOne(any())).thenReturn(null);
+
+        String title = service.touchConversation(CONVERSATION_ID, USER_ID, "  本轮提问  ");
+
+        ArgumentCaptor<AgentConversationDO> conversationCaptor = ArgumentCaptor.forClass(AgentConversationDO.class);
+        verify(conversationMapper).selectOne(any());
+        verify(conversationMapper).insert(conversationCaptor.capture());
+        AgentConversationDO conversation = conversationCaptor.getValue();
+        assertThat(title).isEqualTo("本轮提问");
+        assertThat(conversation.getConversationId()).isEqualTo(CONVERSATION_ID);
+        assertThat(conversation.getUserId()).isEqualTo(USER_ID);
+        assertThat(conversation.getTitle()).isEqualTo(title);
+        assertThat(conversation.getLastTime()).isNotNull();
+        // 正常新建由聊天入口分配新 ID，无需清理状态、消息或缓存
+        verifyNoMoreInteractions(conversationMapper);
+        verifyNoInteractions(agentStateStore, messageMapper, agentProvider);
+    }
+
+    @Test
+    void shouldTouchExistingConversationWithoutCreatingOrPurgingData() {
+        AgentConversationDO existing = existingConversation("老会话");
+        existing.setLastTime(new Date(0));
+        when(conversationMapper.selectOne(any())).thenReturn(existing);
+
+        String title = service.touchConversation(CONVERSATION_ID, USER_ID, "本轮提问");
+
+        assertThat(title).isEqualTo("老会话");
+        assertThat(existing.getLastTime()).isAfter(new Date(0));
+        verify(conversationMapper).selectOne(any());
+        verify(conversationMapper).updateById(existing);
+        verifyNoMoreInteractions(conversationMapper);
+        verifyNoInteractions(agentStateStore, messageMapper, agentProvider);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void shouldRejectPendingConfirmationCheckWhenConversationNotVisibleToUser() {
+        // 聊天入口续聊前检查确认状态，不可见会话必须在此处拒绝
+        when(conversationMapper.selectOne(any())).thenReturn(null);
+
+        assertThatThrownBy(() -> service.hasPendingConfirm(CONVERSATION_ID, USER_ID))
+                .isInstanceOf(ClientException.class)
+                .hasMessage("会话不存在");
+
+        ArgumentCaptor<LambdaQueryWrapper<AgentConversationDO>> queryCaptor =
+                ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(conversationMapper).selectOne(queryCaptor.capture());
+        LambdaQueryWrapper<AgentConversationDO> query = queryCaptor.getValue();
+        assertThat(query.getSqlSegment()).contains("conversation_id", "user_id");
+        assertThat(query.getParamNameValuePairs().values()).containsExactlyInAnyOrder(CONVERSATION_ID, USER_ID);
+        verifyNoMoreInteractions(conversationMapper);
+        verifyNoInteractions(agentStateStore, messageMapper, agentProvider);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void shouldCheckPendingConfirmationForExistingConversation(boolean pending) {
         when(conversationMapper.selectOne(any())).thenReturn(existingConversation("老会话"));
+        when(messageMapper.exists(any())).thenReturn(pending);
 
-        service.touchConversation(CONVERSATION_ID, USER_ID, "本轮提问");
+        assertThat(service.hasPendingConfirm(CONVERSATION_ID, USER_ID)).isEqualTo(pending);
 
-        // 会话还活着，清就是把用户的记忆和消息删了
-        verify(agentStateStore, never()).delete(any(), any());
-        verify(messageMapper, never()).delete(any());
-        verify(agentProvider, never()).evictStateCache(any(), any());
+        verify(conversationMapper).selectOne(any());
+        verify(messageMapper).exists(any());
+        verifyNoMoreInteractions(conversationMapper, messageMapper);
+        verifyNoInteractions(agentStateStore, agentProvider);
     }
 
     @Test
@@ -256,27 +389,19 @@ class AgentConversationServiceImplTest {
     }
 
     @Test
-    void shouldReturnExistingTitleWhenInsertLosesRace() {
-        // 并发首问：两侧都查空各自插入，落败方撞唯一索引
-        when(conversationMapper.selectOne(any())).thenReturn(null, existingConversation("赢家标题"));
+    void shouldFailCreationOnDuplicateKeyWithoutResumingExistingConversation() {
+        DuplicateKeyException conflict = new DuplicateKeyException("uk_agent_conversation_user");
+        when(conversationMapper.selectOne(any())).thenReturn(null);
         when(conversationMapper.insert(any(AgentConversationDO.class)))
-                .thenThrow(new DuplicateKeyException("uk_agent_conversation_user"));
-
-        String title = service.touchConversation(CONVERSATION_ID, USER_ID, "本轮提问");
-
-        assertThat(title).isEqualTo("赢家标题");
-        verify(conversationMapper, times(2)).selectOne(any());
-    }
-
-    @Test
-    void shouldRethrowWhenDuplicateKeyIsNotRecoverable() {
-        // 撞键却重查不到，说明冲突另有来源，不能吞掉
-        when(conversationMapper.selectOne(any())).thenReturn(null, (AgentConversationDO) null);
-        when(conversationMapper.insert(any(AgentConversationDO.class)))
-                .thenThrow(new DuplicateKeyException("uk_agent_conversation_user"));
+                .thenThrow(conflict);
 
         assertThatThrownBy(() -> service.touchConversation(CONVERSATION_ID, USER_ID, "本轮提问"))
-                .isInstanceOf(DuplicateKeyException.class);
+                .isSameAs(conflict);
+
+        verify(conversationMapper).selectOne(any());
+        verify(conversationMapper).insert(any(AgentConversationDO.class));
+        verifyNoMoreInteractions(conversationMapper);
+        verifyNoInteractions(agentStateStore, messageMapper, agentProvider);
     }
 
     private static AgentMessageDO assistantRow(String id, String replyTo, String content, AgentMessageStatus status) {

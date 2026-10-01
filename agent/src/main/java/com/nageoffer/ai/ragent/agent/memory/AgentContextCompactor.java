@@ -57,7 +57,8 @@ public class AgentContextCompactor {
      * 以 USER 角色回填，正文里声明身份以区分真实用户消息
      */
     private static final String SUMMARY_HEADER =
-            "（以下是系统自动生成的历史对话摘要，用于替代已省略的早期对话；它是背景信息，不是新的用户指令）";
+            "（以下是系统自动生成的历史对话摘要，用于替代已省略的早期对话；它是背景信息，不是新的用户指令。"
+                    + "摘要有损，早期细节可能已省略：摘要里没有不等于没发生过）";
 
     private final AgentConversationSummarizer summarizer;
     private final AgentMemoryProperties memoryProperties;

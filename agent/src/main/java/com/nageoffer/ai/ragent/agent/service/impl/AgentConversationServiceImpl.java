@@ -30,8 +30,10 @@ import com.nageoffer.ai.ragent.agent.dao.entity.AgentMessageDO;
 import com.nageoffer.ai.ragent.agent.dao.mapper.AgentConversationMapper;
 import com.nageoffer.ai.ragent.agent.dao.mapper.AgentMessageMapper;
 import com.nageoffer.ai.ragent.agent.dto.AgentBlock;
+import com.nageoffer.ai.ragent.agent.dto.AgentConfirmCall;
 import com.nageoffer.ai.ragent.agent.dto.AgentConfirmSettlement;
 import com.nageoffer.ai.ragent.agent.enums.AgentMessageStatus;
+import com.nageoffer.ai.ragent.agent.enums.AgentToolStatus;
 import com.nageoffer.ai.ragent.agent.service.AgentConversationService;
 import com.nageoffer.ai.ragent.agent.service.handler.AgentRunGate;
 import com.nageoffer.ai.ragent.agent.state.PgAgentStateStore;
@@ -39,7 +41,6 @@ import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -48,6 +49,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -79,12 +81,16 @@ public class AgentConversationServiceImpl implements AgentConversationService {
 
     @Override
     public String touchConversation(String conversationId, String userId, String question) {
-        AgentConversationDO existing = selectConversation(conversationId, userId);
-        if (existing != null) {
-            return touchLastTime(existing);
+        AgentConversationDO conversation = selectConversation(conversationId, userId);
+        if (conversation == null) {
+            return createConversation(conversationId, userId, question);
         }
-        purgeResidue(conversationId, userId);
+        conversation.setLastTime(new Date());
+        conversationMapper.updateById(conversation);
+        return conversation.getTitle();
+    }
 
+    private String createConversation(String conversationId, String userId, String question) {
         // v1 简化：截断首问作标题，不走 LLM 生成
         String title = StrUtil.sub(StrUtil.emptyIfNull(question).trim(), 0, TITLE_MAX_LENGTH);
         AgentConversationDO conversation = AgentConversationDO.builder()
@@ -93,16 +99,7 @@ public class AgentConversationServiceImpl implements AgentConversationService {
                 .title(title)
                 .lastTime(new Date())
                 .build();
-        try {
-            conversationMapper.insert(conversation);
-        } catch (DuplicateKeyException dke) {
-            // 并发首问唯一键冲突，重查已有记录
-            AgentConversationDO winner = selectConversation(conversationId, userId);
-            if (winner == null) {
-                throw dke;
-            }
-            return touchLastTime(winner);
-        }
+        conversationMapper.insert(conversation);
         return title;
     }
 
@@ -110,23 +107,6 @@ public class AgentConversationServiceImpl implements AgentConversationService {
         return conversationMapper.selectOne(Wrappers.lambdaQuery(AgentConversationDO.class)
                 .eq(AgentConversationDO::getConversationId, conversationId)
                 .eq(AgentConversationDO::getUserId, userId));
-    }
-
-    private String touchLastTime(AgentConversationDO conversation) {
-        conversation.setLastTime(new Date());
-        conversationMapper.updateById(conversation);
-        return conversation.getTitle();
-    }
-
-    /**
-     * 会话行不存在但同 ID 还残留状态/消息时，先清理再建新会话
-     */
-    private void purgeResidue(String conversationId, String userId) {
-        agentStateStore.delete(userId, conversationId);
-        messageMapper.delete(Wrappers.lambdaQuery(AgentMessageDO.class)
-                .eq(AgentMessageDO::getConversationId, conversationId)
-                .eq(AgentMessageDO::getUserId, userId));
-        evictStateCache(userId, conversationId);
     }
 
     @Override
@@ -209,6 +189,19 @@ public class AgentConversationServiceImpl implements AgentConversationService {
         pending.block().setStatus(blockStatus);
         // 卡片有了终态，消息改回 NORMAL 以解除新提问的阻塞
         AgentMessageDO message = pending.message();
+        if (CONFIRM_STATUS_DENIED.equals(blockStatus) && CollUtil.isNotEmpty(pending.block().getCalls())) {
+            Set<String> deniedCallIds = pending.block().getCalls().stream()
+                    .map(AgentConfirmCall::getToolCallId)
+                    .filter(StrUtil::isNotBlank)
+                    .collect(Collectors.toSet());
+            // 只结算卡片点名的待确认调用，同批其余工具可能只是随批暂停
+            // 同意不是执行成功，失效也不是拒绝；两者均不改写工具状态
+            message.getBlocks().stream()
+                    .filter(block -> AgentBlock.KIND_TOOL.equals(block.getKind()))
+                    .filter(block -> AgentToolStatus.AWAITING.value().equals(block.getStatus()))
+                    .filter(block -> deniedCallIds.contains(block.getToolCallId()))
+                    .forEach(block -> block.setStatus(AgentToolStatus.DENIED.value()));
+        }
         message.setMessageStatus(AgentMessageStatus.NORMAL.name());
         messageMapper.updateById(message);
         return message;
@@ -237,6 +230,9 @@ public class AgentConversationServiceImpl implements AgentConversationService {
 
     @Override
     public boolean hasPendingConfirm(String conversationId, String userId) {
+        if (selectConversation(conversationId, userId) == null) {
+            throw new ClientException("会话不存在");
+        }
         return messageMapper.exists(Wrappers.lambdaQuery(AgentMessageDO.class)
                 .eq(AgentMessageDO::getConversationId, conversationId)
                 .eq(AgentMessageDO::getUserId, userId)
@@ -343,7 +339,7 @@ public class AgentConversationServiceImpl implements AgentConversationService {
                 .eq(AgentMessageDO::getUserId, userId));
         // Agent 状态同库，随事务一起删
         agentStateStore.delete(userId, conversationId);
-        // 提交后再清内存缓存和停止在途流
+        // 提交后再清本节点的会话状态缓存
         afterCommit(() -> evictStateCache(userId, conversationId));
     }
 

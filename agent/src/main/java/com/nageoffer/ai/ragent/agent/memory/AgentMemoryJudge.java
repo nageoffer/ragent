@@ -64,6 +64,11 @@ public class AgentMemoryJudge {
 
     private static final String NO_MEMORIES = "（该用户目前没有已沉淀的记忆条目）";
 
+    /**
+     * 一批素材可能跨会话，换会话处插这一行；AGENT_MEMORY_EXTRACTION 提示词里原样引用了它，改动要两处一起改
+     */
+    private static final String CONVERSATION_BREAK = "——（以下换到另一段对话）——";
+
     private static final String FIELD_ACTION = "action";
     private static final String FIELD_ID = "id";
     private static final String FIELD_CONTENT = "content";
@@ -127,11 +132,31 @@ public class AgentMemoryJudge {
                 decisions.add(decision);
             }
         }
-        return decisions;
+        return AgentMemoryDecision.containsClear(decisions) ? checkClearBatch(decisions) : decisions;
     }
 
     /**
-     * 协议四种动作在这里收成三种：NOOP 只表示「这批没东西可记」，返回 null 就地跳过，不进提交环节
+     * 清空批只许带清空之后要记的 ADD；混进替换或撤回说明模型没想清目标状态，整批抛出重判
+     * 不能先清空再让它们指不着目标自动丢弃：「清空后只记住我住南京」判成 CLEAR + SUPERSEDE 时，南京会被静默吞掉
+     */
+    private List<AgentMemoryDecision> checkClearBatch(List<AgentMemoryDecision> decisions) {
+        List<AgentMemoryDecision> checked = new ArrayList<>();
+        checked.add(AgentMemoryDecision.clear());
+        for (AgentMemoryDecision decision : decisions) {
+            switch (decision.action()) {
+                // 多个 CLEAR 幂等，收成一个
+                case CLEAR -> {
+                }
+                case ADD -> checked.add(decision);
+                case SUPERSEDE, RETRACT -> throw new IllegalStateException(
+                        "长期记忆仲裁把 CLEAR 与 " + decision.action() + " 放在同一批");
+            }
+        }
+        return checked;
+    }
+
+    /**
+     * 协议五种动作在这里收成四种：NOOP 只表示「这批没东西可记」，返回 null 就地跳过，不进提交环节
      */
     private AgentMemoryDecision toDecision(JSONObject json) {
         String action = StrUtil.trimToEmpty(json.getStr(FIELD_ACTION)).toUpperCase();
@@ -143,6 +168,7 @@ public class AgentMemoryJudge {
             case "SUPERSEDE" -> AgentMemoryDecision.supersede(
                     require(targetId, "SUPERSEDE 缺少 id"), require(content, "SUPERSEDE 缺少 content"));
             case "RETRACT" -> AgentMemoryDecision.retract(require(targetId, "RETRACT 缺少 id"));
+            case "CLEAR" -> AgentMemoryDecision.clear();
             default -> throw new IllegalStateException("长期记忆仲裁给出未知动作: " + StrUtil.maxLength(action, 40));
         };
     }
@@ -170,14 +196,20 @@ public class AgentMemoryJudge {
 
     /**
      * 素材只取用户消息，助手与工具结果不进来
+     * 换会话处插分隔行：模型看不到助手回答，不隔开会把这段对话里的「它」指到另一段对话说过的东西上
      */
     private String renderTurns(List<AgentMessageDO> pending, String nonce) {
         StringBuilder text = new StringBuilder();
+        String previousConversationId = null;
         for (AgentMessageDO message : pending) {
             String content = StrUtil.trimToEmpty(message.getContent());
             if (content.isEmpty()) {
                 continue;
             }
+            if (previousConversationId != null && !previousConversationId.equals(message.getConversationId())) {
+                text.append(CONVERSATION_BREAK).append('\n');
+            }
+            previousConversationId = message.getConversationId();
             text.append("- ").append(neutralize(truncate(content), nonce)).append('\n');
         }
         return text.toString().stripTrailing();

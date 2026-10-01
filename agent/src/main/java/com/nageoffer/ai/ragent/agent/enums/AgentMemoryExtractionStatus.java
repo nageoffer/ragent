@@ -18,32 +18,34 @@
 package com.nageoffer.ai.ragent.agent.enums;
 
 /**
- * 抽取状态，哪几个值推进水位见 AgentMemoryExtractionMapper.selectWatermark
+ * 长期记忆抽取任务的处理状态
+ * WRITTEN、NOOP 和 DROPPED 表示本批消息已处理，后续抽取会跳过这些消息
  */
 public enum AgentMemoryExtractionStatus {
 
     /**
-     * 在飞，部分唯一索引保证同会话只有一条
+     * 正在处理，同一用户同时只能有一个抽取任务处于此状态
      */
     PROCESSING,
 
     /**
-     * 判完有写入
+     * 处理完成，已执行本批次的记忆变更
      */
     WRITTEN,
 
     /**
-     * 判完无产出，同样算处理过
+     * 处理完成，本批次没有生效的记忆决策
      */
     NOOP,
 
     /**
-     * 重试耗尽或容量拒收，坏抽取不许永久堵塞水位
+     * 处理失败且已达到最大尝试次数，跳过本批消息，继续处理后续消息
      */
     DROPPED,
 
     /**
-     * 提交期快照失配，本批作废重来，不计入尝试次数
+     * 本次处理未完成，等待重试，包括提交时数据已变化、处理失败或超时
+     * 其中，提交时数据已变化的情况不计入尝试次数
      */
     CONFLICT
 }

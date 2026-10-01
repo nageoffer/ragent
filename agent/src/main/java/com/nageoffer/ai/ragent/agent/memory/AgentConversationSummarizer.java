@@ -140,7 +140,7 @@ public class AgentConversationSummarizer {
             text.append(open(FENCE_PREVIOUS_SUMMARY, nonce)).append('\n')
                     .append(neutralize(existingSummary.trim(), nonce)).append('\n')
                     .append(close(FENCE_PREVIOUS_SUMMARY, nonce)).append('\n')
-                    .append("上一份摘要到此为止，本次在它基础上更新；与下方新记录冲突时以新记录为准，其中「用户诉求」一节原样搬运。\n\n");
+                    .append("上一份摘要到此为止，本次在它基础上更新；与下方新记录冲突时以新记录为准。\n\n");
         }
         text.append(open(FENCE_TRANSCRIPT, nonce)).append('\n')
                 .append(neutralize(transcript, nonce)).append('\n')

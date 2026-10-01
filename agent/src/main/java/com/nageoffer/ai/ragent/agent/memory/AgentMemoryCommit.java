@@ -26,7 +26,6 @@ import java.util.List;
  * merges 只在容量顶到上限那次非空，与决策在同一事务里落地
  */
 public record AgentMemoryCommit(String userId,
-                                String conversationId,
                                 String extractionId,
                                 int attemptCount,
                                 long expectedRevision,

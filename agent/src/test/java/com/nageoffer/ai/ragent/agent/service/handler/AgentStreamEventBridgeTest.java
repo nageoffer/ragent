@@ -175,6 +175,12 @@ class AgentStreamEventBridgeTest {
         // 与落库同源
         assertThat(seals.getAllValues())
                 .containsExactly(AgentTextBlockSeal.of(blocks.get(0)), AgentTextBlockSeal.of(blocks.get(1)));
+        // 实时增量和历史块使用同一种内容类型，前端无需转换名称
+        ArgumentCaptor<AgentMessageDelta> deltas = ArgumentCaptor.forClass(AgentMessageDelta.class);
+        verify(sender, times(2)).sendEvent(eq("message"), deltas.capture());
+        assertThat(deltas.getAllValues()).containsExactly(
+                new AgentMessageDelta("reasoning", "先想一下"),
+                new AgentMessageDelta("answer", "答案是"));
     }
 
     /**
@@ -197,6 +203,7 @@ class AgentStreamEventBridgeTest {
         });
         // 无起止则不发封口帧
         verify(sender, never()).sendEvent(eq("block"), any());
+        verify(sender).sendEvent("message", new AgentMessageDelta("answer", "一次性给出的终答"));
     }
 
     @Test
@@ -317,6 +324,13 @@ class AgentStreamEventBridgeTest {
         assertThat(blocks.get(2).getText()).isEqualTo("再说一句");
         // content 是正文全文，被工具块切成几段也要按序接回来，末段收尾前还没封口
         assertThat(capturedContent()).isEqualTo("先说一句再说一句");
+        ArgumentCaptor<Object> updates = ArgumentCaptor.forClass(Object.class);
+        verify(sender, times(4)).sendEvent(eq("block"), updates.capture());
+        assertThat(updates.getAllValues()).containsExactly(
+                capturedToolEvents().get(0), AgentTextBlockSeal.of(blocks.get(0)),
+                capturedToolEvents().get(1), AgentTextBlockSeal.of(blocks.get(2)));
+        assertThat(capturedToolEvents()).allSatisfy(update -> assertThat(update.kind()).isEqualTo("tool"));
+        verify(sender, never()).sendEvent(eq("tool"), any());
     }
 
     /**
@@ -480,7 +494,7 @@ class AgentStreamEventBridgeTest {
 
         AgentBlock block = capturedBlocks().get(0);
         AgentToolProgress last = capturedToolEvents().get(capturedToolEvents().size() - 1);
-        assertThat(last).isEqualTo(new AgentToolProgress(block.getToolCallId(), block.getName(),
+        assertThat(last).isEqualTo(new AgentToolProgress("tool", block.getToolCallId(), block.getName(),
                 block.getDisplayName(), block.getStatus(), block.getResult(), true, block.getAt(),
                 block.getBatchId(), block.getCallIndex(), block.getStartedAt(), block.getEndedAt(),
                 block.getDurationMs(), block.getDurationSource()));
@@ -683,9 +697,12 @@ class AgentStreamEventBridgeTest {
     }
 
     private List<AgentToolProgress> capturedToolEvents() {
-        ArgumentCaptor<AgentToolProgress> captor = ArgumentCaptor.forClass(AgentToolProgress.class);
-        verify(sender, atLeastOnce()).sendEvent(eq("tool"), captor.capture());
-        return captor.getAllValues();
+        ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
+        verify(sender, atLeastOnce()).sendEvent(eq("block"), captor.capture());
+        return captor.getAllValues().stream()
+                .filter(AgentToolProgress.class::isInstance)
+                .map(AgentToolProgress.class::cast)
+                .toList();
     }
 
     private AgentStreamEventBridge newBridge() {

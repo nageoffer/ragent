@@ -77,7 +77,7 @@ public class AgentRunHandle {
     private boolean released;
 
     /**
-     * 上游流的终止信号，打断后等它来判断框架有没有存完盘
+     * 上游流的终止信号，打断后等它来判断是否需要强制断流；终止不代表存盘成功
      */
     private final CountDownLatch upstreamTerminated = new CountDownLatch(1);
 
@@ -86,7 +86,7 @@ public class AgentRunHandle {
 
     /**
      * -- GETTER --
-     * 是否走的失败出口，失败时释放钩子需要补一次存盘
+     * 出错、取消或强制断流时，释放钩子是否需要补一次存盘
      */
     @Getter
     private volatile boolean stateSaveRequired;
@@ -157,14 +157,14 @@ public class AgentRunHandle {
     }
 
     /**
-     * 上游流走到终点时调用，打断路径靠它判断框架是否已自行收尾
+     * 上游流走到终点时调用，只表示流已终止，不保证框架已保存状态
      */
     public void markUpstreamTerminated() {
         upstreamTerminated.countDown();
     }
 
     /**
-     * 先打断框架、等它存盘，超时再 dispose 断流；顺序反了会丢掉本轮 Agent 状态
+     * 先打断框架、留出处理和存盘的时间，超时再 dispose 断流；取消收尾仍需补存
      */
     public void interruptUpstream() {
         Runnable interrupt;
@@ -226,9 +226,13 @@ public class AgentRunHandle {
 
     /**
      * 取消后的收尾，打断本身由 {@link #interruptUpstream()} 做
+     * 框架中断分支可能吞掉存盘异常，取得收尾权后统一标记补存
      */
     public void cancel(Runnable body) {
-        settleAndClose(body);
+        settleAndClose(() -> {
+            stateSaveRequired = true;
+            body.run();
+        });
     }
 
     /**

@@ -50,6 +50,11 @@ final class AgentMemoryProbe {
      */
     static final String FORGED_ID_PREFIX = "99";
 
+    /**
+     * 越过积压的台账行用这个前缀，收尾不删：删了水位就退回去，上一条用例的尾巴又会混进后面的批次
+     */
+    static final String DRAIN_ID_PREFIX = "98";
+
     private static long forgedSequence = System.currentTimeMillis() % 1_000_000_000L * 1000L;
 
     private final JdbcClient jdbc;
@@ -81,11 +86,20 @@ final class AgentMemoryProbe {
     }
 
     /**
-     * 一条会话的全部抽取，按落库顺序；水位、去重、结算状态都从这份台账上读
+     * 由这条会话触发的全部抽取，按落库顺序；批内消息按用户取，可能来自别的会话
      */
     List<Extraction> extractions(String userId, String conversationId) throws SQLException, IOException {
         return selectExtractions("user_id = " + JdbcClient.literal(userId)
                 + " AND conversation_id = " + JdbcClient.literal(conversationId));
+    }
+
+    /**
+     * 区间罩住这条用户消息的全部抽取，含未推水位的 CONFLICT；判「这句被处理过几次、由谁处理」用它
+     */
+    List<Extraction> extractionsCovering(String userId, String messageId) throws SQLException, IOException {
+        return selectExtractions("user_id = " + JdbcClient.literal(userId)
+                + " AND from_message_id <= " + JdbcClient.literal(messageId)
+                + " AND to_message_id >= " + JdbcClient.literal(messageId));
     }
 
     /**
@@ -100,10 +114,12 @@ final class AgentMemoryProbe {
         return found.isEmpty() ? null : found.get(0);
     }
 
-    String watermark(String userId, String conversationId) throws SQLException, IOException {
+    /**
+     * 水位按用户：与 AgentMemoryExtractionMapper.selectWatermark 同口径，不带会话
+     */
+    String watermark(String userId) throws SQLException, IOException {
         List<List<String>> rows = jdbc.queryRows("SELECT COALESCE(max(to_message_id), '')"
                 + " FROM t_agent_memory_extraction WHERE user_id = " + JdbcClient.literal(userId)
-                + " AND conversation_id = " + JdbcClient.literal(conversationId)
                 + " AND status IN (" + WATERMARK_STATUSES + ")");
         return rows.isEmpty() ? "" : rows.get(0).get(0);
     }
@@ -199,6 +215,69 @@ final class AgentMemoryProbe {
                 + JdbcClient.literal(conversationId) + ", 'user', " + JdbcClient.literal(content)
                 + ", CURRENT_TIMESTAMP - interval '1 hour')");
         return id;
+    }
+
+    /**
+     * 用例开场先把这个账号的积压整片越过：水位按用户，上一条用例没抽的尾巴会混进下一条用例的批次
+     * 越过的只是还没抽取的聊天，不进长期记忆；伪造前缀的消息不算，免得水位被推到 20 位串序之上、真消息再也排不进来
+     */
+    String drainPending(String userId) throws SQLException, IOException {
+        List<List<String>> rows = jdbc.queryRows("SELECT id, conversation_id FROM t_agent_message"
+                + " WHERE user_id = " + JdbcClient.literal(userId) + " AND role = 'user'"
+                + " AND id NOT LIKE " + JdbcClient.literal(FORGED_ID_PREFIX + "%")
+                + " ORDER BY id DESC LIMIT 1");
+        if (rows.isEmpty() || rows.get(0).get(0).compareTo(watermark(userId)) <= 0) {
+            return null;
+        }
+        String last = rows.get(0).get(0);
+        String id = DRAIN_ID_PREFIX + forgedId().substring(FORGED_ID_PREFIX.length());
+        jdbc.update("INSERT INTO t_agent_memory_extraction (id, user_id, conversation_id, from_message_id,"
+                + " to_message_id, status, trigger_type, decision_count, attempt_count, settle_time)"
+                + " VALUES (" + JdbcClient.literal(id) + ", " + JdbcClient.literal(userId) + ", "
+                + JdbcClient.literal(rows.get(0).get(1)) + ", " + JdbcClient.literal(last) + ", "
+                + JdbcClient.literal(last) + ", 'NOOP', 'BACKGROUND', 0, 1, CURRENT_TIMESTAMP)");
+        return last;
+    }
+
+    /**
+     * 紧跟 afterMessageId 之后造一串用户消息当积压，ID 取它往后的连续数：同为 19 位，串序与数值一致，
+     * 且小于下一轮才分配的真实 ID（晚一毫秒雪花就大出 2^22）；时间取当下，落在控制行下界之后。收尾按返回的 ID 删，不走前缀
+     * 跳开 1000 是躲同一毫秒里紧挨着分配出去的会话、任务 ID
+     */
+    List<String> forgeBacklog(String userId, String conversationId, String afterMessageId, int count)
+            throws SQLException, IOException {
+        List<String> ids = new ArrayList<>(count);
+        StringBuilder values = new StringBuilder();
+        long base = Long.parseLong(afterMessageId) + 1000L;
+        for (int index = 1; index <= count; index++) {
+            String id = String.valueOf(base + index);
+            ids.add(id);
+            if (index > 1) {
+                values.append(", ");
+            }
+            values.append("(").append(JdbcClient.literal(id)).append(", ").append(JdbcClient.literal(userId))
+                    .append(", ").append(JdbcClient.literal(conversationId)).append(", 'user', ")
+                    .append(JdbcClient.literal("随口问一句，今天适合出门吗？（积压第 " + index + " 条）"))
+                    .append(", CURRENT_TIMESTAMP)");
+        }
+        jdbc.update("INSERT INTO t_agent_message (id, user_id, conversation_id, role, content, create_time)"
+                + " VALUES " + values);
+        return List.copyOf(ids);
+    }
+
+    int deleteMessages(String userId, List<String> ids) throws SQLException, IOException {
+        if (ids.isEmpty()) {
+            return 0;
+        }
+        StringBuilder literals = new StringBuilder();
+        for (String id : ids) {
+            if (!literals.isEmpty()) {
+                literals.append(", ");
+            }
+            literals.append(JdbcClient.literal(id));
+        }
+        return jdbc.update("DELETE FROM t_agent_message WHERE user_id = " + JdbcClient.literal(userId)
+                + " AND id IN (" + literals + ")");
     }
 
     /**

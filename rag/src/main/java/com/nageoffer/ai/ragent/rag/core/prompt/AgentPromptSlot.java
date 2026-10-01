@@ -64,7 +64,7 @@ public enum AgentPromptSlot {
             "WorkFlow 模式不沉淀跨会话事实",
             Set.of("{existing_memories}", "{recent_turns}", "{memory_max_chars}"),
             "产物不进对话，由代码按 JSON 数组解析后直接写库，解析失败整批作废；"
-                    + "写清什么该记、什么不该记、以及怎么指认已有条目，不要在这里规定回答风格"),
+                    + "写清什么该记、什么不该记、怎么指认已有条目、什么算要求清空全部，不要在这里规定回答风格"),
 
     AGENT_MEMORY_CONSOLIDATION("长期记忆受限合并", Group.AGENT,
             Set.of(OrchestrationMode.AGENT),
@@ -81,7 +81,7 @@ public enum AgentPromptSlot {
             "WorkFlow 模式不注册记忆整理工具",
             Set.of(),
             "模型靠它判断这轮要不要整理记忆，此时还看不到整理结果；"
-                    + "「记住」和「忘掉」两类场景都要写到，具体记什么忘什么由抽取环节判断"),
+                    + "「记住」「忘掉」「清空全部」三类场景都要写到，具体记什么忘什么由抽取环节判断"),
 
     /**
      * 两种架构共用：WorkFlow 下由主链路合成，Agent 下由 RAG Tool 内部合成

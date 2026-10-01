@@ -50,3 +50,7 @@ docs/temp
 .claude/
 # 本机专用覆盖配置，内含密钥，禁止提交
 bootstrap/src/main/resources/application-local.yaml
+
+### Regression artifacts ###
+# Local reports, credentials, logs, snapshots and compiled CLI classes.
+/resources/regression/*/artifacts/

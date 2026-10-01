@@ -1,0 +1,16 @@
+{
+  "originalDraftQuestionInRetainedNonSummaryText": false,
+  "originalDraftAnswerInRetainedNonSummaryText": false,
+  "retainedNonSummaryTextBlocks": 12,
+  "activeLongTermMemoriesAtFinalProbe": [],
+  "finalProbeTools": [],
+  "summaryHeadings": [
+    "## 用户诉求",
+    "## 待办",
+    "## 下一步",
+    "## 当前进度",
+    "## 工具与发现",
+    "## 走不通的路",
+    "## 已完成"
+  ]
+}

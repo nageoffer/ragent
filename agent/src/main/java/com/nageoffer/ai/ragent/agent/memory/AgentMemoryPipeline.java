@@ -41,6 +41,11 @@ import java.util.List;
 @RequiredArgsConstructor
 public class AgentMemoryPipeline {
 
+    /**
+     * 显式整理一次最多跑几批；每批一次仲裁调用，全压在本轮回答里，跑不完如实报未完成而不是无限续跑
+     */
+    private static final int MAX_FLUSH_BATCHES = 3;
+
     private final AgentMemoryRepository memoryRepository;
     private final AgentMemoryJudge memoryJudge;
     private final AgentMemoryConsolidator memoryConsolidator;
@@ -62,16 +67,37 @@ public class AgentMemoryPipeline {
     }
 
     /**
+     * 显式整理：连跑到覆盖本次请求那条消息为止，最多 MAX_FLUSH_BATCHES 批，积压超过一批时本次请求排在后面
+     * 判据是覆盖它的那批结成 WRITTEN/NOOP：DROPPED 同样推水位，只看水位会把失败报成成功
+     */
+    public AgentMemoryOutcome flush(String userId, String conversationId, String requestMessageId) {
+        AgentMemoryOutcome outcome = extract(userId, conversationId, AgentMemoryTriggerType.FLUSH);
+        for (int batch = 1; batch < MAX_FLUSH_BATCHES && outcome.settled()
+                && memoryRepository.settledStatusCovering(userId, requestMessageId) == null; batch++) {
+            outcome = outcome.then(extract(userId, conversationId, AgentMemoryTriggerType.FLUSH));
+        }
+        if (!outcome.settled() && outcome.status() != Status.NOTHING_PENDING) {
+            return outcome;
+        }
+        // 没有待处理不等于处理成功：本次请求可能早被一批 DROPPED 越过，再调一次也不许把那次失败洗成「都整理过了」
+        AgentMemoryExtractionStatus covering = memoryRepository.settledStatusCovering(userId, requestMessageId);
+        if (covering == null) {
+            return outcome.withStatus(Status.INCOMPLETE);
+        }
+        return covering == AgentMemoryExtractionStatus.DROPPED ? outcome.withStatus(Status.FAILED) : outcome;
+    }
+
+    /**
      * 跑完一批；抢不到处理权或没到门槛都算正常结局，不抛异常
+     * 批次取该用户所有会话里最早的待处理消息，conversationId 只记触发方
      */
     public AgentMemoryOutcome extract(String userId, String conversationId, AgentMemoryTriggerType trigger) {
         if (!memoryProperties.isLongTermEnabled()) {
             return AgentMemoryOutcome.of(Status.DISABLED, 0);
         }
         AgentMemoryControlDO control = memoryRepository.ensureControl(userId);
-        String watermark = memoryRepository.currentWatermark(userId, conversationId);
-        List<AgentMessageDO> pending = memoryRepository.loadPending(
-                userId, conversationId, watermark, control.getCreateTime());
+        String watermark = memoryRepository.currentWatermark(userId);
+        List<AgentMessageDO> pending = memoryRepository.loadPending(userId, watermark, control.getCreateTime());
         if (pending.isEmpty()) {
             return AgentMemoryOutcome.of(Status.NOTHING_PENDING, 0);
         }
@@ -94,17 +120,19 @@ public class AgentMemoryPipeline {
     private AgentMemoryOutcome runExtraction(String userId, String conversationId, AgentMemoryTriggerType trigger,
                                              AgentMemoryControlDO control, String watermark,
                                              List<AgentMessageDO> pending, AgentMemoryExtractionDO extraction) {
-        List<AgentMemoryItem> existing = memoryRepository.listActiveItems(userId);
+        List<AgentMemoryItem> existing;
         List<AgentMemoryDecision> decisions;
         try {
+            // 读快照也要收在这道边界里，抢到 claim 之后任何一步漏出去都会把台账行挂在 PROCESSING 上
+            existing = memoryRepository.listActiveItems(userId);
             decisions = memoryJudge.judge(existing, pending);
         } catch (Exception e) {
             AgentMemoryExtractionStatus settled = memoryRepository.settleFailure(extraction);
-            log.warn("长期记忆仲裁失败, extractionId: {}, 结算: {}", extraction.getId(), settled, e);
+            log.warn("长期记忆读取或仲裁失败, extractionId: {}, 结算: {}", extraction.getId(), settled, e);
             return AgentMemoryOutcome.of(Status.FAILED, pending.size());
         }
 
-        AgentMemoryCommit commit = new AgentMemoryCommit(userId, conversationId, extraction.getId(),
+        AgentMemoryCommit commit = new AgentMemoryCommit(userId, extraction.getId(),
                 extraction.getAttemptCount(), control.getRevision(), watermark, sourceTypeOf(trigger),
                 decisions, planConsolidation(existing, decisions));
         try {
@@ -129,6 +157,10 @@ public class AgentMemoryPipeline {
      */
     private List<AgentMemoryMerge> planConsolidation(List<AgentMemoryItem> existing,
                                                      List<AgentMemoryDecision> decisions) {
+        // 清空批里旧条目马上整片失效，合并它们是白叫一次模型；清空后新增装不下由提交侧整批拒收
+        if (AgentMemoryDecision.containsClear(decisions)) {
+            return List.of();
+        }
         int maxChars = memoryProperties.resolveMemoryMaxChars();
         int projected = AgentMemoryBlock.projectedChars(existing, decisions);
         if (projected <= maxChars) {
@@ -145,7 +177,8 @@ public class AgentMemoryPipeline {
             case NOOP -> Status.SETTLED_EMPTY;
             default -> Status.CONFLICT;
         };
-        return new AgentMemoryOutcome(status, result.applied(), pending, result.mutated());
+        return new AgentMemoryOutcome(status, result.applied(), pending, result.mutated(),
+                result.cleared(), result.clearedItems());
     }
 
     private AgentMemorySourceType sourceTypeOf(AgentMemoryTriggerType trigger) {

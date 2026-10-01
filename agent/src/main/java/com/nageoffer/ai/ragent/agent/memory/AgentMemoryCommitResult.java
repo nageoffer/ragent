@@ -21,6 +21,12 @@ import com.nageoffer.ai.ragent.agent.enums.AgentMemoryExtractionStatus;
 
 /**
  * 提交结果；applied 是落库的决策条数，mutated 是记忆集整体有没有变（含合并/淘汰）
+ * cleared 表示本批执行了清空，与清掉几条无关：原本就空的清空也要如实告诉用户
  */
-public record AgentMemoryCommitResult(AgentMemoryExtractionStatus status, int applied, boolean mutated) {
+public record AgentMemoryCommitResult(AgentMemoryExtractionStatus status, int applied, boolean mutated,
+                                      boolean cleared, int clearedItems) {
+
+    public AgentMemoryCommitResult(AgentMemoryExtractionStatus status, int applied, boolean mutated) {
+        this(status, applied, mutated, false, 0);
+    }
 }

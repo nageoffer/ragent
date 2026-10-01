@@ -64,8 +64,17 @@ final class AgentMemoryMechanismMain {
     private static final String OLD_CITY = "杭州";
     private static final String NEW_CITY = "南京";
 
-    private static final List<String> ALL_CASES =
-            List.of("M1", "M2", "M3", "M4", "M6", "M7", "M8", "R1", "R2", "R3", "R4", "R5");
+    private static final List<String> ALL_CASES = List.of("M1", "M2", "M3", "M4", "M6", "M7", "M8", "M9", "M10",
+            "R1", "R2", "R3", "R4", "R5", "R7", "R8", "R9");
+
+    /**
+     * 积压用例造的条数：一批 40 条（AgentMemoryRepository.MAX_PENDING_PER_EXTRACTION），flush 最多跑 3 批
+     * 45 条让本次请求落在第二批，125 条让三批跑完还轮不到它
+     */
+    private static final int BATCH_SIZE = 40;
+    private static final int FLUSH_MAX_BATCHES = 3;
+    private static final int BACKLOG_WITHIN_REACH = 45;
+    private static final int BACKLOG_OUT_OF_REACH = 125;
 
     private AgentMemoryMechanismMain() {
     }
@@ -83,6 +92,12 @@ final class AgentMemoryMechanismMain {
         for (String name : selected) {
             System.out.println();
             System.out.println("[regression] === " + name + " " + caseTitle(name) + " ===");
+            // 水位按用户，上一条用例的在飞抽取与没抽的尾巴都会串进这一条的批次，开场先等它落定再整片越过
+            awaitIdle(context.memory(), userId, SETTLE_WINDOW_MILLIS);
+            String drained = context.memory().drainPending(userId);
+            if (drained != null) {
+                System.out.println("    开场：越过该账号的积压，水位推到 " + drained);
+            }
             List<Item> baseline = context.memory().activeItems(userId);
             try {
                 checks.addAll(runCase(name, context, userId));
@@ -117,11 +132,16 @@ final class AgentMemoryMechanismMain {
             case "M6" -> retractCase(context, userId);
             case "M7" -> staleTargetCase(context, userId);
             case "M8" -> firstMessageCase(context, userId);
+            case "M9" -> backlogWithinReachCase(context, userId);
+            case "M10" -> backlogOutOfReachCase(context, userId);
             case "R1" -> crossSessionCase(context, userId);
             case "R2" -> retractPersistCase(context, userId);
             case "R3" -> supersedeCase(context, userId);
             case "R4" -> watermarkLedgerCase(context, userId);
             case "R5" -> capacityCase(context, userId);
+            case "R7" -> staleCorrectionCase(context, userId);
+            case "R8" -> staleRevivalCase(context, userId);
+            case "R9" -> clearAllCase(context, userId);
             default -> throw new IllegalArgumentException("未知用例: " + name);
         };
     }
@@ -143,7 +163,7 @@ final class AgentMemoryMechanismMain {
         awaitIdle(probe, userId, SETTLE_WINDOW_MILLIS);
 
         List<Item> before = probe.activeItems(userId);
-        String watermarkBefore = probe.watermark(userId, conversationId);
+        String watermarkBefore = probe.watermark(userId);
         long revisionBefore = probe.control(userId).revision();
 
         Racer racer = Racer.start(probe, userId, RACE_WINDOW_MILLIS, extraction -> {
@@ -162,7 +182,7 @@ final class AgentMemoryMechanismMain {
 
         Extraction settled = awaitTerminal(probe, caught.id(), SETTLE_WINDOW_MILLIS);
         List<Item> after = probe.activeItems(userId);
-        String watermarkAfter = probe.watermark(userId, conversationId);
+        String watermarkAfter = probe.watermark(userId);
         // 模型吃到 CONFLICT 常在同一轮里再调一次工具，那次是合法重试：它会正当地落库、把水位推到同一个末条
         // 生效集与水位是全局量，有重试就归属不到被测那批，这时候判红等于拿别人的成功给它定罪
         List<Extraction> retries = probe.extractions(userId, conversationId).stream()
@@ -305,7 +325,7 @@ final class AgentMemoryMechanismMain {
             return checks;
         }
         List<Extraction> extractions = awaitExtractions(probe, userId, turn.conversationId(), 1, SETTLE_WINDOW_MILLIS);
-        String watermark = probe.watermark(userId, turn.conversationId());
+        String watermark = probe.watermark(userId);
 
         // 台账上每一条推水位的抽取都必须被水位覆盖，这条不变量与判没判出东西无关
         List<String> beyond = new ArrayList<>();
@@ -508,6 +528,108 @@ final class AgentMemoryMechanismMain {
                         : "第二轮区间 " + secondFlush.fromMessageId() + ".." + secondFlush.toMessageId()
                         + "，伪造旧消息 " + forgedId));
         return checks;
+    }
+
+    // ---------------------------------------------------------------- M9 / M10：积压时本次请求的覆盖判定
+
+    /**
+     * M9：积压一批装不下，本次请求排在第二批；flush 得接着跑到罩住它，不能跑完头一批就报「已更新」
+     */
+    private static List<Check> backlogWithinReachCase(RegressionContext context, String userId) throws Exception {
+        String name = "M9";
+        AgentMemoryProbe probe = context.memory();
+        List<Check> checks = new ArrayList<>();
+        Backlog backlog = openBacklog(context, userId, BACKLOG_WITHIN_REACH);
+        try {
+            AgentTurnResult turn = ask(context, backlog.conversationId(),
+                    "记一下：我常用的机械键盘是 HHKB。请立刻调用记忆整理工具存下来。");
+            if (!turn.tools().contains(FLUSH_TOOL)) {
+                checks.add(new Check(name, "本轮调到了整理工具", Status.UNCOVERED,
+                        "模型本轮没调用 " + FLUSH_TOOL + "，用例没跑到；实际工具 " + tools(turn)));
+                return checks;
+            }
+            String requestId = probe.lastUserMessageId(userId, backlog.conversationId());
+            awaitIdle(probe, userId, SETTLE_WINDOW_MILLIS);
+            List<Extraction> flushes = flushExtractions(probe, userId, backlog.conversationId());
+            Extraction covering = settledCovering(probe, userId, requestId);
+
+            checks.add(new Check(name, "一次调用接着跑了第二批",
+                    flushes.size() == 2 ? Status.PASS : Status.FAIL,
+                    "积压 " + (BACKLOG_WITHIN_REACH + 1) + " 条加本次请求，一批 " + BATCH_SIZE + " 条；FLUSH 抽取 "
+                            + describe(flushes)));
+            checks.add(new Check(name, "本次请求由 FLUSH 批判完",
+                    covering != null && "FLUSH".equals(covering.triggerType()) && !"DROPPED".equals(covering.status())
+                            ? Status.PASS : Status.FAIL,
+                    covering == null ? "没有任何已结束的抽取罩住本次请求 " + requestId : covering.oneLine()));
+            checks.add(new Check(name, "键盘这条记住了",
+                    firstMentioning(probe.activeItems(userId), KEYBOARD) != null ? Status.PASS : Status.FAIL,
+                    "本次请求落在第二批，头一批报完就收手的话这句永远轮不到仲裁"));
+            return checks;
+        } finally {
+            probe.deleteMessages(userId, backlog.messageIds());
+        }
+    }
+
+    /**
+     * M10：积压超过三批，flush 跑满三批仍罩不住本次请求，只能如实报未完成；剩下的交给轮次收尾的后台批接着消化
+     */
+    private static List<Check> backlogOutOfReachCase(RegressionContext context, String userId) throws Exception {
+        String name = "M10";
+        AgentMemoryProbe probe = context.memory();
+        List<Check> checks = new ArrayList<>();
+        Backlog backlog = openBacklog(context, userId, BACKLOG_OUT_OF_REACH);
+        try {
+            AgentTurnResult turn = ask(context, backlog.conversationId(),
+                    "记一下：我常用的机械键盘是 HHKB。请立刻调用记忆整理工具存下来。");
+            if (!turn.tools().contains(FLUSH_TOOL)) {
+                checks.add(new Check(name, "本轮调到了整理工具", Status.UNCOVERED,
+                        "模型本轮没调用 " + FLUSH_TOOL + "，用例没跑到；实际工具 " + tools(turn)));
+                return checks;
+            }
+            String requestId = probe.lastUserMessageId(userId, backlog.conversationId());
+            // flush 在流里同步跑完，此刻台账上的 FLUSH 批就是本轮的全部；后台批要等轮次收尾才起
+            List<Extraction> flushes = flushExtractions(probe, userId, backlog.conversationId());
+            // 模型吃到「未完成」可能当轮再调一次，那次会接着把本次请求处理掉；工具名去过重，分不清调了几次
+            boolean retried = flushes.size() > FLUSH_MAX_BATCHES;
+            List<Extraction> firstCall = flushes.subList(0, Math.min(FLUSH_MAX_BATCHES, flushes.size()));
+            boolean firstCallCovered = firstCall.stream().anyMatch(item -> covers(item, requestId));
+            checks.add(new Check(name, "一次调用最多跑三批",
+                    retried ? Status.UNCOVERED : flushes.size() == FLUSH_MAX_BATCHES ? Status.PASS : Status.FAIL,
+                    (retried ? "本轮 FLUSH 批多于三批，分不清是一次跑了四批还是模型又调了一次；" : "")
+                            + "积压 " + (BACKLOG_OUT_OF_REACH + 1) + " 条加本次请求；FLUSH 抽取 " + describe(flushes)));
+            checks.add(new Check(name, "前三批都没罩住本次请求",
+                    firstCallCovered ? Status.FAIL : Status.PASS,
+                    firstCallCovered ? "本次请求落进了前三批，积压没造够，未完成那条路没验到"
+                            : "工具此时只能返回「还没处理到本次请求」，不许报已更新"));
+
+            awaitIdle(probe, userId, SETTLE_WINDOW_MILLIS);
+            Extraction covering = settledCovering(probe, userId, requestId);
+            checks.add(new Check(name, "剩下的随后接着消化",
+                    covering == null ? Status.FAIL : retried ? Status.UNCOVERED
+                            : "BACKGROUND".equals(covering.triggerType()) ? Status.PASS : Status.FAIL,
+                    covering == null ? "轮次收尾后仍没有抽取罩住本次请求"
+                            : (retried ? "模型当轮重试已把它处理掉，后台接力那条路没跑到；" : "") + covering.oneLine()));
+            return checks;
+        } finally {
+            probe.deleteMessages(userId, backlog.messageIds());
+        }
+    }
+
+    /**
+     * 先正常聊一轮拿到控制行与一条真实消息 ID，再紧跟其后造积压；闲聊不到门槛，后台批不会先把它吃掉
+     */
+    private static Backlog openBacklog(RegressionContext context, String userId, int count) throws Exception {
+        AgentMemoryProbe probe = context.memory();
+        String conversationId = ask(context, null, "先问个小问题：一年大概有多少个星期？一句话回答就行。")
+                .conversationId();
+        awaitIdle(probe, userId, SETTLE_WINDOW_MILLIS);
+        String opening = probe.lastUserMessageId(userId, conversationId);
+        List<String> messageIds = probe.forgeBacklog(userId, conversationId, opening, count);
+        System.out.println("    在 " + opening + " 之后造了 " + count + " 条积压");
+        return new Backlog(conversationId, messageIds);
+    }
+
+    private record Backlog(String conversationId, List<String> messageIds) {
     }
 
     // ---------------------------------------------------------------- R1：跨会话可见
@@ -859,6 +981,213 @@ final class AgentMemoryMechanismMain {
         return (int) items.stream().filter(item -> "CONSOLIDATION".equals(item.sourceType())).count();
     }
 
+    // ---------------------------------------------------------------- R7 / R8：旧会话积压按说话先后处理
+
+    /**
+     * R7：旧会话里没抽的「我住杭州」，不许在用户到别的会话改成南京之后再把南京盖回去
+     * 机制判据是那句旧话随 B 的整理按序处理掉、此后再没有第二批罩住它；生效集与新会话回答是端到端判据
+     */
+    private static List<Check> staleCorrectionCase(RegressionContext context, String userId) throws Exception {
+        String name = "R7";
+        AgentMemoryProbe probe = context.memory();
+        List<Check> checks = new ArrayList<>();
+        StaleMention stale = plantStaleMention(context, userId, name, checks);
+        if (stale == null) {
+            return checks;
+        }
+        AgentTurnResult update = ask(context, null,
+                "我的居住城市已经变了，现在长期住在南京，不再住杭州。请立刻调用记忆整理工具更新我的长期记忆。");
+        if (!update.tools().contains(FLUSH_TOOL)) {
+            checks.add(new Check(name, "B 调到了整理工具", Status.UNCOVERED,
+                    "模型本轮没调用 " + FLUSH_TOOL + "；实际工具 " + tools(update)));
+            return checks;
+        }
+        awaitIdle(probe, userId, SETTLE_WINDOW_MILLIS);
+        checks.add(orderedWithFlushOf(name, probe, userId, stale, update.conversationId()));
+
+        revisitStaleConversation(context, userId, stale);
+        checks.add(processedOnce(name, probe, userId, stale));
+        List<Item> active = probe.activeItems(userId);
+        boolean nanjing = active.stream().anyMatch(item -> item.mentions(NEW_CITY));
+        boolean staleCity = active.stream().anyMatch(item -> item.mentions(OLD_CITY) && !item.mentions(NEW_CITY));
+        checks.add(new Check(name, "生效集仍是南京",
+                nanjing && !staleCity ? Status.PASS : Status.FAIL, "生效条目 " + contents(active)));
+        AgentTurnResult fresh = ask(context, null, "你记得我现在长期居住在哪个城市吗？只回答城市名，不知道就说不知道。");
+        checks.add(new Check(name, "新会话答南京",
+                fresh.answer().contains(NEW_CITY) && !fresh.answer().contains(OLD_CITY) ? Status.PASS : Status.FAIL,
+                "回答：" + abbreviate(fresh.answer(), 60)));
+        return checks;
+    }
+
+    /**
+     * R8：用户删掉住址之后，旧会话里没抽的那句「我住杭州」不许被后台读到又写回来
+     */
+    private static List<Check> staleRevivalCase(RegressionContext context, String userId) throws Exception {
+        String name = "R8";
+        AgentMemoryProbe probe = context.memory();
+        List<Check> checks = new ArrayList<>();
+        StaleMention stale = plantStaleMention(context, userId, name, checks);
+        if (stale == null) {
+            return checks;
+        }
+        AgentTurnResult remember = ask(context, null, "请记住：我的居住城市是杭州。请立刻调用记忆整理工具保存。");
+        awaitIdle(probe, userId, SETTLE_WINDOW_MILLIS);
+        if (firstMentioning(probe.activeItems(userId), OLD_CITY) == null) {
+            checks.add(new Check(name, "住址已记住", Status.UNCOVERED, "没记住就没有可删的目标；实际工具 " + tools(remember)));
+            return checks;
+        }
+        checks.add(orderedWithFlushOf(name, probe, userId, stale, remember.conversationId()));
+        ask(context, remember.conversationId(),
+                "请删除长期记忆中关于我居住城市的记录，不再保存我的住址。请立刻调用记忆整理工具执行。");
+        awaitIdle(probe, userId, SETTLE_WINDOW_MILLIS);
+        if (firstMentioning(probe.activeItems(userId), OLD_CITY) != null) {
+            checks.add(new Check(name, "住址已删除", Status.UNCOVERED, "删除没生效，写回判定无从谈起"));
+            return checks;
+        }
+
+        revisitStaleConversation(context, userId, stale);
+        checks.add(processedOnce(name, probe, userId, stale));
+        Item revived = firstMentioning(probe.activeItems(userId), OLD_CITY);
+        checks.add(new Check(name, "删掉的住址没被写回",
+                revived == null ? Status.PASS : Status.FAIL,
+                revived == null ? "回到旧会话聊了两轮，生效集里仍没有「" + OLD_CITY + "」"
+                        : "又冒出 " + revived.id() + "（" + revived.sourceType() + "）：" + revived.content()));
+        AgentTurnResult fresh = ask(context, null, "你记得我现在长期居住在哪个城市吗？只回答城市名，不知道就说不知道。");
+        checks.add(new Check(name, "新会话答不知道",
+                fresh.answer().contains(OLD_CITY) ? Status.FAIL : Status.PASS,
+                "回答：" + abbreviate(fresh.answer(), 60)));
+        return checks;
+    }
+
+    /**
+     * 在新会话 A 里随口带出住址而不要求记住；模型当轮就整理了的话没有积压，本用例的前提不成立
+     */
+    private static StaleMention plantStaleMention(RegressionContext context, String userId, String name,
+                                                  List<Check> checks) throws Exception {
+        AgentMemoryProbe probe = context.memory();
+        AgentTurnResult turn = ask(context, null, "我住在杭州，平时写 Java。16GB 内存通常够用吗？请直接用一句话回答。");
+        awaitIdle(probe, userId, SETTLE_WINDOW_MILLIS);
+        String messageId = probe.lastUserMessageId(userId, turn.conversationId());
+        if (turn.tools().contains(FLUSH_TOOL) || !probe.extractionsCovering(userId, messageId).isEmpty()) {
+            checks.add(new Check(name, "旧会话留下积压", Status.UNCOVERED,
+                    "A 那句当轮就被整理了，构造不出「旧话晚处理」的现场；实际工具 " + tools(turn)));
+            return null;
+        }
+        System.out.println("    A 会话留下积压 " + messageId);
+        return new StaleMention(turn.conversationId(), messageId);
+    }
+
+    /**
+     * 回到 A 聊两件与住址无关的事，给后台批与模型自发的整理都留出机会
+     */
+    private static void revisitStaleConversation(RegressionContext context, String userId, StaleMention stale)
+            throws Exception {
+        ask(context, stale.conversationId(), "先解释一下买笔记本时内存和硬盘分别影响什么，简单说就可以。");
+        ask(context, stale.conversationId(), "再解释一下屏幕尺寸与便携性怎么取舍，不需要查订单，也不需要下单。");
+        awaitIdle(context.memory(), userId, SETTLE_WINDOW_MILLIS);
+    }
+
+    /**
+     * 按用户排序后，旧话排在 B 那句之前，B 的整理会顺带把它先处理掉
+     */
+    private static Check orderedWithFlushOf(String name, AgentMemoryProbe probe, String userId,
+                                            StaleMention stale, String flushConversationId) throws Exception {
+        Extraction covering = settledCovering(probe, userId, stale.messageId());
+        boolean ordered = covering != null && covering.conversationId().equals(flushConversationId);
+        return new Check(name, "旧话随 B 的整理按序处理", ordered ? Status.PASS : Status.FAIL,
+                covering == null ? "B 整理完了，A 那句仍没被任何一批处理，还在按会话切批"
+                        : "罩住它的是 " + covering.oneLine() + "，触发会话 " + covering.conversationId());
+    }
+
+    /**
+     * 同一句话推水位的处理只许有一次；第二次就是旧话在新状态之上又判了一遍
+     */
+    private static Check processedOnce(String name, AgentMemoryProbe probe, String userId, StaleMention stale)
+            throws Exception {
+        List<Extraction> settled = probe.extractionsCovering(userId, stale.messageId()).stream()
+                .filter(Extraction::advancesWatermark).toList();
+        return new Check(name, "旧话只被处理一次", settled.size() == 1 ? Status.PASS : Status.FAIL,
+                "罩住 " + stale.messageId() + " 的已结束抽取 " + describe(settled));
+    }
+
+    private record StaleMention(String conversationId, String messageId) {
+    }
+
+    // ---------------------------------------------------------------- R9：对话清空全部
+
+    /**
+     * R9：清空之后生效集为空、新会话认不出旧事实；清空之后再说的照常记住
+     * 基线条目也会被一并清掉，收尾的还原会把它们放回来
+     */
+    private static List<Check> clearAllCase(RegressionContext context, String userId) throws Exception {
+        String name = "R9";
+        AgentMemoryProbe probe = context.memory();
+        List<Check> checks = new ArrayList<>();
+        String conversationId = ask(context, null,
+                "请长期记住两件事：我常用的机械键盘是 HHKB，我养了一只叫豆豆的柯基。请立刻调用记忆整理工具保存。")
+                .conversationId();
+        awaitIdle(probe, userId, SETTLE_WINDOW_MILLIS);
+        List<Item> planted = probe.activeItems(userId);
+        if (firstMentioning(planted, KEYBOARD) == null && firstMentioning(planted, PET) == null) {
+            checks.add(new Check(name, "两件事已记住", Status.UNCOVERED, "什么都没记住，清空无从验起"));
+            return checks;
+        }
+
+        AgentTurnResult clear = ask(context, conversationId,
+                "请清空你保存的关于我的全部长期记忆，包括键盘和宠物，不是只在本次聊天里忽略。请立刻调用记忆整理工具执行。");
+        awaitIdle(probe, userId, SETTLE_WINDOW_MILLIS);
+        String clearRequestId = probe.lastUserMessageId(userId, conversationId);
+        List<Item> afterClear = probe.activeItems(userId);
+        checks.add(new Check(name, "清空后生效集为空",
+                afterClear.isEmpty() ? Status.PASS : Status.FAIL,
+                afterClear.isEmpty() ? "清空前 " + planted.size() + " 条，清空后 0 条；实际工具 " + tools(clear)
+                        : "仍有 " + contents(afterClear)));
+        Extraction settled = settledCovering(probe, userId, clearRequestId);
+        checks.add(new Check(name, "清空请求那批结成 WRITTEN",
+                settled != null && "WRITTEN".equals(settled.status()) ? Status.PASS : Status.FAIL,
+                settled == null ? "没有已结束的抽取罩住清空请求" : settled.oneLine()));
+
+        ask(context, conversationId, "清空之后请记住：我常驻南京。请立刻调用记忆整理工具保存。");
+        awaitIdle(probe, userId, SETTLE_WINDOW_MILLIS);
+        List<Item> afterAdd = probe.activeItems(userId);
+        boolean onlyNew = firstMentioning(afterAdd, NEW_CITY) != null
+                && afterAdd.stream().noneMatch(item -> item.mentions(KEYBOARD) || item.mentions(PET));
+        checks.add(new Check(name, "清空后新说的照常记住", onlyNew ? Status.PASS : Status.FAIL,
+                "生效条目 " + contents(afterAdd)));
+
+        AgentTurnResult fresh = ask(context, null, "我养宠物了吗？平时用什么键盘？直接说，不知道就说不知道。");
+        boolean forgotten = !fresh.answer().contains(PET) && !fresh.answer().contains(KEYBOARD);
+        checks.add(new Check(name, "新会话认不出清掉的事",
+                forgotten ? Status.PASS : Status.FAIL, "回答：" + abbreviate(fresh.answer(), 80)));
+        return checks;
+    }
+
+    /**
+     * 这条会话触发的 FLUSH 批，按落库顺序
+     */
+    private static List<Extraction> flushExtractions(AgentMemoryProbe probe, String userId, String conversationId)
+            throws Exception {
+        return probe.extractions(userId, conversationId).stream()
+                .filter(item -> "FLUSH".equals(item.triggerType()))
+                .toList();
+    }
+
+    /**
+     * 罩住这条消息且推了水位的那批；按用户首尾相接，正常只会有一条
+     */
+    private static Extraction settledCovering(AgentMemoryProbe probe, String userId, String messageId)
+            throws Exception {
+        List<Extraction> settled = probe.extractionsCovering(userId, messageId).stream()
+                .filter(Extraction::advancesWatermark)
+                .toList();
+        return settled.isEmpty() ? null : settled.get(settled.size() - 1);
+    }
+
+    private static boolean covers(Extraction extraction, String messageId) {
+        return extraction.fromMessageId().compareTo(messageId) <= 0
+                && extraction.toMessageId().compareTo(messageId) >= 0;
+    }
+
     // ---------------------------------------------------------------- 赛跑与等待
 
     /**
@@ -1076,12 +1405,17 @@ final class AgentMemoryMechanismMain {
             case "M6" -> "对话撤回后不再注入";
             case "M7" -> "指不着的目标只丢这一条";
             case "M8" -> "抽取下界的两面";
+            case "M9" -> "积压一批装不下时跑到覆盖本次请求";
+            case "M10" -> "三批跑完仍没轮到本次请求如实报未完成";
             case "R1" -> "跨会话可见";
             case "R2" -> "撤回过的记忆不复活";
             case "R3" -> "改口之后只剩新值";
             case "R4" -> "水位不重不漏";
             case "R5" -> "容量上界与受限合并";
             case "R6" -> "关闭窗口不补抽";
+            case "R7" -> "旧会话积压不覆盖新纠正";
+            case "R8" -> "删除之后旧会话积压不写回";
+            case "R9" -> "对话清空全部长期记忆";
             default -> name;
         };
     }
@@ -1100,6 +1434,8 @@ final class AgentMemoryMechanismMain {
         System.out.println("  本次用例        " + String.join(", ", selected));
         System.out.println("  用例会改库      造并发、翻开关、灌语料都要动库；每条跑完把生效集还原到基线，"
                 + "假数据按 " + AgentMemoryProbe.FORGED_ID_PREFIX + " 前缀物理删");
+        System.out.println("  越过积压        每条用例开场把该账号还没抽取的消息整片越过（台账留 "
+                + AgentMemoryProbe.DRAIN_ID_PREFIX + " 前缀行，不删），这些话不会再进长期记忆，建议用专用账号跑");
     }
 
     private static void printChecks(List<Check> checks) {

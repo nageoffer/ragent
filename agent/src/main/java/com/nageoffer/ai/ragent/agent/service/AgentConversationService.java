@@ -31,7 +31,7 @@ import java.util.List;
 public interface AgentConversationService {
 
     /**
-     * 首问建会话（截断问题作标题），已存在则刷新最后活动时间，返回会话标题
+     * 首问使用服务端生成的新 ID 建会话，已有会话刷新最后活动时间，返回标题
      */
     String touchConversation(String conversationId, String userId, String question);
 
@@ -64,7 +64,7 @@ public interface AgentConversationService {
     void expirePendingConfirm(String conversationId, String userId, String messageId);
 
     /**
-     * 该会话是否有待确认的操作
+     * 校验当前用户的会话存在，并查询是否有待确认的操作；不存在或已删除时抛出异常
      */
     boolean hasPendingConfirm(String conversationId, String userId);
 

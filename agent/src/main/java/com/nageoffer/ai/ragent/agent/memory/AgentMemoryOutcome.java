@@ -19,8 +19,14 @@ package com.nageoffer.ai.ragent.agent.memory;
 
 /**
  * 一次抽取的结局；mutated 表示记忆集整体有没有变（含合并/淘汰），与 applied 独立
+ * cleared 表示执行过清空，clearedItems 是清掉的条数，两者分开是因为「原本就空」也得单独告诉用户
  */
-public record AgentMemoryOutcome(Status status, int applied, int pending, boolean mutated) {
+public record AgentMemoryOutcome(Status status, int applied, int pending, boolean mutated,
+                                 boolean cleared, int clearedItems) {
+
+    public AgentMemoryOutcome(Status status, int applied, int pending, boolean mutated) {
+        this(status, applied, pending, mutated, false, 0);
+    }
 
     public enum Status {
 
@@ -40,7 +46,7 @@ public record AgentMemoryOutcome(Status status, int applied, int pending, boolea
         BELOW_THRESHOLD,
 
         /**
-         * 同会话已有在飞抽取
+         * 同用户已有在飞抽取
          */
         BUSY,
 
@@ -67,11 +73,42 @@ public record AgentMemoryOutcome(Status status, int applied, int pending, boolea
         /**
          * 判完有落库
          */
-        WRITTEN
+        WRITTEN,
+
+        /**
+         * 只有显式整理会出现：连跑几批都判完了，却还没轮到本次请求那条消息
+         */
+        INCOMPLETE
     }
 
     static AgentMemoryOutcome of(Status status, int pending) {
         return new AgentMemoryOutcome(status, 0, pending, false);
+    }
+
+    /**
+     * 这批判完并结算了，水位已推过它；显式整理据此决定要不要接着跑下一批
+     */
+    boolean settled() {
+        return status == Status.WRITTEN || status == Status.SETTLED_EMPTY;
+    }
+
+    /**
+     * 接上后一批：后一批没判完就以它为准，判完了则任一批落过库都算 WRITTEN
+     * applied 累计的是生效决策数，不是新增条数；后一批清空过的话，前面几批写的已随之失效，计数只认清空之后
+     */
+    AgentMemoryOutcome then(AgentMemoryOutcome next) {
+        boolean anyMutated = mutated || next.mutated;
+        int totalPending = pending + next.pending;
+        Status merged = next.settled() && status == Status.WRITTEN ? Status.WRITTEN : next.status;
+        if (next.cleared) {
+            return new AgentMemoryOutcome(merged, next.applied, totalPending, anyMutated, true, next.clearedItems);
+        }
+        return new AgentMemoryOutcome(merged, applied + next.applied, totalPending, anyMutated,
+                cleared, clearedItems);
+    }
+
+    AgentMemoryOutcome withStatus(Status override) {
+        return new AgentMemoryOutcome(override, applied, pending, mutated, cleared, clearedItems);
     }
 
     /**

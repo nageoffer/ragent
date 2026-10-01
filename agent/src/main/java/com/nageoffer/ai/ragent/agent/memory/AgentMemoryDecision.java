@@ -17,6 +17,8 @@
 
 package com.nageoffer.ai.ragent.agent.memory;
 
+import java.util.List;
+
 /**
  * Judge 的一条决策，描述的是「处理完本批之后该长什么样」而不是逐句事件
  */
@@ -40,7 +42,12 @@ public record AgentMemoryDecision(Action action, String targetId, String content
         /**
          * 用户明确要求忘掉某条目
          */
-        RETRACT
+        RETRACT,
+
+        /**
+         * 用户明确要求清空全部长期记忆；同批只许再带清空之后要记的 ADD，由 AgentMemoryJudge 解析时把关
+         */
+        CLEAR
     }
 
     public static AgentMemoryDecision add(String content) {
@@ -53,6 +60,14 @@ public record AgentMemoryDecision(Action action, String targetId, String content
 
     public static AgentMemoryDecision retract(String targetId) {
         return new AgentMemoryDecision(Action.RETRACT, targetId, null);
+    }
+
+    public static AgentMemoryDecision clear() {
+        return new AgentMemoryDecision(Action.CLEAR, null, null);
+    }
+
+    static boolean containsClear(List<AgentMemoryDecision> decisions) {
+        return decisions.stream().anyMatch(decision -> decision.action() == Action.CLEAR);
     }
 
     /**

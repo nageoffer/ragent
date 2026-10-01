@@ -25,6 +25,7 @@ import org.apache.ibatis.annotations.Update;
 
 /**
  * 抽取台账 Mapper，水位是这张表上的聚合查询而不是独立游标行
+ * 水位、在飞与重试都按用户不按会话：记忆只有一份，消费顺序必须是用户说话的先后
  */
 @SuppressWarnings({"SqlDialectInspection", "SqlNoDataSourceInspection", "SqlResolve"})
 public interface AgentMemoryExtractionMapper extends BaseMapper<AgentMemoryExtractionDO> {
@@ -35,11 +36,26 @@ public interface AgentMemoryExtractionMapper extends BaseMapper<AgentMemoryExtra
     @Select("""
             SELECT max(to_message_id)
             FROM t_agent_memory_extraction
-            WHERE user_id = #{userId} AND conversation_id = #{conversationId}
+            WHERE user_id = #{userId}
               AND status IN ('WRITTEN', 'NOOP', 'DROPPED')
             """)
-    String selectWatermark(@Param("userId") String userId,
-                           @Param("conversationId") String conversationId);
+    String selectWatermark(@Param("userId") String userId);
+
+    /**
+     * 覆盖某条用户消息的那次已结束抽取的状态，没有返回 null
+     * 批次在用户维度首尾相接，区间包含即批内成员；改版前按会话切的旧批次区间会互相交叠，但只罩得住改版前的消息
+     */
+    @Select("""
+            SELECT status
+            FROM t_agent_memory_extraction
+            WHERE user_id = #{userId}
+              AND status IN ('WRITTEN', 'NOOP', 'DROPPED')
+              AND from_message_id <= #{messageId} AND to_message_id >= #{messageId}
+            ORDER BY to_message_id DESC
+            LIMIT 1
+            """)
+    String selectSettledStatusCovering(@Param("userId") String userId,
+                                       @Param("messageId") String messageId);
 
     /**
      * 结算：只允许从 PROCESSING 出发，重复结算返回 0
@@ -63,12 +79,11 @@ public interface AgentMemoryExtractionMapper extends BaseMapper<AgentMemoryExtra
     @Update("""
             UPDATE t_agent_memory_extraction
             SET status = 'CONFLICT', settle_time = CURRENT_TIMESTAMP
-            WHERE user_id = #{userId} AND conversation_id = #{conversationId}
+            WHERE user_id = #{userId}
               AND status = 'PROCESSING'
               AND create_time < CURRENT_TIMESTAMP - make_interval(mins => #{staleMinutes})
             """)
     int recycleStale(@Param("userId") String userId,
-                     @Param("conversationId") String conversationId,
                      @Param("staleMinutes") int staleMinutes);
 
     /**
@@ -77,10 +92,9 @@ public interface AgentMemoryExtractionMapper extends BaseMapper<AgentMemoryExtra
     @Select("""
             SELECT coalesce(max(attempt_count), 0)
             FROM t_agent_memory_extraction
-            WHERE user_id = #{userId} AND conversation_id = #{conversationId}
+            WHERE user_id = #{userId}
               AND to_message_id = #{toMessageId}
             """)
     int selectSpentAttempts(@Param("userId") String userId,
-                            @Param("conversationId") String conversationId,
                             @Param("toMessageId") String toMessageId);
 }

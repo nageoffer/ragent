@@ -5,8 +5,11 @@ export type AgentMessageUiStatus = "streaming" | "done" | "cancelled" | "error";
 // AWAITING_CONFIRM 是唯一的非终态 表示这条回答停在写操作确认卡片上
 export type AgentPersistedMessageStatus = "NORMAL" | "INTERRUPTED" | "AWAITING_CONFIRM";
 
+// 文本增量与文本块共用内容类型
+export type AgentTextKind = "answer" | "reasoning" | "error";
+
 // hint 为流式过程中的运行提示 只存在于前端时间线 后端不落库
-export type AgentBlockKind = "reasoning" | "answer" | "tool" | "hint" | "confirm" | "error";
+export type AgentBlockKind = AgentTextKind | "tool" | "hint" | "confirm";
 
 /**
  * 工具块状态 与后端同名同值 前端照抄不推断
@@ -20,7 +23,7 @@ export type AgentToolStatus =
   | "denied"
   | "interrupted";
 
-// 确认卡状态 submitting / expired 只存在于前端
+// 确认卡记录决定及失效状态；只有 submitting 是前端提交中的临时状态
 export type AgentConfirmStatus = "pending" | "submitting" | "approved" | "denied" | "expired";
 
 export type AgentBlockStatus = AgentToolStatus | AgentConfirmStatus;
@@ -129,14 +132,15 @@ export interface AgentMetaPayload {
 }
 
 export interface AgentMessageDelta {
-  type: string;
+  type: AgentTextKind;
   delta: string;
 }
 
 /**
- * SSE tool 帧 一次调用收到 pending / running / 终态三帧 按 NON_NULL 序列化
+ * SSE block 的工具载荷，通过同一 toolCallId 更新状态、结果与时间
  */
 export interface AgentToolProgress {
+  kind: "tool";
   toolCallId?: string | null;
   name: string;
   displayName: string;
@@ -157,12 +161,15 @@ export interface AgentToolProgress {
  * SSE block 帧 文本封口后服务端下发起止 不带正文
  */
 export interface AgentTextBlockSeal {
-  kind: AgentBlockKind;
+  kind: AgentTextKind;
   at?: string | null;
   startedAt?: number | null;
   endedAt?: number | null;
   durationMs?: number | null;
 }
+
+// 同一 block 事件的两种载荷，由 kind 区分
+export type AgentBlockUpdate = AgentTextBlockSeal | AgentToolProgress;
 
 export interface AgentHintPayload {
   code: string;

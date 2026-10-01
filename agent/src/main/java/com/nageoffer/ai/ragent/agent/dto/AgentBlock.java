@@ -76,7 +76,8 @@ public class AgentBlock {
     private String displayName;
 
     /**
-     * tool 状态 pending / running / awaiting / done / failed / denied / interrupted，confirm 终态 pending / approved / denied
+     * tool 调用状态 pending / running / awaiting / done / failed / denied / interrupted；
+     * confirm 用户决定 pending / approved / denied，expired 表示失效；approved 不代表工具执行成功
      */
     private String status;
 

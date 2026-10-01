@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 
 import type {
+  AgentBlockUpdate,
   AgentBlockUI,
   AgentCompletionPayload,
   AgentConfirmPayload,
@@ -12,9 +13,7 @@ import type {
   AgentMessageDelta,
   AgentMetaPayload,
   AgentRawFrame,
-  AgentSession,
-  AgentTextBlockSeal,
-  AgentToolProgress
+  AgentSession
 } from "@/types/agent";
 import {
   batchDeleteAgentSessions,
@@ -27,6 +26,7 @@ import {
 import { buildQuery } from "@/utils/helpers";
 import { createAgentStreamResponse } from "@/hooks/useAgentStream";
 import {
+  applyConfirmStatus,
   applyTextBlockSeal,
   applyToolFrame,
   replayBlock,
@@ -153,7 +153,7 @@ const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, ""
 
 export const useAgentChatStore = create<AgentChatState>((set, get) => {
   // 文本增量按块规则落位：敞开块同类则追加 否则封口旧块并新开
-  const appendText = (kind: "reasoning" | "answer" | "error", delta: string) => {
+  const appendText = (kind: AgentMessageDelta["type"], delta: string) => {
     if (!delta) return;
     set((state) => {
       let nextOpenId = state.streamOpenBlockId;
@@ -189,7 +189,7 @@ export const useAgentChatStore = create<AgentChatState>((set, get) => {
     });
   };
 
-  // 改写确认卡状态；带上 messageStatus 时一并落定挂起态，卡片有了裁决这条消息就不该再拦住新提问
+  // 结算确认卡及其关联的拒绝调用；带上 messageStatus 时一并解除消息挂起态
   const setConfirmStatus = (
     messageId: string,
     blockId: number,
@@ -202,9 +202,7 @@ export const useAgentChatStore = create<AgentChatState>((set, get) => {
           ? {
               ...message,
               ...(messageStatus ? { messageStatus } : {}),
-              blocks: message.blocks.map((block) =>
-                block.id === blockId ? { ...block, status } : block
-              )
+              blocks: applyConfirmStatus(message.blocks, blockId, status)
             }
           : message
       )
@@ -270,38 +268,34 @@ export const useAgentChatStore = create<AgentChatState>((set, get) => {
       onMessage: (payload: AgentMessageDelta) => {
         if (!payload || typeof payload !== "object") return;
         // 中断提示单开 error 块，跟模型说的话不是一个身份，样式与刷新后回放都按块走
-        if (payload.type !== "response" && payload.type !== "error") return;
+        if (payload.type !== "answer" && payload.type !== "error") return;
         if (get().streamingMessageId !== assistantId) return;
-        appendText(payload.type === "error" ? "error" : "answer", payload.delta);
+        appendText(payload.type, payload.delta);
       },
       onThinking: (payload: AgentMessageDelta) => {
         if (!payload || typeof payload !== "object") return;
-        if (payload.type !== "think") return;
+        if (payload.type !== "reasoning") return;
         if (get().streamingMessageId !== assistantId) return;
-        appendText("reasoning", payload.delta);
+        appendText(payload.type, payload.delta);
       },
-      // 文本封口帧 服务端下发起止
-      onBlock: (payload: AgentTextBlockSeal) => {
+      // 块更新：工具更新状态和结果，文本只补齐时间
+      onBlock: (payload: AgentBlockUpdate) => {
         if (!payload || typeof payload !== "object" || !payload.kind) return;
         if (get().streamingMessageId !== assistantId) return;
+        if (payload.kind === "tool") {
+          if (!payload.name || !payload.status) return;
+        } else if (payload.kind !== "answer" && payload.kind !== "reasoning" && payload.kind !== "error") {
+          return;
+        }
         set((state) => ({
+          // 只有工具更新会结束当前文本块；文本计时可能晚于下一段文字到达
+          streamOpenBlockId: payload.kind === "tool" ? null : state.streamOpenBlockId,
           messages: state.messages.map((message) => {
             if (message.id !== state.streamingMessageId) return message;
             if (message.status === "cancelled" || message.status === "error") return message;
-            return { ...message, blocks: applyTextBlockSeal(message.blocks ?? [], payload) };
-          })
-        }));
-      },
-      // 工具帧 按帧照抄状态与耗时
-      onTool: (payload: AgentToolProgress) => {
-        if (!payload || typeof payload !== "object" || !payload.name || !payload.status) return;
-        if (get().streamingMessageId !== assistantId) return;
-        set((state) => ({
-          // 任何工具事件都封口当前文本块 与后端分段规则保持一致
-          streamOpenBlockId: null,
-          messages: state.messages.map((message) => {
-            if (message.id !== state.streamingMessageId) return message;
-            if (message.status === "cancelled" || message.status === "error") return message;
+            if (payload.kind !== "tool") {
+              return { ...message, blocks: applyTextBlockSeal(message.blocks ?? [], payload) };
+            }
             const sealed = sealOpenBlock([...(message.blocks ?? [])], state.streamOpenBlockId);
             return {
               ...message,

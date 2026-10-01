@@ -18,11 +18,12 @@
 package com.nageoffer.ai.ragent.agent.tool;
 
 import cn.hutool.core.util.StrUtil;
-import com.nageoffer.ai.ragent.agent.enums.AgentMemoryTriggerType;
 import com.nageoffer.ai.ragent.agent.memory.AgentMemoryOutcome;
+import com.nageoffer.ai.ragent.agent.memory.AgentMemoryOutcome.Status;
 import com.nageoffer.ai.ragent.agent.memory.AgentMemoryPipeline;
 import com.nageoffer.ai.ragent.agent.memory.AgentUserMemoryMiddleware;
 import com.nageoffer.ai.ragent.agent.trace.AgentToolBodyTracer;
+import com.nageoffer.ai.ragent.agent.trace.AgentTraceContextKeys;
 import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.message.TextBlock;
 import io.agentscope.core.message.ToolResultBlock;
@@ -93,12 +94,16 @@ public class MemoryFlushTool implements AgentTool {
         String conversationId = Optional.ofNullable(runtimeContext)
                 .map(RuntimeContext::getSessionId)
                 .orElse(null);
-        if (StrUtil.isBlank(userId) || StrUtil.isBlank(conversationId)) {
-            log.warn("记忆整理工具拿不到会话身份, 本次不整理");
+        // 本轮答复挂的那条用户消息就是本次请求；拿不到就判不了「处理到了没有」，不能硬跑后报成功
+        String requestMessageId = runtimeContext == null
+                ? null
+                : runtimeContext.get(AgentTraceContextKeys.REPLY_TO_MESSAGE_ID) instanceof String id ? id : null;
+        if (StrUtil.isBlank(userId) || StrUtil.isBlank(conversationId) || StrUtil.isBlank(requestMessageId)) {
+            log.warn("记忆整理工具拿不到会话身份或本次请求, 本次不整理");
             return buildResult(toolCallId, "当前会话无法整理记忆，本次内容未能写入", true);
         }
         try {
-            AgentMemoryOutcome outcome = memoryPipeline.extract(userId, conversationId, AgentMemoryTriggerType.FLUSH);
+            AgentMemoryOutcome outcome = memoryPipeline.flush(userId, conversationId, requestMessageId);
             // 刷新认「记忆集变没变」不认「落了几条决策」：合并落库而决策全灭时 applied 为零、库已经变了
             if (outcome.mutated()) {
                 refreshSnapshot(runtimeContext, userId);
@@ -127,11 +132,15 @@ public class MemoryFlushTool implements AgentTool {
      * 没写进去的一律 ERROR，不留 default 确保新增枚举值编译期报错
      */
     private ToolResultBlock render(String toolCallId, AgentMemoryOutcome outcome) {
+        if (outcome.cleared() && (outcome.status() == Status.WRITTEN || outcome.status() == Status.SETTLED_EMPTY)) {
+            return buildResult(toolCallId, clearedText(outcome), false);
+        }
         return switch (outcome.status()) {
             case WRITTEN -> buildResult(toolCallId, "记忆已更新，本次生效 " + outcome.applied() + " 条", false);
             case SETTLED_EMPTY -> buildResult(toolCallId, outcome.mutated()
                     ? "本批对话没有需要新记住的内容，已顺手合并精简了既有记忆"
                     : "本批对话已整理完，其中没有需要长期记住的内容", false);
+            case INCOMPLETE -> buildResult(toolCallId, "只整理了较早积压的一部分对话，还没处理到本次请求，本次内容尚未生效", true);
             case NOTHING_PENDING -> buildResult(toolCallId, "最近的对话都已整理过，这次没有新内容需要处理", false);
             // 门槛只挡后台批，flush 走到这里说明管道分叉错了
             case BELOW_THRESHOLD -> throw new IllegalStateException("记忆整理工具收到只属于后台抽取的门槛结局");
@@ -142,6 +151,22 @@ public class MemoryFlushTool implements AgentTool {
             case CONFLICT -> buildResult(toolCallId, "记忆刚被另一次整理改动，本次未写入，下次对话时会再试一次", true);
             case FAILED -> buildResult(toolCallId, "记忆整理失败，本次内容未能写入", true);
         };
+    }
+
+    /**
+     * 清空单列文案：普通的「生效 N 条」会被模型说成清空了，原本就空的也得如实交代
+     * 清空之后只报生效变更数：跨批时后面几批还可能改写或撤回清空后记下的条目，说成「新记下」会多报
+     */
+    private String clearedText(AgentMemoryOutcome outcome) {
+        if (outcome.applied() == 0) {
+            return outcome.clearedItems() > 0
+                    ? "已清空全部长期记忆，共清除 " + outcome.clearedItems() + " 条"
+                    : "长期记忆原本就是空的，当前已无长期记忆";
+        }
+        String cleared = outcome.clearedItems() > 0
+                ? "已清空全部旧的长期记忆，共清除 " + outcome.clearedItems() + " 条"
+                : "长期记忆原本就是空的，无需清除";
+        return cleared + "；清空之后的发言又生效了 " + outcome.applied() + " 条记忆变更";
     }
 
     private ToolResultBlock buildResult(String toolCallId, String text, boolean isError) {

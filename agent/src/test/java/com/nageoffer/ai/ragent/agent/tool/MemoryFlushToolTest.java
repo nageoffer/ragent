@@ -17,13 +17,13 @@
 
 package com.nageoffer.ai.ragent.agent.tool;
 
-import com.nageoffer.ai.ragent.agent.enums.AgentMemoryTriggerType;
 import com.nageoffer.ai.ragent.agent.memory.AgentMemoryItem;
 import com.nageoffer.ai.ragent.agent.memory.AgentMemoryOutcome;
 import com.nageoffer.ai.ragent.agent.memory.AgentMemoryOutcome.Status;
 import com.nageoffer.ai.ragent.agent.memory.AgentMemoryPipeline;
 import com.nageoffer.ai.ragent.agent.memory.AgentMemorySnapshot;
 import com.nageoffer.ai.ragent.agent.memory.AgentUserMemoryMiddleware;
+import com.nageoffer.ai.ragent.agent.trace.AgentTraceContextKeys;
 import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.message.TextBlock;
 import io.agentscope.core.message.ToolResultBlock;
@@ -43,12 +43,14 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class MemoryFlushToolTest {
 
     private static final String USER_ID = "2001";
     private static final String CONVERSATION_ID = "3001";
+    private static final String REQUEST_ID = "4001";
 
     private AgentMemoryPipeline memoryPipeline;
     private MemoryFlushTool tool;
@@ -63,7 +65,7 @@ class MemoryFlushToolTest {
     void shouldRefreshSnapshotAfterWrite() {
         AgentMemorySnapshot refreshed = new AgentMemorySnapshot(
                 List.of(new AgentMemoryItem("m-1", "用户穿 XL 码")));
-        when(memoryPipeline.extract(USER_ID, CONVERSATION_ID, AgentMemoryTriggerType.FLUSH))
+        when(memoryPipeline.flush(USER_ID, CONVERSATION_ID, REQUEST_ID))
                 .thenReturn(new AgentMemoryOutcome(Status.WRITTEN, 2, 3, true));
         when(memoryPipeline.reloadSnapshot(USER_ID)).thenReturn(refreshed);
         RuntimeContext runtimeContext = newRuntimeContext();
@@ -82,7 +84,7 @@ class MemoryFlushToolTest {
      */
     @Test
     void shouldReportSettledEmptyWithoutReloading() {
-        when(memoryPipeline.extract(USER_ID, CONVERSATION_ID, AgentMemoryTriggerType.FLUSH))
+        when(memoryPipeline.flush(USER_ID, CONVERSATION_ID, REQUEST_ID))
                 .thenReturn(new AgentMemoryOutcome(Status.SETTLED_EMPTY, 0, 3, false));
         RuntimeContext runtimeContext = newRuntimeContext();
 
@@ -100,7 +102,7 @@ class MemoryFlushToolTest {
     void shouldRefreshSnapshotWhenSettledEmptyButMutated() {
         AgentMemorySnapshot refreshed = new AgentMemorySnapshot(
                 List.of(new AgentMemoryItem("m-9", "合并后的条目")));
-        when(memoryPipeline.extract(USER_ID, CONVERSATION_ID, AgentMemoryTriggerType.FLUSH))
+        when(memoryPipeline.flush(USER_ID, CONVERSATION_ID, REQUEST_ID))
                 .thenReturn(new AgentMemoryOutcome(Status.SETTLED_EMPTY, 0, 3, true));
         when(memoryPipeline.reloadSnapshot(USER_ID)).thenReturn(refreshed);
         RuntimeContext runtimeContext = newRuntimeContext();
@@ -120,10 +122,10 @@ class MemoryFlushToolTest {
     @Test
     void shouldReportFailureForEveryNonWritingOutcome() {
         List<Status> statuses = List.of(Status.BUSY, Status.CAPACITY_REJECTED, Status.CONFLICT,
-                Status.FAILED, Status.DISABLED);
+                Status.FAILED, Status.DISABLED, Status.INCOMPLETE);
         Map<Status, String> texts = new LinkedHashMap<>();
         for (Status status : statuses) {
-            when(memoryPipeline.extract(USER_ID, CONVERSATION_ID, AgentMemoryTriggerType.FLUSH))
+            when(memoryPipeline.flush(USER_ID, CONVERSATION_ID, REQUEST_ID))
                     .thenReturn(new AgentMemoryOutcome(status, 0, 3, false));
 
             ToolResultBlock result = call(newRuntimeContext());
@@ -141,7 +143,7 @@ class MemoryFlushToolTest {
      */
     @Test
     void shouldFailLoudlyOnBackgroundOnlyOutcome() {
-        when(memoryPipeline.extract(USER_ID, CONVERSATION_ID, AgentMemoryTriggerType.FLUSH))
+        when(memoryPipeline.flush(USER_ID, CONVERSATION_ID, REQUEST_ID))
                 .thenReturn(new AgentMemoryOutcome(Status.BELOW_THRESHOLD, 0, 1, false));
 
         ToolResultBlock result = call(newRuntimeContext());
@@ -153,7 +155,7 @@ class MemoryFlushToolTest {
 
     @Test
     void shouldReportFailureWhenPipelineThrows() {
-        when(memoryPipeline.extract(USER_ID, CONVERSATION_ID, AgentMemoryTriggerType.FLUSH))
+        when(memoryPipeline.flush(USER_ID, CONVERSATION_ID, REQUEST_ID))
                 .thenThrow(new IllegalStateException("数据库连不上"));
 
         assertThat(call(newRuntimeContext()).getState()).isEqualTo(ToolResultState.ERROR);
@@ -164,11 +166,52 @@ class MemoryFlushToolTest {
         ToolResultBlock result = call(RuntimeContext.builder().build());
 
         assertThat(result.getState()).isEqualTo(ToolResultState.ERROR);
-        verify(memoryPipeline, never()).extract(eq(USER_ID), eq(CONVERSATION_ID), eq(AgentMemoryTriggerType.FLUSH));
+        verify(memoryPipeline, never()).flush(eq(USER_ID), eq(CONVERSATION_ID), eq(REQUEST_ID));
+    }
+
+    /**
+     * 不知道本次请求是哪条消息，就判不了处理到了没有，硬跑只会把旧批次的完成报成本次成功
+     */
+    @Test
+    void shouldRejectCallWithoutRequestMessage() {
+        ToolResultBlock result = call(RuntimeContext.builder().userId(USER_ID).sessionId(CONVERSATION_ID).build());
+
+        assertThat(result.getState()).isEqualTo(ToolResultState.ERROR);
+        verifyNoInteractions(memoryPipeline);
+    }
+
+    /**
+     * 清空单列三种文案：普通「生效 N 条」会被模型说成清空了，原本就空也不能说成「没什么要记的」
+     */
+    @Test
+    void shouldReportClearDistinctly() {
+        Map<String, AgentMemoryOutcome> outcomes = new LinkedHashMap<>();
+        outcomes.put("只清空", new AgentMemoryOutcome(Status.WRITTEN, 0, 1, true, true, 3));
+        outcomes.put("清空后新增", new AgentMemoryOutcome(Status.WRITTEN, 1, 1, true, true, 2));
+        outcomes.put("原本就空", new AgentMemoryOutcome(Status.SETTLED_EMPTY, 0, 1, false, true, 0));
+        when(memoryPipeline.reloadSnapshot(USER_ID)).thenReturn(AgentMemorySnapshot.empty());
+        Map<String, String> texts = new LinkedHashMap<>();
+        for (Map.Entry<String, AgentMemoryOutcome> entry : outcomes.entrySet()) {
+            when(memoryPipeline.flush(USER_ID, CONVERSATION_ID, REQUEST_ID)).thenReturn(entry.getValue());
+
+            ToolResultBlock result = call(newRuntimeContext());
+
+            assertThat(result.getState()).as(entry.getKey()).isEqualTo(ToolResultState.SUCCESS);
+            texts.put(entry.getKey(), textOf(result));
+        }
+        assertThat(texts.get("只清空")).contains("已清空全部长期记忆").contains("3");
+        assertThat(texts.get("清空后新增")).contains("2").contains("生效了 1 条记忆变更");
+        // 清空后的变更可能是后面批次的撤回，不许说成新记下
+        assertThat(texts.values()).noneMatch(text -> text.contains("新记下"));
+        assertThat(texts.get("原本就空")).contains("当前已无长期记忆");
+        assertThat(texts.values()).as("逐结局文案 %s", texts).doesNotHaveDuplicates()
+                .noneMatch(text -> text.startsWith("记忆已更新") || text.startsWith("本批对话"));
     }
 
     private RuntimeContext newRuntimeContext() {
-        return RuntimeContext.builder().userId(USER_ID).sessionId(CONVERSATION_ID).build();
+        RuntimeContext runtimeContext = RuntimeContext.builder().userId(USER_ID).sessionId(CONVERSATION_ID).build();
+        runtimeContext.put(AgentTraceContextKeys.REPLY_TO_MESSAGE_ID, REQUEST_ID);
+        return runtimeContext;
     }
 
     private ToolResultBlock call(RuntimeContext runtimeContext) {

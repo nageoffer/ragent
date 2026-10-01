@@ -80,7 +80,7 @@ public class AgentMemoryRepository {
     /**
      * 与 t_agent_memory.content 列宽同值；AGENT_MEMORY_EXTRACTION 与 AGENT_MEMORY_CONSOLIDATION
      * 两段提示词里手抄了这个数，改任何一处要几处一起改
-     * 超长在这里丢条，避免 INSERT 抛出导致整批回滚
+     * 普通批超长在这里丢条，避免 INSERT 抛出导致整批回滚；清空批反过来整批拒收，见 commitClear
      */
     private static final int MAX_CONTENT_CHARS = 500;
 
@@ -142,20 +142,27 @@ public class AgentMemoryRepository {
     }
 
     /**
-     * 当前水位，会话从未结过批返回 null
+     * 当前水位，用户从未结过批返回 null
      */
-    public String currentWatermark(String userId, String conversationId) {
-        return extractionMapper.selectWatermark(userId, conversationId);
+    public String currentWatermark(String userId) {
+        return extractionMapper.selectWatermark(userId);
     }
 
     /**
-     * 水位之后、下界之后的用户消息，按 id 升序；下界防老账号接入前的历史倒灌
+     * 覆盖这条用户消息的已结束抽取的状态，还没轮到它返回 null
      */
-    public List<AgentMessageDO> loadPending(String userId, String conversationId,
-                                            String watermark, Date since) {
+    public AgentMemoryExtractionStatus settledStatusCovering(String userId, String messageId) {
+        String status = extractionMapper.selectSettledStatusCovering(userId, messageId);
+        return status == null ? null : AgentMemoryExtractionStatus.valueOf(status);
+    }
+
+    /**
+     * 水位之后、下界之后的用户消息，跨会话按 id 升序；下界防老账号接入前的历史倒灌
+     * 不按会话切：各会话各推各的水位，先说的话会被后处理，旧值盖掉新纠正、已删的事实被写回
+     */
+    public List<AgentMessageDO> loadPending(String userId, String watermark, Date since) {
         return messageMapper.selectList(Wrappers.lambdaQuery(AgentMessageDO.class)
                 .eq(AgentMessageDO::getUserId, userId)
-                .eq(AgentMessageDO::getConversationId, conversationId)
                 .eq(AgentMessageDO::getRole, ROLE_USER)
                 .gt(watermark != null, AgentMessageDO::getId, watermark)
                 .ge(since != null, AgentMessageDO::getCreateTime, since)
@@ -164,16 +171,17 @@ public class AgentMemoryRepository {
     }
 
     /**
-     * 抢占本会话的处理权，抢不到返回 null；先回收僵尸行，靠部分唯一索引仲裁
+     * 抢占该用户的处理权，抢不到返回 null；先回收僵尸行，靠部分唯一索引仲裁
+     * conversationId 只记是哪个会话触发的，批内消息可以来自别的会话
      */
     public AgentMemoryExtractionDO claim(String userId, String conversationId,
                                          String fromMessageId, String toMessageId,
                                          AgentMemoryTriggerType trigger) {
-        int recycled = extractionMapper.recycleStale(userId, conversationId, STALE_PROCESSING_MINUTES);
+        int recycled = extractionMapper.recycleStale(userId, STALE_PROCESSING_MINUTES);
         if (recycled > 0) {
-            log.warn("长期记忆回收僵尸抽取, userId: {}, conversationId: {}, 条数: {}", userId, conversationId, recycled);
+            log.warn("长期记忆回收僵尸抽取, userId: {}, 条数: {}", userId, recycled);
         }
-        int spent = extractionMapper.selectSpentAttempts(userId, conversationId, toMessageId);
+        int spent = extractionMapper.selectSpentAttempts(userId, toMessageId);
         AgentMemoryExtractionDO extraction = AgentMemoryExtractionDO.builder()
                 .userId(userId)
                 .conversationId(conversationId)
@@ -188,7 +196,7 @@ public class AgentMemoryRepository {
             extractionMapper.insert(extraction);
             return extraction;
         } catch (DuplicateKeyException dke) {
-            log.info("长期记忆跳过本次抽取, 同会话已有在飞抽取, userId: {}, conversationId: {}", userId, conversationId);
+            log.info("长期记忆跳过本次抽取, 同用户已有在飞抽取, userId: {}, conversationId: {}", userId, conversationId);
             return null;
         }
     }
@@ -216,10 +224,13 @@ public class AgentMemoryRepository {
     public AgentMemoryCommitResult commit(AgentMemoryCommit commit) {
         String userId = commit.userId();
         AgentMemoryControlDO control = controlMapper.selectForUpdate(userId);
-        String watermark = extractionMapper.selectWatermark(userId, commit.conversationId());
+        String watermark = extractionMapper.selectWatermark(userId);
         if (control == null || !Objects.equals(control.getRevision(), commit.expectedRevision())
                 || !Objects.equals(watermark, commit.expectedWatermark())) {
             return rejectAsConflict(commit, control, watermark);
+        }
+        if (AgentMemoryDecision.containsClear(commit.decisions())) {
+            return commitClear(commit);
         }
 
         // 合并先落，腾出来的位置本批就能用上；事务内重读一次，后续预演看到的即合并后的记忆集
@@ -280,6 +291,42 @@ public class AgentMemoryRepository {
     }
 
     /**
+     * 清空批：同批新增先验单条与总量，过了才动旧条目，不过整批抛出回滚——不能清空成功了、用户随后要记的却悄悄丢掉
+     * 合并与淘汰都不走，旧条目整片失效，没有东西可合可淘；清空请求本身就在水位推进的这一批里，不必另记清空边界
+     */
+    private AgentMemoryCommitResult commitClear(AgentMemoryCommit commit) {
+        String userId = commit.userId();
+        List<AgentMemoryDecision> additions = commit.decisions().stream()
+                .filter(AgentMemoryDecision::introducesContent)
+                .toList();
+        for (AgentMemoryDecision addition : additions) {
+            if (!storable(addition.content())) {
+                throw new AgentMemoryCapacityException(commit.extractionId(),
+                        addition.content() == null ? 0 : addition.content().length(), MAX_CONTENT_CHARS);
+            }
+        }
+        int maxChars = memoryProperties.resolveMemoryMaxChars();
+        int projectedChars = AgentMemoryBlock.projectedChars(List.of(), additions);
+        if (projectedChars > maxChars) {
+            throw new AgentMemoryCapacityException(commit.extractionId(), projectedChars, maxChars);
+        }
+
+        int cleared = memoryMapper.retractAll(userId);
+        int added = apply(userId, commit.sourceType(), additions);
+        boolean mutated = cleared + added > 0;
+        if (!mutated) {
+            // 原本就空、清空后也没要记的：水位照推，免得这句清空请求日后被当成待处理再判一次
+            settleOrThrow(commit, AgentMemoryExtractionStatus.NOOP, 0);
+            return new AgentMemoryCommitResult(AgentMemoryExtractionStatus.NOOP, 0, false, true, 0);
+        }
+        controlMapper.bumpRevision(userId);
+        settleOrThrow(commit, AgentMemoryExtractionStatus.WRITTEN, added + (cleared > 0 ? 1 : 0));
+        log.info("长期记忆清空完成, userId: {}, extractionId: {}, 清空: {}, 清空后新增: {}",
+                userId, commit.extractionId(), cleared, added);
+        return new AgentMemoryCommitResult(AgentMemoryExtractionStatus.WRITTEN, added, true, true, cleared);
+    }
+
+    /**
      * 决策落库；SUPERSEDE 先验旧行再插新行，倒过来会在失败时留下重复条目
      */
     private int apply(String userId, AgentMemorySourceType sourceType, List<AgentMemoryDecision> decisions) {
@@ -306,6 +353,7 @@ public class AgentMemoryRepository {
                     }
                     applied++;
                 }
+                case CLEAR -> throw new IllegalStateException("清空整批走 commitClear, 不逐条落库");
             }
         }
         return applied;
