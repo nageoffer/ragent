@@ -30,7 +30,11 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
+import java.net.URLDecoder;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -139,17 +143,28 @@ public class HttpClientHelper {
     }
 
     private String resolveFileName(String disposition, String url) {
+        String fileName = null;
+        String extendedFileName = null;
         if (disposition != null) {
-            String[] parts = disposition.split(";");
-            for (String part : parts) {
+            for (String part : splitDispositionParameters(disposition)) {
                 String trimmed = part.trim();
-                if (trimmed.startsWith("filename=")) {
-                    String raw = trimmed.substring("filename=".length()).trim();
-                    if (raw.startsWith("\"") && raw.endsWith("\"") && raw.length() > 1) {
-                        raw = raw.substring(1, raw.length() - 1);
-                    }
-                    return decode(raw);
+                int separator = trimmed.indexOf('=');
+                if (separator <= 0) {
+                    continue;
                 }
+                String parameterName = trimmed.substring(0, separator).trim();
+                String raw = stripQuotes(trimmed.substring(separator + 1).trim());
+                if ("filename*".equalsIgnoreCase(parameterName)) {
+                    extendedFileName = decodeExtendedFileName(raw);
+                } else if ("filename".equalsIgnoreCase(parameterName)) {
+                    fileName = decodePercentEncoded(raw);
+                }
+            }
+            if (extendedFileName != null && !extendedFileName.isBlank()) {
+                return extendedFileName;
+            }
+            if (fileName != null && !fileName.isBlank()) {
+                return fileName;
             }
         }
         try {
@@ -159,15 +174,70 @@ public class HttpClientHelper {
                 return null;
             }
             int idx = path.lastIndexOf('/');
-            return idx >= 0 ? path.substring(idx + 1) : path;
+            String pathFileName = idx >= 0 ? path.substring(idx + 1) : path;
+            return decodePercentEncoded(pathFileName);
         } catch (Exception e) {
             return null;
         }
     }
 
-    private String decode(String value) {
+    private List<String> splitDispositionParameters(String disposition) {
+        List<String> parts = new ArrayList<>();
+        StringBuilder part = new StringBuilder();
+        boolean quoted = false;
+        boolean escaped = false;
+        for (int i = 0; i < disposition.length(); i++) {
+            char current = disposition.charAt(i);
+            if (escaped) {
+                escaped = false;
+            } else if (quoted && current == '\\') {
+                escaped = true;
+            } else if (current == '"') {
+                quoted = !quoted;
+            } else if (current == ';' && !quoted) {
+                parts.add(part.toString());
+                part.setLength(0);
+                continue;
+            }
+            part.append(current);
+        }
+        parts.add(part.toString());
+        return parts;
+    }
+
+    private String decodeExtendedFileName(String value) {
+        int charsetSeparator = value.indexOf('\'');
+        int languageSeparator = value.indexOf('\'', charsetSeparator + 1);
+        if (charsetSeparator <= 0 || languageSeparator < 0) {
+            return null;
+        }
         try {
-            return java.net.URLDecoder.decode(value, StandardCharsets.UTF_8);
+            Charset charset = Charset.forName(value.substring(0, charsetSeparator));
+            String encodedFileName = value.substring(languageSeparator + 1);
+            return URLDecoder.decode(encodedFileName.replace("+", "%2B"), charset);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private String stripQuotes(String value) {
+        if (value.startsWith("\"") && value.endsWith("\"") && value.length() > 1) {
+            StringBuilder unquoted = new StringBuilder();
+            for (int i = 1; i < value.length() - 1; i++) {
+                char current = value.charAt(i);
+                if (current == '\\' && i + 1 < value.length() - 1) {
+                    current = value.charAt(++i);
+                }
+                unquoted.append(current);
+            }
+            return unquoted.toString();
+        }
+        return value;
+    }
+
+    private String decodePercentEncoded(String value) {
+        try {
+            return URLDecoder.decode(value.replace("+", "%2B"), StandardCharsets.UTF_8);
         } catch (Exception e) {
             return value;
         }
