@@ -32,6 +32,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.batik.transcoder.TranscoderInput;
 import org.apache.batik.transcoder.TranscoderOutput;
 import org.apache.batik.transcoder.image.PNGTranscoder;
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Element;
 import org.springframework.stereotype.Component;
 
 import java.awt.Color;
@@ -56,6 +58,20 @@ public class ImageDocumentParser implements DocumentParser {
 
     public static final String OPT_SOURCE_FILE = "sourceFile";
     public static final String OPT_DOCUMENT_ID = "documentId";
+
+    /**
+     * SVG 栅格化边长上限（宽高同值）：batik 对超限边各自等比缩放，宽高两个 hint 齐备后
+     * 任何声明尺寸组合的落点都 ≤ 上限×上限（仅设宽度时窄高型 SVG 的高会原样通过——
+     * batik 1.18 setImageSize 宽高夹逼是两个独立分支），画布分配有界（约 10MB ARGB）
+     */
+    static final float SVG_RASTER_MAX_DIMENSION = 1600f;
+
+    /**
+     * SVG 声明尺寸组合预算（宽×高，像素数）：栅格化前的确定性预拒，拦下病态声明、
+     * 不让 batik 内部先按声明尺寸建结构。取栅格化上限面积的 10 倍——合法文档 SVG
+     * （图表/示意图）远够用，声明面积逼近该值的矢量本身已无检索价值
+     */
+    static final double SVG_DECLARED_MAX_PIXELS = (double) SVG_RASTER_MAX_DIMENSION * SVG_RASTER_MAX_DIMENSION * 10;
 
     private final VlmService vlmService;
     private final FileStorageService fileStorageService;
@@ -138,18 +154,58 @@ public class ImageDocumentParser implements DocumentParser {
      * SVG 栅格化成 PNG 字节，VLM 视觉输入只认栅格格式
      * <p>
      * 必须铺白底：PNGTranscoder 默认透明背景，VLM 解码带 alpha 的 PNG 会把透明区合成为黑或空、返回空描述；
-     * 无内在尺寸的 SVG 设宽度上限避免超大画布
+     * 宽高双上限夹逼画布尺寸（见 {@link #SVG_RASTER_MAX_DIMENSION}），声明尺寸超组合预算的在栅格化前预拒
      */
-    private static byte[] rasterizeSvg(byte[] svg) {
+    static byte[] rasterizeSvg(byte[] svg) {
+        checkDeclaredSvgSize(svg);
         try {
             PNGTranscoder transcoder = new PNGTranscoder();
-            transcoder.addTranscodingHint(PNGTranscoder.KEY_MAX_WIDTH, 1600f);
+            transcoder.addTranscodingHint(PNGTranscoder.KEY_MAX_WIDTH, SVG_RASTER_MAX_DIMENSION);
+            transcoder.addTranscodingHint(PNGTranscoder.KEY_MAX_HEIGHT, SVG_RASTER_MAX_DIMENSION);
             transcoder.addTranscodingHint(PNGTranscoder.KEY_BACKGROUND_COLOR, Color.WHITE);
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             transcoder.transcode(new TranscoderInput(new ByteArrayInputStream(svg)), new TranscoderOutput(out));
             return out.toByteArray();
         } catch (Exception e) {
             throw new ServiceException("SVG 栅格化失败：" + e.getMessage());
+        }
+    }
+
+    /**
+     * 声明尺寸组合预算预检：根元素 width/height 均为可解析的纯数值时校验宽×高乘积，
+     * 超预算抛业务异常；无内在尺寸、百分比、带单位等形态直接放行（既有行为，画布
+     * 分配由栅格化双上限兜底），预算检查自身解析失败也放行交由栅格化给出原语义
+     */
+    private static void checkDeclaredSvgSize(byte[] svg) {
+        Element root;
+        try {
+            root = Jsoup.parse(new ByteArrayInputStream(svg), null, "").selectFirst("svg");
+        } catch (Exception e) {
+            return;
+        }
+        if (root == null) {
+            return;
+        }
+        Double width = parseDeclaredLength(root.attr("width"));
+        Double height = parseDeclaredLength(root.attr("height"));
+        if (width == null || height == null) {
+            return;
+        }
+        double pixels = width * height;
+        if (pixels > SVG_DECLARED_MAX_PIXELS) {
+            throw new ServiceException("SVG 声明尺寸超出支持上限，已拒绝解析该文档");
+        }
+    }
+
+    private static Double parseDeclaredLength(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            double value = Double.parseDouble(raw.trim());
+            return value > 0 && value < Double.POSITIVE_INFINITY ? value : null;
+        } catch (NumberFormatException e) {
+            return null;
         }
     }
 
