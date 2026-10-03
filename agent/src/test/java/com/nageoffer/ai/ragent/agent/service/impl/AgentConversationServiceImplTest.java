@@ -20,7 +20,6 @@ package com.nageoffer.ai.ragent.agent.service.impl;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
-import com.nageoffer.ai.ragent.agent.config.ReActAgentProvider;
 import com.nageoffer.ai.ragent.agent.dao.entity.AgentConversationDO;
 import com.nageoffer.ai.ragent.agent.dao.entity.AgentMessageDO;
 import com.nageoffer.ai.ragent.agent.dao.mapper.AgentConversationMapper;
@@ -33,17 +32,17 @@ import com.nageoffer.ai.ragent.agent.service.handler.AgentRunGate;
 import com.nageoffer.ai.ragent.agent.state.PgAgentStateStore;
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.AbstractPlatformTransactionManager;
+import org.springframework.transaction.support.DefaultTransactionStatus;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.ArrayList;
 import java.util.Date;
@@ -52,6 +51,10 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -77,107 +80,111 @@ class AgentConversationServiceImplTest {
     private AgentMessageMapper messageMapper;
     private PgAgentStateStore agentStateStore;
     private AgentRunGate runGate;
-    private ReActAgentProvider agentProvider;
+    private Runnable releaseLock;
     private AgentConversationServiceImpl service;
 
     @BeforeEach
-    @SuppressWarnings("unchecked")
     void setUp() {
         conversationMapper = mock(AgentConversationMapper.class);
         messageMapper = mock(AgentMessageMapper.class);
         agentStateStore = mock(PgAgentStateStore.class);
         runGate = mock(AgentRunGate.class);
-        agentProvider = mock(ReActAgentProvider.class);
-        ObjectProvider<ReActAgentProvider> agentProviderRef = mock(ObjectProvider.class);
-        when(agentProviderRef.getIfAvailable()).thenReturn(agentProvider);
+        releaseLock = mock(Runnable.class);
+        when(runGate.acquireConversation(anyString(), anyString())).thenReturn(releaseLock);
         when(conversationMapper.delete(any())).thenReturn(1);
         when(messageMapper.delete(any())).thenReturn(1);
-        service = new AgentConversationServiceImpl(
-                conversationMapper, messageMapper, agentStateStore, runGate, agentProviderRef);
-    }
-
-    @AfterEach
-    void tearDown() {
-        if (TransactionSynchronizationManager.isSynchronizationActive()) {
-            TransactionSynchronizationManager.clearSynchronization();
-        }
+        service = new AgentConversationServiceImpl(conversationMapper, messageMapper, agentStateStore, runGate);
     }
 
     @Test
-    void shouldEvictAgentStateCacheWhenConversationDeleted() {
+    void shouldDeleteUnderConversationLock() {
         service.delete(CONVERSATION_ID, USER_ID);
 
-        // 删除数据库状态后同步清理本节点可能残留的会话缓存
-        verify(agentProvider).evictStateCache(USER_ID, CONVERSATION_ID);
+        var order = inOrder(runGate, conversationMapper, messageMapper, agentStateStore, releaseLock);
+        order.verify(runGate).acquireConversation(USER_ID, CONVERSATION_ID);
+        order.verify(conversationMapper).delete(any());
+        order.verify(messageMapper).delete(any());
+        order.verify(agentStateStore).delete(USER_ID, CONVERSATION_ID);
+        order.verify(releaseLock).run();
     }
 
     @Test
-    void shouldEvictEachConversationWhenBatchDeleted() {
-        service.deleteBatch(List.of(CONVERSATION_ID, "c-3003", CONVERSATION_ID), USER_ID);
+    void shouldHoldEveryLockUntilBatchTransactionCommits() {
+        List<String> events = new ArrayList<>();
+        TransactionTemplate transaction = new TransactionTemplate(new RecordingTransactionManager(events));
+        Runnable secondRelease = mock(Runnable.class);
+        when(runGate.acquireConversation(USER_ID, "c-3003")).thenReturn(secondRelease);
+        doAnswer(call -> { events.add("unlock"); return null; }).when(releaseLock).run();
+        doAnswer(call -> { events.add("unlock-2"); return null; }).when(secondRelease).run();
 
-        // 重复 ID 去重后每个会话各驱逐一次
-        verify(agentProvider, times(1)).evictStateCache(USER_ID, CONVERSATION_ID);
-        verify(agentProvider, times(1)).evictStateCache(USER_ID, "c-3003");
-    }
+        transaction.executeWithoutResult(status -> {
+            service.deleteBatch(List.of(CONVERSATION_ID, "c-3003", CONVERSATION_ID), USER_ID);
+            // deleteBatch 已返回，外层事务尚未提交，锁仍必须持有
+            verifyNoInteractions(releaseLock, secondRelease);
+        });
 
-    @Test
-    void shouldEvictOnlyAfterTransactionCommits() {
-        TransactionSynchronizationManager.initSynchronization();
-
-        service.delete(CONVERSATION_ID, USER_ID);
-
-        // 仅在数据库确认删除后失效缓存，回滚时保留原有内存状态
-        verify(agentProvider, never()).evictStateCache(USER_ID, CONVERSATION_ID);
-        commitCurrentTransaction();
-        verify(agentProvider).evictStateCache(USER_ID, CONVERSATION_ID);
-    }
-
-    @Test
-    void shouldEvictBatchAfterSingleCommit() {
-        TransactionSynchronizationManager.initSynchronization();
-
-        service.deleteBatch(List.of(CONVERSATION_ID, "c-3003"), USER_ID);
-
-        verify(agentProvider, never()).evictStateCache(any(), any());
-        commitCurrentTransaction();
-        verify(agentProvider, times(1)).evictStateCache(USER_ID, CONVERSATION_ID);
-        verify(agentProvider, times(1)).evictStateCache(USER_ID, "c-3003");
+        // 重复 ID 去重后每个会话只加锁、只删一次
+        verify(runGate, times(1)).acquireConversation(USER_ID, CONVERSATION_ID);
+        verify(agentStateStore, times(1)).delete(USER_ID, CONVERSATION_ID);
+        verify(agentStateStore, times(1)).delete(USER_ID, "c-3003");
+        assertThat(events).containsExactly("commit", "unlock", "unlock-2");
     }
 
     @Test
     void shouldRejectDeleteWhileConversationIsRunning() {
-        when(runGate.isRunning(USER_ID, CONVERSATION_ID)).thenReturn(true);
+        when(runGate.acquireConversation(USER_ID, CONVERSATION_ID))
+                .thenThrow(new ClientException("当前会话正在处理中，请稍后重试"));
 
         assertThatThrownBy(() -> service.delete(CONVERSATION_ID, USER_ID))
-                .hasMessageContaining("正在生成中");
+                .hasMessageContaining("当前会话正在处理中");
 
         // 放行就会让在途流把状态和消息写回已删会话，留下够不着的残行
         verify(conversationMapper, never()).delete(any());
         verify(messageMapper, never()).delete(any());
         verify(agentStateStore, never()).delete(any(), any());
-    }
-
-    @Test
-    void shouldAllowDeleteWhenAnotherConversationIsRunning() {
-        // 该用户确实有流在跑，但跑的是别的会话，不该连累这一个
-        when(runGate.isRunning(USER_ID, CONVERSATION_ID)).thenReturn(false);
-
-        service.delete(CONVERSATION_ID, USER_ID);
-
-        verify(conversationMapper).delete(any());
-        verify(agentProvider).evictStateCache(USER_ID, CONVERSATION_ID);
+        verifyNoInteractions(releaseLock);
     }
 
     @Test
     void shouldRejectWholeBatchWhenOneConversationIsRunning() {
-        TransactionSynchronizationManager.initSynchronization();
-        when(runGate.isRunning(USER_ID, "c-3003")).thenReturn(true);
+        List<String> events = new ArrayList<>();
+        TransactionTemplate transaction = new TransactionTemplate(new RecordingTransactionManager(events));
+        doAnswer(call -> { events.add("unlock"); return null; }).when(releaseLock).run();
+        when(runGate.acquireConversation(USER_ID, "c-3003")).thenAnswer(call -> {
+            verifyNoInteractions(releaseLock);
+            throw new ClientException("当前会话正在处理中，请稍后重试");
+        });
 
-        assertThatThrownBy(() -> service.deleteBatch(List.of(CONVERSATION_ID, "c-3003"), USER_ID))
-                .hasMessageContaining("正在生成中");
+        assertThatThrownBy(() -> transaction.executeWithoutResult(status ->
+                service.deleteBatch(List.of(CONVERSATION_ID, "c-3003"), USER_ID)))
+                .hasMessageContaining("当前会话正在处理中");
 
-        // 整批一个事务，挡下一个就全回滚，驱逐缓存不该走到
-        verify(agentProvider, never()).evictStateCache(any(), any());
+        // 整批一个事务，挡下一个就全回滚，已拿到的锁回滚后释放
+        assertThat(events).containsExactly("rollback", "unlock");
+    }
+
+    @Test
+    void shouldReleaseAfterRollbackWhenStateDeletionFails() {
+        List<String> events = new ArrayList<>();
+        TransactionTemplate transaction = new TransactionTemplate(new RecordingTransactionManager(events));
+        doAnswer(call -> { events.add("unlock"); return null; }).when(releaseLock).run();
+        doThrow(new IllegalStateException("delete failed"))
+                .when(agentStateStore).delete(USER_ID, CONVERSATION_ID);
+
+        assertThatThrownBy(() -> transaction.executeWithoutResult(status ->
+                service.delete(CONVERSATION_ID, USER_ID))).hasMessage("delete failed");
+
+        assertThat(events).containsExactly("rollback", "unlock");
+    }
+
+    @Test
+    void shouldReleaseOnFailureWithoutTransaction() {
+        doThrow(new IllegalStateException("delete failed"))
+                .when(agentStateStore).delete(USER_ID, CONVERSATION_ID);
+
+        assertThatThrownBy(() -> service.delete(CONVERSATION_ID, USER_ID)).hasMessage("delete failed");
+
+        verify(releaseLock).run();
     }
 
     @Test
@@ -232,7 +239,7 @@ class AgentConversationServiceImplTest {
         assertThat(tool.getStartedAt()).isNull();
         assertThat(tool.getEndedAt()).isNull();
         assertThat(tool.getDurationMs()).isNull();
-        verifyNoInteractions(agentStateStore, agentProvider);
+        verifyNoInteractions(agentStateStore);
     }
 
     @Test
@@ -324,7 +331,7 @@ class AgentConversationServiceImplTest {
         assertThat(conversation.getLastTime()).isNotNull();
         // 正常新建由聊天入口分配新 ID，无需清理状态、消息或缓存
         verifyNoMoreInteractions(conversationMapper);
-        verifyNoInteractions(agentStateStore, messageMapper, agentProvider);
+        verifyNoInteractions(agentStateStore, messageMapper);
     }
 
     @Test
@@ -340,7 +347,7 @@ class AgentConversationServiceImplTest {
         verify(conversationMapper).selectOne(any());
         verify(conversationMapper).updateById(existing);
         verifyNoMoreInteractions(conversationMapper);
-        verifyNoInteractions(agentStateStore, messageMapper, agentProvider);
+        verifyNoInteractions(agentStateStore, messageMapper);
     }
 
     @Test
@@ -360,7 +367,7 @@ class AgentConversationServiceImplTest {
         assertThat(query.getSqlSegment()).contains("conversation_id", "user_id");
         assertThat(query.getParamNameValuePairs().values()).containsExactlyInAnyOrder(CONVERSATION_ID, USER_ID);
         verifyNoMoreInteractions(conversationMapper);
-        verifyNoInteractions(agentStateStore, messageMapper, agentProvider);
+        verifyNoInteractions(agentStateStore, messageMapper);
     }
 
     @ParameterizedTest
@@ -374,7 +381,7 @@ class AgentConversationServiceImplTest {
         verify(conversationMapper).selectOne(any());
         verify(messageMapper).exists(any());
         verifyNoMoreInteractions(conversationMapper, messageMapper);
-        verifyNoInteractions(agentStateStore, agentProvider);
+        verifyNoInteractions(agentStateStore);
     }
 
     @Test
@@ -401,7 +408,7 @@ class AgentConversationServiceImplTest {
         verify(conversationMapper).selectOne(any());
         verify(conversationMapper).insert(any(AgentConversationDO.class));
         verifyNoMoreInteractions(conversationMapper);
-        verifyNoInteractions(agentStateStore, messageMapper, agentProvider);
+        verifyNoInteractions(agentStateStore, messageMapper);
     }
 
     private static AgentMessageDO assistantRow(String id, String replyTo, String content, AgentMessageStatus status) {
@@ -415,11 +422,33 @@ class AgentConversationServiceImplTest {
     }
 
     /**
-     * 模拟事务提交：驱动已注册的同步回调走 afterCommit
+     * 使用 Spring 的真实事务同步流程，只将底层数据库提交/回滚替换为记录动作。
      */
-    private void commitCurrentTransaction() {
-        List.copyOf(TransactionSynchronizationManager.getSynchronizations())
-                .forEach(TransactionSynchronization::afterCommit);
+    private static class RecordingTransactionManager extends AbstractPlatformTransactionManager {
+        private final List<String> events;
+
+        RecordingTransactionManager(List<String> events) {
+            this.events = events;
+        }
+
+        @Override
+        protected Object doGetTransaction() {
+            return new Object();
+        }
+
+        @Override
+        protected void doBegin(Object transaction, TransactionDefinition definition) {
+        }
+
+        @Override
+        protected void doCommit(DefaultTransactionStatus status) {
+            events.add("commit");
+        }
+
+        @Override
+        protected void doRollback(DefaultTransactionStatus status) {
+            events.add("rollback");
+        }
     }
 
     private AgentConversationDO existingConversation(String title) {

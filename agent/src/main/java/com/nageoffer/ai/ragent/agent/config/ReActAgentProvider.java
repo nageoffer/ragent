@@ -91,19 +91,6 @@ public class ReActAgentProvider {
         }
     }
 
-    /**
-     * 驱逐单个会话的内存状态：只作用于已构建的实例，清理动作不该顺手把 Agent 建起来
-     * 仅本节点有效，多节点各持一份缓存，需要时经 Redis 广播补齐
-     */
-    @SuppressWarnings("resource")
-    public void evictStateCache(String userId, String sessionId) {
-        CachedAgent current = cached;
-        if (current == null) {
-            return;
-        }
-        current.activeAgent().agent().clearStateCache(userId, sessionId);
-    }
-
     private boolean matches(CachedAgent current, String persona, ResolvedCatalog catalog) {
         return current != null
                 && current.persona().equals(persona)

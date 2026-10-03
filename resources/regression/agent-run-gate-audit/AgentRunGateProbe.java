@@ -30,6 +30,12 @@ public class AgentRunGateProbe {
             check("five conversations share permits across clients, old bucket ignored", true);
             rejected("same conversation cannot reenter on reused physical thread", () -> a.acquire("u", "200", "c0"));
             rejected("sixth conversation rejected across clients", () -> b.acquire("u", "201", "c5"));
+            rejected("running conversation rejects deletion across clients", () -> b.acquireConversation("u", "c0"));
+            Runnable deleteWhileFull = b.acquireConversation("u", "idle-delete");
+            check("idle conversation can be deleted when all user permits are occupied", true);
+            rejected("same-thread duplicate deletion uses a distinct owner",
+                    () -> b.acquireConversation("u", "idle-delete"));
+            deleteWhileFull.run();
             waitFor(() -> !second.getLock("ragent:agent:run-lock:u:c5").isLocked());
             check("quota rejection releases speculative conversation lock", true);
             Runnable other = a.acquire("other-user", "202", "c0");
@@ -60,10 +66,22 @@ public class AgentRunGateProbe {
             waitFor(() -> !second.getLock("ragent:agent:run-permit:u:0").isLocked()
                     && !second.getLock("ragent:agent:run-permit:u:4").isLocked());
 
-            Runnable running = a.acquire("u", "204", "read-status");
-            check("running conversation is detected across clients", b.isRunning("u", "read-status"));
-            running.run();
-            waitFor(() -> !b.isRunning("u", "read-status"));
+            Runnable deleting = a.acquireConversation("u", "deleting");
+            check("deletion holds only the shared conversation lock",
+                    second.getLock("ragent:agent:run-lock:u:deleting").isLocked()
+                    && !second.getLock("ragent:agent:run-permit:u:0").isLocked());
+            rejected("deletion prevents a new run on another client",
+                    () -> b.acquire("u", "209", "deleting"));
+            rejected("deletion prevents same-thread run reentry",
+                    () -> a.acquire("u", "210", "deleting"));
+            Thread deleteCompletion = new Thread(deleting);
+            deleteCompletion.start();
+            deleteCompletion.join();
+            Runnable afterDelete = b.acquire("u", "211", "deleting");
+            deleting.run();
+            check("late deletion release cannot unlock a subsequent run",
+                    second.getLock("ragent:agent:run-lock:u:deleting").isHeldByThread(211));
+            afterDelete.run();
 
             ExecutorService pool = Executors.newFixedThreadPool(10);
             try {

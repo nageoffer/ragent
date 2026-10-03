@@ -22,7 +22,6 @@ import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.nageoffer.ai.ragent.agent.config.ConditionalOnAgentEngine;
-import com.nageoffer.ai.ragent.agent.config.ReActAgentProvider;
 import com.nageoffer.ai.ragent.agent.controller.vo.AgentConversationVO;
 import com.nageoffer.ai.ragent.agent.controller.vo.AgentMessageVO;
 import com.nageoffer.ai.ragent.agent.dao.entity.AgentConversationDO;
@@ -40,7 +39,6 @@ import com.nageoffer.ai.ragent.agent.state.PgAgentStateStore;
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -74,10 +72,6 @@ public class AgentConversationServiceImpl implements AgentConversationService {
     private final AgentMessageMapper messageMapper;
     private final PgAgentStateStore agentStateStore;
     private final AgentRunGate runGate;
-    /**
-     * 延迟获取，避免与 ReActAgentProvider 循环依赖
-     */
-    private final ObjectProvider<ReActAgentProvider> agentProviderRef;
 
     @Override
     public String touchConversation(String conversationId, String userId, String question) {
@@ -327,19 +321,20 @@ public class AgentConversationServiceImpl implements AgentConversationService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void delete(String conversationId, String userId) {
-        if (runGate.isRunning(userId, conversationId)) {
-            throw new ClientException("该会话消息正在生成中，请先停止后再删除");
+        Runnable releaseLock = runGate.acquireConversation(userId, conversationId);
+        try {
+            conversationMapper.delete(Wrappers.lambdaQuery(AgentConversationDO.class)
+                    .eq(AgentConversationDO::getConversationId, conversationId)
+                    .eq(AgentConversationDO::getUserId, userId));
+            messageMapper.delete(Wrappers.lambdaQuery(AgentMessageDO.class)
+                    .eq(AgentMessageDO::getConversationId, conversationId)
+                    .eq(AgentMessageDO::getUserId, userId));
+            // Agent 状态同库，随事务一起删；状态缓存由运行侧放锁前清空，这里不用管
+            agentStateStore.delete(userId, conversationId);
+        } finally {
+            // 持锁到事务结束，批量删除等整批提交或回滚，期间新运行进不来
+            afterCompletion(releaseLock);
         }
-        conversationMapper.delete(Wrappers.lambdaQuery(AgentConversationDO.class)
-                .eq(AgentConversationDO::getConversationId, conversationId)
-                .eq(AgentConversationDO::getUserId, userId));
-        messageMapper.delete(Wrappers.lambdaQuery(AgentMessageDO.class)
-                .eq(AgentMessageDO::getConversationId, conversationId)
-                .eq(AgentMessageDO::getUserId, userId));
-        // Agent 状态同库，随事务一起删
-        agentStateStore.delete(userId, conversationId);
-        // 提交后再清本节点的会话状态缓存
-        afterCommit(() -> evictStateCache(userId, conversationId));
     }
 
     @Override
@@ -352,24 +347,17 @@ public class AgentConversationServiceImpl implements AgentConversationService {
         conversationIds.stream().distinct().forEach(id -> delete(id, userId));
     }
 
-    private void evictStateCache(String userId, String conversationId) {
-        ReActAgentProvider agentProvider = agentProviderRef.getIfAvailable();
-        if (agentProvider != null) {
-            agentProvider.evictStateCache(userId, conversationId);
-        }
-    }
-
     /**
-     * 事务提交后执行，无事务时立即执行
+     * 事务提交或回滚后执行，无事务时立即执行
      */
-    private void afterCommit(Runnable action) {
+    private void afterCompletion(Runnable action) {
         if (!TransactionSynchronizationManager.isSynchronizationActive()) {
             action.run();
             return;
         }
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
-            public void afterCommit() {
+            public void afterCompletion(int status) {
                 action.run();
             }
         });

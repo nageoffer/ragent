@@ -24,6 +24,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.redisson.misc.CompletableFutureWrapper;
@@ -180,17 +181,33 @@ class AgentRunGateTest {
     }
 
     @Test
-    void shouldReadRunningStateWithoutAcquiringLock() {
+    void shouldAcquireOnlyConversationLockWithDistinctOwners() {
+        Runnable firstRelease = gate.acquireConversation(USER, "c-1");
+        firstRelease.run();
+        Runnable secondRelease = gate.acquireConversation(USER, "c-1");
+        secondRelease.run();
+
         RLock conversation = lock("ragent:agent:run-lock:" + USER + ":c-1");
-        when(conversation.isLocked()).thenReturn(true, false);
-
-        assertThat(gate.isRunning(USER, "c-1")).isTrue();
-        assertThat(gate.isRunning(USER, "c-1")).isFalse();
-
+        ArgumentCaptor<Long> owners = ArgumentCaptor.forClass(Long.class);
+        verify(conversation, times(2)).tryLockAsync(owners.capture());
+        assertThat(owners.getAllValues().get(0)).isNotEqualTo(owners.getAllValues().get(1));
+        owners.getAllValues().forEach(owner -> verify(conversation).unlockAsync(owner));
         verify(redisson, times(2)).getLock("ragent:agent:run-lock:" + USER + ":c-1");
+        // 不申请名额，因此其他会话占满全部名额也不会阻止删除
         verifyNoMoreInteractions(redisson);
-        verify(conversation, times(2)).isLocked();
-        verifyNoMoreInteractions(conversation);
+    }
+
+    @Test
+    void shouldRejectConversationAcquisitionWhenLockIsHeld() {
+        RLock conversation = lock("ragent:agent:run-lock:" + USER + ":c-1");
+        when(conversation.tryLockAsync(anyLong())).thenReturn(new CompletableFutureWrapper<>(false));
+
+        assertThatThrownBy(() -> gate.acquireConversation(USER, "c-1"))
+                .isInstanceOf(ClientException.class).hasMessageContaining("当前会话正在处理中");
+
+        verify(conversation, never()).unlockAsync(anyLong());
+        verify(redisson).getLock("ragent:agent:run-lock:" + USER + ":c-1");
+        verifyNoMoreInteractions(redisson);
     }
 
     @Test

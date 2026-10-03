@@ -17,6 +17,7 @@
 
 package com.nageoffer.ai.ragent.agent.service.handler;
 
+import cn.hutool.core.util.IdUtil;
 import com.nageoffer.ai.ragent.agent.config.AgentProperties;
 import com.nageoffer.ai.ragent.agent.config.ConditionalOnAgentEngine;
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
@@ -45,10 +46,7 @@ public class AgentRunGate {
 
     public Runnable acquire(String userId, String taskId, String conversationId) {
         long owner = Long.parseLong(taskId);
-        RLock conversation = redissonClient.getLock(conversationKey(userId, conversationId));
-        if (!tryAcquire(conversation, owner)) {
-            throw new ClientException("当前会话正在处理中，请稍后重试");
-        }
+        RLock conversation = lockConversation(userId, conversationId, owner);
         try {
             int limit = agentProperties.getMaxConcurrentRunsPerUser();
             for (int slot = 0; slot < limit; slot++) {
@@ -67,8 +65,18 @@ public class AgentRunGate {
         }
     }
 
-    public boolean isRunning(String userId, String conversationId) {
-        return redissonClient.getLock(conversationKey(userId, conversationId)).isLocked();
+    public Runnable acquireConversation(String userId, String conversationId) {
+        long owner = IdUtil.getSnowflakeNextId();
+        RLock conversation = lockConversation(userId, conversationId, owner);
+        return () -> unlock(conversation, owner);
+    }
+
+    private RLock lockConversation(String userId, String conversationId, long owner) {
+        RLock conversation = redissonClient.getLock(CONVERSATION_KEY_PREFIX + userId + ":" + conversationId);
+        if (!tryAcquire(conversation, owner)) {
+            throw new ClientException("当前会话正在处理中，请稍后重试");
+        }
+        return conversation;
     }
 
     private boolean tryAcquire(RLock lock, long owner) {
@@ -84,9 +92,5 @@ public class AgentRunGate {
                 log.error("Agent锁释放失败，key: {}, owner: {}", lock.getName(), owner, e);
             }
         }
-    }
-
-    private String conversationKey(String userId, String conversationId) {
-        return CONVERSATION_KEY_PREFIX + userId + ":" + conversationId;
     }
 }

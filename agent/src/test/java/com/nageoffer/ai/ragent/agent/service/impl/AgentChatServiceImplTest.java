@@ -194,7 +194,6 @@ class AgentChatServiceImplTest {
         // 不驱逐则每个 (用户, 会话) 的全量记忆在单例 Agent 里常驻到进程重启
         verify(agent).clearStateCache(USER_ID, CONVERSATION_ID);
         verify(agent, never()).saveAgentState(anyString(), anyString());
-        verify(agentProvider, never()).evictStateCache(USER_ID, CONVERSATION_ID);
     }
 
     @Test
@@ -409,7 +408,6 @@ class AgentChatServiceImplTest {
         order.verify(agent).clearStateCache(USER_ID, CONVERSATION_ID);
         order.verify(releaseGate).run();
         verify(agentProvider).getAgent();
-        verify(agentProvider, never()).evictStateCache(anyString(), anyString());
     }
 
     /**
