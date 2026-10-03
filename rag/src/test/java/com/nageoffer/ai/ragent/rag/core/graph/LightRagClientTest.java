@@ -65,24 +65,44 @@ class LightRagClientTest {
     @DisplayName("删库只命中库名精确归属的文档，不连带前缀重叠的别库")
     void deleteByCollectionMatchesExactCollectionOnly() throws Exception {
         // 回归：旧 contains("kb_") 谓词会把 kb_hr 的两篇文档一并选中，删 kb 连带删光 kb_hr 的图谱数据且不可逆
-        server.enqueue(json("""
-                {"statuses":{"processed":[
-                  {"id":"doc-kb","file_path":"kb_1954071234567890100"},
-                  {"id":"doc-kb-hr-1","file_path":"kb_hr_1954071234567890200"},
-                  {"id":"doc-kb-hr-2","file_path":"kb_hr_1954071234567890300"}
-                ]}}
-                """));
+        server.enqueue(json(paginated(1, """
+                {"id":"doc-kb","file_path":"kb_1954071234567890100"},
+                {"id":"doc-kb-hr-1","file_path":"kb_hr_1954071234567890200"},
+                {"id":"doc-kb-hr-2","file_path":"kb_hr_1954071234567890300"}
+                """)));
         server.enqueue(json("{}"));
 
         client.deleteByCollection("kb");
 
         RecordedRequest listRequest = server.takeRequest(2, TimeUnit.SECONDS);
         assertNotNull(listRequest);
-        assertEquals("/documents", listRequest.getTarget());
+        // 回归：GET /documents 在 LightRAG 1.5.7 已下线，405 会让删除静默跳过，旧实体永久残留
+        assertEquals("POST", listRequest.getMethod());
+        assertEquals("/documents/paginated", listRequest.getTarget());
 
         RecordedRequest deleteRequest = server.takeRequest(2, TimeUnit.SECONDS);
         assertNotNull(deleteRequest, "kb 名下有文档，应发起删除请求");
         assertEquals("/documents/delete_document", deleteRequest.getTarget());
+        assertEquals(List.of("doc-kb"), docIdsOf(deleteRequest));
+    }
+
+    @Test
+    @DisplayName("待删文档在后续页时按 total_pages 翻页找齐")
+    void deletePagesUntilTotalPages() throws Exception {
+        server.enqueue(json(paginated(1, """
+                {"id":"doc-other","file_path":"kb_other_1954071234567890400"}
+                """, 2)));
+        server.enqueue(json(paginated(2, """
+                {"id":"doc-kb","file_path":"kb_1954071234567890100"}
+                """, 2)));
+        server.enqueue(json("{}"));
+
+        client.deleteByCollection("kb");
+
+        server.takeRequest(2, TimeUnit.SECONDS);
+        server.takeRequest(2, TimeUnit.SECONDS);
+        RecordedRequest deleteRequest = server.takeRequest(2, TimeUnit.SECONDS);
+        assertNotNull(deleteRequest, "命中末页文档，应发起删除请求");
         assertEquals(List.of("doc-kb"), docIdsOf(deleteRequest));
     }
 
@@ -121,11 +141,9 @@ class LightRagClientTest {
     void deletionIsNotBoundByChannelBudget() throws Exception {
         // 回归：检索预算若污染删除链路，大库文档枚举超预算会中断删除，静默留下图谱残留
         searchProperties.getChannels().setTimeoutMs(200);
-        server.enqueue(json("""
-                {"statuses":{"processed":[
-                  {"id":"doc-kb","file_path":"kb_1954071234567890100"}
-                ]}}
-                """).newBuilder().bodyDelay(1, TimeUnit.SECONDS).build());
+        server.enqueue(json(paginated(1, """
+                {"id":"doc-kb","file_path":"kb_1954071234567890100"}
+                """)).newBuilder().bodyDelay(1, TimeUnit.SECONDS).build());
         server.enqueue(json("{}"));
 
         client.deleteByCollection("kb");
@@ -152,6 +170,19 @@ class LightRagClientTest {
                 .setHeader("Content-Type", "application/json")
                 .body(body)
                 .build();
+    }
+
+    /**
+     * /documents/paginated 的响应体，文档为单页全部内容
+     */
+    private String paginated(int page, String docs) {
+        return paginated(page, docs, 1);
+    }
+
+    private String paginated(int page, String docs, int totalPages) {
+        return """
+                {"documents":[%s],"pagination":{"page":%d,"page_size":200,"total_count":3,"total_pages":%d,"has_next":%b,"has_prev":%b}}
+                """.formatted(docs, page, totalPages, page < totalPages, page > 1);
     }
 
     private List<String> docIdsOf(RecordedRequest request) throws Exception {

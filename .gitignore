@@ -47,7 +47,13 @@ resources/docker/graphrag/.env
 ### Tmp Out ###
 .output/
 docs/temp
+/*.log
 .claude/
+# 本机专用覆盖配置，内含密钥，禁止提交
+bootstrap/src/main/resources/application-local.yaml
+# 本机调试环境差异配置（端口/通道开关等，已 skip-worktree，禁止提交）
+bootstrap/src/main/resources/application.yaml
+resources/docker/rocketmq-stack-5.2.0.compose.yaml
 
 ### Regression artifacts ###
 # Local reports, credentials, logs, snapshots and compiled CLI classes.
