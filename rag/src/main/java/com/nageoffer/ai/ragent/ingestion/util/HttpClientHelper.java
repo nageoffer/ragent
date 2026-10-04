@@ -19,6 +19,7 @@ package com.nageoffer.ai.ragent.ingestion.util;
 
 import com.nageoffer.ai.ragent.framework.exception.ServiceException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
@@ -36,11 +37,15 @@ import java.util.Map;
 /**
  * HTTP 请求工具类，用于获取网络资源
  */
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class HttpClientHelper {
 
-    @Qualifier("syncHttpClient")
+    /** 错误响应体只为日志读取的前缀长度 */
+    private static final int ERROR_BODY_LOG_BYTES = 512;
+
+    @Qualifier("documentFetchHttpClient")
     private final OkHttpClient client;
 
     public HttpFetchResponse get(String url, Map<String, String> headers) {
@@ -59,9 +64,9 @@ public class HttpClientHelper {
         try {
             Response response = client.newCall(builder.get().build()).execute();
             if (!response.isSuccessful()) {
-                String body = response.body() != null ? response.body().string() : "";
+                log.warn("上游返回非 2xx: url={}, code={}, body={}", url, response.code(), readBodyForLog(response));
                 response.close();
-                throw new ServiceException("网络请求失败: " + response.code() + " " + body);
+                throw new ServiceException("网络请求失败: HTTP " + response.code());
             }
             ResponseBody responseBody = response.body();
             String contentType = response.header("Content-Type");
@@ -90,8 +95,8 @@ public class HttpClientHelper {
         }
         try (Response response = client.newCall(builder.get().build()).execute()) {
             if (!response.isSuccessful()) {
-                String body = response.body() != null ? response.body().string() : "";
-                throw new ServiceException("网络请求失败: " + response.code() + " " + body);
+                log.warn("上游返回非 2xx: url={}, code={}, body={}", url, response.code(), readBodyForLog(response));
+                throw new ServiceException("网络请求失败: HTTP " + response.code());
             }
             String contentType = response.header("Content-Type");
             String disposition = response.header("Content-Disposition");
@@ -181,6 +186,21 @@ public class HttpClientHelper {
             return Long.parseLong(header);
         } catch (NumberFormatException ignore) {
             return null;
+        }
+    }
+
+    /**
+     * 只为日志读取响应体前缀：既不把上游错误页整段读进堆，也不再回显给调用方
+     */
+    private String readBodyForLog(Response response) {
+        ResponseBody body = response.body();
+        if (body == null) {
+            return "";
+        }
+        try (InputStream in = body.byteStream()) {
+            return new String(in.readNBytes(ERROR_BODY_LOG_BYTES), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            return "";
         }
     }
 
