@@ -43,6 +43,8 @@ import io.agentscope.core.event.ToolResultStartEvent;
 import io.agentscope.core.event.ToolResultTextDeltaEvent;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.MsgRole;
+import io.agentscope.core.message.TextBlock;
+import io.agentscope.core.message.ToolResultBlock;
 import io.agentscope.core.message.ToolResultState;
 import io.agentscope.core.message.ToolUseBlock;
 import io.modelcontextprotocol.spec.McpSchema.JsonSchema;
@@ -50,6 +52,7 @@ import io.modelcontextprotocol.spec.McpSchema.Tool;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -63,8 +66,10 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -617,6 +622,47 @@ class AgentStreamEventBridgeTest {
             assertThat(block.getEndedAt()).isNull();
             assertThat(block.getDurationMs()).isNull();
         });
+    }
+
+    /**
+     * 实测 B：同批一条已返回、一条还在等，框架整批回来才发结束事件，停止后已返回那条按自己的结果收口
+     */
+    @Test
+    void shouldSettleReturnedToolByItsOwnResultWhenBatchIsCutOff() {
+        bridge.onEvent(new ToolCallStartEvent(REASON_ID, "call-1", "query_order"));
+        bridge.onEvent(new ToolCallStartEvent(REASON_ID, "call-2", "search_knowledge"));
+        beginBatch("call-1", "call-2");
+        bridge.onEvent(new ToolResultStartEvent(ACT_ID, "call-1", "query_order"));
+        bridge.onEvent(new ToolResultStartEvent(ACT_ID, "call-2", "search_knowledge"));
+        facts.markStarted("call-1");
+        facts.markStarted("call-2");
+        clock.advance(6);
+        facts.markEnded("call-1");
+        facts.markReturned("call-1", ToolResultBlock.builder().id("call-1").name("query_order")
+                .output(List.of(TextBlock.builder().text("订单 88232").build(),
+                        TextBlock.builder().text("，已签收").build()))
+                .state(ToolResultState.SUCCESS).build());
+        clock.advance(2_000);
+        when(conversationService.addAssistantMessage(any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn("m-1");
+
+        bridge.finishCancelledStream();
+
+        assertThat(capturedBlocks())
+                .extracting(AgentBlock::getToolCallId, AgentBlock::getStatus, AgentBlock::getResult,
+                        AgentBlock::getDurationMs)
+                .containsExactly(
+                        tuple("call-1", "done", "订单 88232，已签收", 6L),
+                        tuple("call-2", "interrupted", null, null));
+        // 前端收到 cancel 就不再接块，终态帧必须排在它前面
+        InOrder order = inOrder(sender);
+        order.verify(sender).sendEvent(eq("block"), argThat(payload -> payload instanceof AgentToolProgress progress
+                && "call-1".equals(progress.toolCallId()) && "done".equals(progress.status())
+                && "订单 88232，已签收".equals(progress.result())));
+        order.verify(sender).sendEvent(eq("cancel"), any());
+        // 没返回的那条交给前端自己收口，不补帧
+        assertThat(capturedToolEvents()).filteredOn(progress -> "call-2".equals(progress.toolCallId()))
+                .extracting(AgentToolProgress::status).doesNotContain("interrupted");
     }
 
     /**

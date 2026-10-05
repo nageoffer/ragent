@@ -171,6 +171,8 @@ public final class AgentToolBodyTracer {
         long endedAt = status == AgentToolStatus.INTERRUPTED
                 ? facts.markTerminated(toolCallId)
                 : facts.markEnded(toolCallId);
+        // 落库读它，必须在没有 span 的早退之前
+        facts.markReturned(toolCallId, result);
         if (span == null) {
             return;
         }

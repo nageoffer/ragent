@@ -18,6 +18,7 @@
 package com.nageoffer.ai.ragent.agent.tool;
 
 import io.agentscope.core.agent.RuntimeContext;
+import io.agentscope.core.message.ToolResultBlock;
 import lombok.extern.slf4j.Slf4j;
 
 import java.time.Clock;
@@ -30,7 +31,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * 一次 run 内执行事实的唯一生成者：run 起点、批次号、组内序号、单工具真起止、两条中断时刻都只在这里产生一次
+ * 一次 run 内执行事实的唯一生成者：run 起点、批次号、组内序号、单工具真起止与返回结果、两条中断时刻都只在这里产生一次
  * <p>
  * trace、SSE、PG、前端一律读这里，不各自复算——同一个事实有两个算法，迟早会算出两个值
  */
@@ -179,6 +180,15 @@ public final class AgentToolExecutionFacts {
     }
 
     /**
+     * 工具体返回时登记结果：框架整批回来才发结束事件，同批有工具没回来就被停止时，已返回的结局只能从这里读
+     */
+    public void markReturned(String toolCallId, ToolResultBlock result) {
+        if (result != null) {
+            factOf(toolCallId).result.compareAndSet(null, result);
+        }
+    }
+
+    /**
      * 断在半路的工具收在中断时刻，没有中断时刻才退回当前时刻
      * 与 markEnded 分开是因为终点来源不同：正常终止取此刻，提前收口取全局那个终点
      */
@@ -257,7 +267,7 @@ public final class AgentToolExecutionFacts {
     }
 
     /**
-     * 一次工具调用的全部事实，起止各自 CAS 一次
+     * 一次工具调用的全部事实，起止与返回结果各自 CAS 一次
      */
     public static final class ToolFact {
 
@@ -266,6 +276,7 @@ public final class AgentToolExecutionFacts {
         private final AtomicReference<String> batchId = new AtomicReference<>();
         private final AtomicLong startedAt = new AtomicLong();
         private final AtomicLong endedAt = new AtomicLong();
+        private final AtomicReference<ToolResultBlock> result = new AtomicReference<>();
         private final AtomicReference<String> shortCircuitReason = new AtomicReference<>();
         private final AtomicReference<String> shortCircuitDetail = new AtomicReference<>();
 
@@ -297,6 +308,13 @@ public final class AgentToolExecutionFacts {
             long start = startedAt.get();
             long end = endedAt.get();
             return start == 0L || end == 0L ? null : end - start;
+        }
+
+        /**
+         * 抛异常或被取消的调用没有返回值，留空
+         */
+        public ToolResultBlock result() {
+            return result.get();
         }
 
         public String shortCircuitReason() {

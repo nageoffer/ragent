@@ -38,7 +38,7 @@ outcome.member(...)                       // 短路调用要跳过，混批里�
 
 `span.recordException` 也进不了索引，但它是异常栈唯一载体，一行而已，留着。
 
-`AgentToolBodyTracer.trace()` 不是纯观测——里面的 `facts.markStarted / markEnded / markTerminated` 有两个业务读者：`AgentStreamEventBridge` 拿去填 SSE 块和落库字段，`AgentToolBatchMiddleware` 拿 `startedAt()` 判断调用有没有真进过工具体。方法体不能绕过，调用顺序不能改。
+`AgentToolBodyTracer.trace()` 不是纯观测——里面的 `facts.markStarted / markEnded / markTerminated / markReturned` 有两个业务读者：`AgentStreamEventBridge` 拿去填 SSE 块和落库字段，`AgentToolBatchMiddleware` 拿 `startedAt()` 判断调用有没有真进过工具体。方法体不能绕过，调用顺序不能改。
 
 ## 看着重复但要留的
 

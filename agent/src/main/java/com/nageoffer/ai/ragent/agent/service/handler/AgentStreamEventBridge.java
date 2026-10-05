@@ -50,6 +50,8 @@ import io.agentscope.core.event.ToolResultEndEvent;
 import io.agentscope.core.event.ToolResultStartEvent;
 import io.agentscope.core.event.ToolResultTextDeltaEvent;
 import io.agentscope.core.message.Msg;
+import io.agentscope.core.message.TextBlock;
+import io.agentscope.core.message.ToolResultBlock;
 import io.agentscope.core.message.ToolUseBlock;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -64,6 +66,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * AgentScope 事件流 → SSE 协议转换，负责增量转发、轨迹落库与取消收尾
@@ -621,19 +624,21 @@ public class AgentStreamEventBridge {
     }
 
     /**
-     * 本轮块收口后落库：封口文本块、未完工具改 interrupted、补发封口帧，最后写库
+     * 本轮块收口后落库：封口文本块、未完工具按返回结果收口、补发封口帧与工具终态，最后写库
      * 调用方拿到 null 表示没写进去，此时不能再发带 messageId 的收尾事件
      */
     private String settleAndPersistMessage(String content, AgentMessageStatus status) {
         String thinking;
         List<AgentBlock> settled;
+        List<AgentToolProgress> returned = new ArrayList<>();
         // 思考文本与块列表在同一个锁内取快照
         synchronized (stateLock) {
             thinking = textOf(TextKind.REASONING);
-            settled = settleBlocks();
+            settled = settleBlocks(returned);
         }
-        // 末段封口帧要赶在 finish/confirm/cancel 之前发出去
+        // 末段封口帧与补上的工具终态要赶在 finish/confirm/cancel 之前发出去，前端收到 cancel 后不再接块
         flushSealedTextBlocks();
+        returned.forEach(progress -> sender.sendEvent(AgentSSEEventType.BLOCK.value(), progress));
         try {
             return conversationService.addAssistantMessage(conversationId, userId, content,
                     thinking, settled, replyToMessageId, status, facts.settleRun());
@@ -644,9 +649,10 @@ public class AgentStreamEventBridge {
     }
 
     /**
-     * 调用方需持 stateLock：封口文本块、running 改 interrupted、剔除空文本块
+     * 调用方需持 stateLock：封口文本块、未完工具收口、剔除空文本块
+     * 没等到结束事件但工具体已返回的块放进 returned，由调用方出锁补发
      */
-    private List<AgentBlock> settleBlocks() {
+    private List<AgentBlock> settleBlocks(List<AgentToolProgress> returned) {
         sealOpenTextBlock();
         List<AgentBlock> settled = new ArrayList<>(blocks.size());
         for (AgentBlock block : blocks) {
@@ -656,14 +662,41 @@ public class AgentStreamEventBridge {
                 continue;
             }
             // 只判工具块，confirm 的 pending 由结算流程改写
-            if (AgentBlock.KIND_TOOL.equals(block.getKind()) && isOpen(block.getStatus())) {
-                block.setStatus(AgentToolStatus.INTERRUPTED.value());
-                // 可能已进过工具体，补上真实起点
-                applyExecutionTimes(block);
+            if (AgentBlock.KIND_TOOL.equals(block.getKind()) && isOpen(block.getStatus())
+                    && settleOpenToolBlock(block)) {
+                returned.add(AgentToolProgress.of(block));
             }
             settled.add(block);
         }
         return settled.isEmpty() ? null : settled;
+    }
+
+    /**
+     * 框架整批回来才发结束事件，同批有工具没回来就被停止时，已返回的那条按它自己的结果收口，没返回的判 interrupted
+     * 返回 true 表示按返回结果收口；调用方需持 stateLock
+     */
+    private boolean settleOpenToolBlock(AgentBlock block) {
+        // 可能已进过工具体，补上真实起止
+        applyExecutionTimes(block);
+        ToolResultBlock result = facts.toolFact(block.getToolCallId()).result();
+        if (result == null) {
+            block.setStatus(AgentToolStatus.INTERRUPTED.value());
+            return false;
+        }
+        block.setStatus(AgentToolStatus.of(result.getState()).value());
+        block.setResult(resultTextOf(result));
+        return true;
+    }
+
+    /**
+     * 拼法与截断同结果增量：框架按文本块逐个发增量，中间不加分隔
+     */
+    private static String resultTextOf(ToolResultBlock result) {
+        String text = result.getOutput().stream()
+                .filter(TextBlock.class::isInstance)
+                .map(block -> StrUtil.emptyIfNull(((TextBlock) block).getText()))
+                .collect(Collectors.joining());
+        return StrUtil.emptyToNull(StrUtil.sub(text, 0, TOOL_RESULT_MAX_CHARS));
     }
 
     /**
