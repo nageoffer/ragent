@@ -38,57 +38,51 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Map;
 
 import static com.nageoffer.ai.ragent.mcp.executor.McpToolSchema.string;
 import static com.nageoffer.ai.ragent.mcp.executor.McpToolSchema.integer;
 
 /**
- * 设置购物车里某个 SKU 的目标数量，0 即移除
- * <p>
- * 定成「设为几件」而不是「加几件」：加购语义重发一次就翻倍，设置语义发多少次结果都一样
+ * 购物车操作：新增、减少或移除商品
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class BitCartUpdateMcpExecutor {
 
-    private static final String TOOL_ID = "set_cart_item";
-
+    private static final String TOOL_ID = "update_cart_item";
     private static final int MAX_QUANTITY = 99;
 
     private final CartMapper cartMapper;
     private final ProductSkuMapper productSkuMapper;
 
     @Bean
-    public McpServerFeatures.SyncToolSpecification setCartItemToolSpecification() {
+    public McpServerFeatures.SyncToolSpecification updateCartItemToolSpecification() {
+        JsonSchema inputSchema = McpToolSchema.object()
+                .required(string("skuCode", "商品 SKU 编码，来自商品查询或购物车查询").title("商品型号"))
+                .required(string("action", "add 新增，decrease 减少，remove 移除")
+                        .options(List.of("add", "decrease", "remove")).title("操作"))
+                .optional(integer("quantity", "新增或减少时必填，表示本次增减件数，须为 1 到 99 的整数；移除时不用填")
+                        .title("增减数量"))
+                .build();
+        Tool tool = Tool.builder()
+                .name(TOOL_ID)
+                .description("修改当前登录用户的购物车。add：没有则新增，已有则累加，总数最多 99，超限不修改；"
+                        + "decrease：减少指定件数，最低保留 1 件；remove：直接移除商品。"
+                        + "新增、减少的 quantity 是本次变化量，不是最终总数。"
+                        + "增减结果不确定时先查购物车，不要直接重试。已下架商品不能新增")
+                .inputSchema(inputSchema)
+                .annotations(McpToolAnnotations.WRITE)
+                .build();
         return McpServerFeatures.SyncToolSpecification.builder()
-                .tool(buildTool())
+                .tool(tool)
                 .callHandler((exchange, request) -> handleCall(request))
                 .build();
     }
 
-    private Tool buildTool() {
-        JsonSchema inputSchema = McpToolSchema.object()
-                .required(string("skuCode", "商品 SKU 型号，如 BIT-A18，来自商品查询或购物车查询")
-                        .title("商品型号"))
-                .required(integer("quantity", "购物车里这件商品最终要有几件，填 0 表示从购物车移除。"
-                        + "注意是最终数量而不是增量：车里已有 1 件、用户说再加 1 件，这里填 2")
-                        .title("目标数量"))
-                .build();
-
-        return Tool.builder()
-                .name(TOOL_ID)
-                .description("设置当前登录用户购物车中某个商品的数量，填 0 即移除。"
-                        + "数量是目标值不是增量，用户说「再加两件」时要先查购物车拿到现有数量再相加。"
-                        + "已下架商品无法加入；缺货商品可以留在车里，但下单时会被拦下")
-                .inputSchema(inputSchema)
-                .annotations(McpToolAnnotations.WRITE)
-                .build();
-    }
-
     private CallToolResult handleCall(CallToolRequest request) {
-        long startMs = System.currentTimeMillis();
         String userId = McpToolResults.userId(request);
         if (userId == null) {
             return McpToolResults.identityRequired(TOOL_ID);
@@ -96,79 +90,56 @@ public class BitCartUpdateMcpExecutor {
         try {
             Map<String, Object> args = McpToolResults.args(request);
             String skuCode = StrUtil.trimToNull(MapUtil.getStr(args, "skuCode"));
-            Integer quantity = MapUtil.getInt(args, "quantity");
-
+            String action = MapUtil.getStr(args, "action", "");
             if (skuCode == null) {
-                return BitToolSupport.rejected("请先确认要调整哪一件商品，型号可用商品查询或购物车查询取得");
+                return BitToolSupport.rejected("请先确认商品编码");
             }
-            if (quantity == null || quantity < 0) {
-                return BitToolSupport.rejected("目标数量缺失或不合法，要一个 0 到 " + MAX_QUANTITY + " 之间的整数");
+            if (!List.of("add", "decrease", "remove").contains(action)) {
+                return BitToolSupport.rejected("操作必须是 add、decrease 或 remove");
             }
-            if (quantity > MAX_QUANTITY) {
-                return BitToolSupport.rejected("单件商品一次最多买 " + MAX_QUANTITY + " 件，请向用户确认数量");
+            if ("remove".equals(action)) {
+                cartMapper.delete(Wrappers.<CartDO>lambdaQuery()
+                        .eq(CartDO::getUserId, userId).eq(CartDO::getSkuCode, skuCode));
+                return McpToolResults.success("已移除商品，购物车中不再包含 " + skuCode);
             }
-
-            String result;
-            if (quantity == 0) {
-                result = remove(userId, skuCode);
-            } else {
-                ProductSkuDO product = loadProduct(skuCode);
-                if (product == null) {
-                    return BitToolSupport.rejected("未找到商品 " + skuCode + "，请确认型号");
-                }
-                if (!"在售".equals(product.getStatus())) {
-                    return BitToolSupport.rejected(String.format(
-                            "%s（%s）已下架，无法加入购物车，可以帮用户看看同品类还在售的型号",
-                            product.getName(), product.getSkuCode()));
-                }
-                result = upsert(userId, product, quantity);
+            Object value = args.get("quantity");
+            if (!(value instanceof Number number)) {
+                return BitToolSupport.rejected("增减数量必须是 1 到 " + MAX_QUANTITY + " 之间的整数");
             }
-
-            log.info("MCP 工具调用完成, toolId={}, skuCode={}, quantity={}, elapsed={}ms",
-                    TOOL_ID, skuCode, quantity, System.currentTimeMillis() - startMs);
+            int quantity;
+            try {
+                quantity = new BigDecimal(number.toString()).intValueExact();
+            } catch (NumberFormatException | ArithmeticException e) {
+                return BitToolSupport.rejected("增减数量必须是 1 到 " + MAX_QUANTITY + " 之间的整数");
+            }
+            if (quantity < 1 || quantity > MAX_QUANTITY) {
+                return BitToolSupport.rejected("增减数量必须是 1 到 " + MAX_QUANTITY + " 之间的整数");
+            }
+            if ("decrease".equals(action)) {
+                Integer total = cartMapper.decreaseQuantity(userId, skuCode, quantity);
+                return total == null
+                        ? BitToolSupport.rejected("购物车中没有 " + skuCode + "，无法减少")
+                        : McpToolResults.success(String.format("已调整 %s 的数量，车内共 %d 件（最低保留 1 件）", skuCode, total));
+            }
+            ProductSkuDO product = productSkuMapper.selectOne(Wrappers.<ProductSkuDO>lambdaQuery()
+                    .eq(ProductSkuDO::getSkuCode, skuCode));
+            if (product == null || !"在售".equals(product.getStatus())) {
+                return BitToolSupport.rejected("商品不存在或已下架，无法加入购物车：" + skuCode);
+            }
+            Integer total = cartMapper.addQuantity(userId, skuCode, quantity, product.getPrice(), MAX_QUANTITY);
+            if (total == null) {
+                return BitToolSupport.rejected("加入后同款商品将超过 " + MAX_QUANTITY + " 件，本次未加入");
+            }
+            String result = String.format("已加入购物车: %s（%s），本次新增 %d 件，车内共 %d 件%n单价 %s，小计 %s",
+                    product.getName(), skuCode, quantity, total, BitToolSupport.money(product.getPrice()),
+                    BitToolSupport.money(product.getPrice().multiply(BigDecimal.valueOf(total))));
+            if (product.getStock() < total) {
+                result += String.format("%n提示: 当前库存 %d 件，下单时会重新检查库存", product.getStock());
+            }
             return McpToolResults.success(result);
         } catch (Exception e) {
-            log.error("MCP 工具调用失败, toolId={}, elapsed={}ms",
-                    TOOL_ID, System.currentTimeMillis() - startMs, e);
+            log.error("MCP 工具调用失败, toolId={}", TOOL_ID, e);
             return McpToolResults.failure("购物车调整", e);
         }
     }
-
-    /**
-     * 本来就不在车里也算成功：目标状态是「车里没有它」，这一条本就是幂等的
-     */
-    private String remove(String userId, String skuCode) {
-        int removed = cartMapper.delete(Wrappers.<CartDO>lambdaQuery()
-                .eq(CartDO::getUserId, userId).eq(CartDO::getSkuCode, skuCode));
-        return removed > 0
-                ? String.format("已从购物车移除 %s", skuCode)
-                : String.format("购物车里本来就没有 %s，当前状态与目标一致", skuCode);
-    }
-
-    private ProductSkuDO loadProduct(String skuCode) {
-        return productSkuMapper.selectOne(Wrappers.<ProductSkuDO>lambdaQuery()
-                .eq(ProductSkuDO::getSkuCode, skuCode));
-    }
-
-    private String upsert(String userId, ProductSkuDO product, int quantity) {
-        CartDO existing = cartMapper.selectOne(Wrappers.<CartDO>lambdaQuery()
-                .eq(CartDO::getUserId, userId).eq(CartDO::getSkuCode, product.getSkuCode()));
-        Integer before = existing == null ? null : existing.getQuantity();
-        cartMapper.upsert(userId, product.getSkuCode(), quantity, product.getPrice());
-
-        StringBuilder sb = new StringBuilder();
-        sb.append(before == null
-                ? String.format("已加入购物车: %s（%s）×%d%n", product.getName(), product.getSkuCode(), quantity)
-                : String.format("已调整购物车数量: %s（%s）%d 件 → %d 件%n",
-                product.getName(), product.getSkuCode(), before, quantity));
-        sb.append(String.format("单价 %s，小计 %s%n", BitToolSupport.money(product.getPrice()),
-                BitToolSupport.money(product.getPrice().multiply(BigDecimal.valueOf(quantity)))));
-        if (product.getStock() <= 0) {
-            sb.append("提示: 这件商品当前缺货，可以先放在车里，但现在下单会被拦下\n");
-        } else if (product.getStock() < quantity) {
-            sb.append(String.format("提示: 这件商品当前只剩 %d 件，下单时最多买这么多%n", product.getStock()));
-        }
-        return sb.toString().trim();
-    }
-
 }

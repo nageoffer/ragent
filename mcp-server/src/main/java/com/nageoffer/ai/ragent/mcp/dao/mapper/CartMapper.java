@@ -21,6 +21,7 @@ import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.nageoffer.ai.ragent.mcp.dao.entity.CartDO;
 import com.nageoffer.ai.ragent.mcp.dao.result.CartLineResult;
+import org.apache.ibatis.annotations.Options;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
@@ -31,8 +32,7 @@ import java.util.List;
 
 /**
  * 购物车
- * <p>
- * 写入定成「设为几件」而不是「加几件」：加购语义重发一次就翻倍，设置语义发多少次结果都一样
+ * 新增按增量累加，减少最低保留一件
  */
 public interface CartMapper extends BaseMapper<CartDO> {
 
@@ -77,24 +77,36 @@ public interface CartMapper extends BaseMapper<CartDO> {
                        @Param("quantity") int quantity);
 
     /**
-     * 冲突时只改数量，不动 added_price 与 create_time——加购价被改写，「这件降了多少」就永远算成 0
+     * 在数据库内原子累加，避免先查再写丢失并发加购；达到上限时不更新，返回 null
+     * RETURNING 返回本次写入后的数量，冲突更新保留最初的加购价格与时间
      */
-    @Update("""
+    @Select(value = """
             INSERT INTO t_cart (id, user_id, sku_code, quantity, added_price, create_time, update_time)
             VALUES (#{id}, #{userId}, #{skuCode}, #{quantity}, #{addedPrice}, #{now}, #{now})
             ON CONFLICT (user_id, sku_code)
-            DO UPDATE SET quantity = EXCLUDED.quantity, update_time = #{now}
-            """)
-    int upsert(@Param("id") long id, @Param("userId") String userId, @Param("skuCode") String skuCode,
-               @Param("quantity") int quantity, @Param("addedPrice") BigDecimal addedPrice,
-               @Param("now") Timestamp now);
+            DO UPDATE SET quantity = t_cart.quantity + EXCLUDED.quantity, update_time = #{now}
+            WHERE t_cart.quantity + EXCLUDED.quantity <= #{maxQuantity}
+            RETURNING quantity
+            """, affectData = true)
+    @Options(flushCache = Options.FlushCachePolicy.TRUE, useCache = false)
+    Integer addQuantity(@Param("id") long id, @Param("userId") String userId, @Param("skuCode") String skuCode,
+                        @Param("quantity") int quantity, @Param("addedPrice") BigDecimal addedPrice,
+                        @Param("maxQuantity") int maxQuantity, @Param("now") Timestamp now);
 
-    /**
-     * 自定义 SQL 绕过了 MyBatis-Plus 那套：ASSIGN_ID 与 MetaObjectHandler 都只作用于 BaseMapper 的方法，
-     * 所以主键和时间得在这里自己补。撞上 ON CONFLICT 时这个 id 会被丢掉，不影响已有行
-     */
-    default int upsert(String userId, String skuCode, int quantity, BigDecimal addedPrice) {
-        return upsert(IdWorker.getId(), userId, skuCode, quantity, addedPrice,
+    default Integer addQuantity(String userId, String skuCode, int quantity, BigDecimal addedPrice, int maxQuantity) {
+        return addQuantity(IdWorker.getId(), userId, skuCode, quantity, addedPrice, maxQuantity,
                 new Timestamp(System.currentTimeMillis()));
     }
+
+    /**
+     * 减少购物车数量，最低保留一件；不存在时返回 null
+     */
+    @Select(value = """
+            UPDATE t_cart SET quantity = GREATEST(quantity - #{quantity}, 1), update_time = now()
+            WHERE user_id = #{userId} AND sku_code = #{skuCode}
+            RETURNING quantity
+            """, affectData = true)
+    @Options(flushCache = Options.FlushCachePolicy.TRUE, useCache = false)
+    Integer decreaseQuantity(@Param("userId") String userId, @Param("skuCode") String skuCode,
+                             @Param("quantity") int quantity);
 }
