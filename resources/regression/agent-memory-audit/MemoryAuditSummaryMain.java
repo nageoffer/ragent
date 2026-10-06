@@ -20,7 +20,9 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
-/** Runs the supplied summary script until compaction, then collects the recall probe and evidence. */
+/**
+ * 跑摘要剧本直到触发压缩，再做回忆探针并导出证据
+ */
 public final class MemoryAuditSummaryMain {
     public static void main(String[] args) {
         int code;
@@ -117,10 +119,10 @@ public final class MemoryAuditSummaryMain {
             boolean observed = false;
             for (Map<String,Object> turn : setup) {
                 observed = ask(out, turn, run, attempted, collected, command);
-                // Always supply both the task and the draft before the recall probe.
+                // 探针之前任务和起草两轮都得问完
                 if (observed && collected.size() >= 2) break;
             }
-            // The probe itself can trigger compaction at the beginning of its turn.
+            // 探针这一轮开头也可能触发压缩
             boolean probeObserved = ask(out, probe, run, attempted, collected, command);
             run.put("summaryCoverage", observed || probeObserved ? "OBSERVED" : "UNCOVERED");
             command.invoke("export-summary", "export-summary", "summary", "main");

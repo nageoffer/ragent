@@ -25,7 +25,9 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
-/** Live audit: real HTTP chat, read-only database observations, isolated API-created users. */
+/**
+ * 在线审计：真实 HTTP 对话，只读观察数据库，用户由接口新建、互相隔离
+ */
 public final class MemoryAuditMain {
     public static void main(String[] args) throws Exception {
         int code = execute(args);
@@ -73,7 +75,7 @@ public final class MemoryAuditMain {
             if (mode.equals("create")) {
                 requireUnusedIdentity(out, identity);
                 Set<String> occupiedNames = new HashSet<>();
-                // Soft-deleted usernames still occupy the database's unique key.
+                // 逻辑删除的用户名仍占着唯一键，也要避开
                 for (List<String> row : jdbc.queryRows("SELECT username FROM t_user")) occupiedNames.add(row.get(0));
                 String username = newUsername(occupiedNames);
                 http.login(config.require("auth.username"), config.require("auth.password"));
@@ -178,7 +180,7 @@ public final class MemoryAuditMain {
         }
     }
 
-    // Small injectable boundary: offline checks exercise the actual collection/failure paths without a service.
+    // 观察和对话都从参数注入，离线自检不起服务也能走真实的采集与失败路径
     static int runTurn(Path out, Request request, Map<String,Object> sessions, Timing timing,
                        Callable<Map<String,Object>> observer,
                        Callable<AgentChatClient.AgentTurnResult> chat) throws Exception {
@@ -204,7 +206,7 @@ public final class MemoryAuditMain {
                 AgentChatClient.AgentTurnResult result = null;
                 try {
                     result = withTimeout(chat, timing.chatTimeoutMillis());
-                    // Preserve the response before any local persistence or database observation can fail.
+                    // 先把回答记下，后面落盘或读库失败也不丢
                     turn.put("conversationId", result.conversationId()); turn.put("taskId", result.taskId());
                     turn.put("answer", result.answer()); turn.put("tools", result.tools()); turn.put("thinkChars", result.thinkChars());
                     turn.put("messageId", result.messageId()); turn.put("status", "COMPLETED");
@@ -238,7 +240,7 @@ public final class MemoryAuditMain {
             } catch (Exception e) {
                 observationFailure(turn, "after", e);
             }
-            // JSONL is the primary evidence. A failed latest/sessions sidecar must not erase this turn.
+            // JSONL 是主证据，latest/sessions 旁路文件写失败不能连累这一轮
             if (turn.containsKey("after")) {
                 try { write(out.resolve(request.identity() + "-latest.json"), turn.get("after")); }
                 catch (Exception e) { turn.put("latestPersistenceError", describe(e)); }
@@ -251,7 +253,7 @@ public final class MemoryAuditMain {
                 Files.writeString(out.resolve(request.identity() + "-turns.jsonl"), json + "\n",
                         StandardOpenOption.CREATE, StandardOpenOption.APPEND);
             } finally {
-                // Also emit evidence if the output disk itself fails; the process still fails nonzero.
+                // 输出盘写失败时也打到标准输出留证，退出码照样非零
                 System.out.println(json);
             }
         }

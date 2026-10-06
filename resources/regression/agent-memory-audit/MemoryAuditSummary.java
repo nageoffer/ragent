@@ -14,7 +14,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** Read-only, allowlisted evidence export for the supplied summary script. */
+/**
+ * 摘要剧本的证据导出，只读库，只导出白名单字段
+ */
 final class MemoryAuditSummary {
     private static final String SUMMARY_NAME = "__compaction_summary__";
 
@@ -47,7 +49,7 @@ final class MemoryAuditSummary {
         System.out.println("Summary evidence: " + target);
     }
 
-    // Also used to derive a publishable export from a previously captured local state.
+    // 也用于从之前抓下来的本地状态重新生成可公开的导出
     static Map<String, Object> build(String userId, String conversationId, Map<String, Object> state,
                                       List<Map<String, Object>> allTurns, List<List<String>> memories,
                                       List<List<String>> compactions) {
@@ -56,7 +58,7 @@ final class MemoryAuditSummary {
         result.put("userId", userId);
         result.put("conversationId", conversationId);
         result.put("scope", "Text and tool names only. Exact source-text presence is not a semantic judgment; "
-                + "this export does not establish a business PASS or cover overlong-summary clipping.");
+                + "this export does not establish a business PASS or cover overlong-summary handling.");
         boolean statePresent = state != null && state.get("context") instanceof List<?>;
         result.put("statePresent", statePresent);
         List<Object> context = new ArrayList<>();
@@ -103,7 +105,7 @@ final class MemoryAuditSummary {
         result.put("compactionColumns", List.of("generation", "summaryChars", "contextCharsBefore", "contextCharsAfter", "summary", "createdAt"));
         result.put("compactions", compactions);
 
-        // The supplied script starts with a seed, then a draft request. Do not silently use another session's log.
+        // 剧本前两轮固定是种子和起草请求，只认本用户本会话的日志，不借别的会话
         List<Map<String, Object>> turns = allTurns.stream().filter(t -> conversationId.equals(t.get("conversationId")))
                 .filter(t -> userId.equals(object(t.get("before")).get("userId"))).toList();
         result.put("matchingLoggedTurns", turns.size());
@@ -126,7 +128,7 @@ final class MemoryAuditSummary {
         for (String key : List.of("question", "answer", "status", "finishedAt", "messageId")) {
             lastEvidence.put(key, last.get(key));
         }
-        // AgentChatClient records tool names as strings; never copy an arbitrary tool structure.
+        // AgentChatClient 只把工具名记成字符串，混进别的结构就置空，不原样照搬
         boolean toolsKnown = last.get("tools") instanceof List<?> names && names.stream().allMatch(String.class::isInstance);
         lastEvidence.put("tools", toolsKnown ? last.get("tools") : null);
         lastEvidence.put("observation", "COMPLETED".equals(last.get("status")) && toolsKnown

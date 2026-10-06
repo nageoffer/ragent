@@ -9,6 +9,7 @@
 | [agent-memory-audit](agent-memory-audit/README.md) | 独立账号的真实流程复现、逐轮证据采集 | 核实跨会话覆盖、删除回写、清空和摘要问题 |
 | [agent-concurrency](agent-concurrency/README.md) | 多用户并发、请求隔离与数据库一致性回归 | 验证共享 Agent 的真实服务路径能否并行执行 |
 | [agent-run-gate-audit](agent-run-gate-audit/README.md) | Java 测试与临时 Redis 闸门检查 | 验证会话互斥、用户名额、跨线程释放和看门狗回收 |
+| [agent-compaction](agent-compaction/README.md) | 比特严选长会话、逐代摘要判定 | 修改压缩代码或比特严选压缩提示词后，检查摘要有界与业务正确 |
 
 各套件的运行条件、命令、配置、数据操作范围和结果解释，见对应子目录的 README。
 

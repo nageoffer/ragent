@@ -243,8 +243,6 @@ final class AgentMemoryRegressionMain {
                 + "，压缩后保留 " + keepRecentChars(context)
                 + "，摘要正文上限 " + summaryMaxChars(context));
         System.out.println("  裁剪条件        超过裁剪水位后，清理白名单内、保护窗口外且替换后净缩短的工具结果");
-        // 压缩层的素材过半判定写死在 AgentContextCompactor 里
-        System.out.println("  压缩层另一道门  素材字符须过总量的一半，否则打「可换出字符不过半」跳过本轮");
         System.out.println("  剧本            " + script.turns().size() + " 轮，锚点 " + script.anchor());
         System.out.println("  已实现记忆层    " + String.join(", ", MemoryTurnScript.IMPLEMENTED_TIERS));
         System.out.println();
@@ -309,10 +307,10 @@ final class AgentMemoryRegressionMain {
                 + " 字符；含受保护、非白名单及已清理块，不等于本轮可回收量");
 
         Snapshot last = last(records, false);
-        // 压缩门 0.8、保留段 0.2，越过门时素材天然过半，卡住只因尾段太肥
+        // 越过压缩门后唯一的跳过原因是找不到安全切点
         System.out.println("  ⑥ 压缩落点          保留段 " + keepRecentChars(context)
-                + " 字符，峰值 ≈" + peak.contextChars() + " 字符；越过压缩门即素材过半，"
-                + "卡住只会是尾段太肥把切点顶到了头部");
+                + " 字符，峰值 ≈" + peak.contextChars() + " 字符；越过压缩门后只在找不到安全切点时跳过，"
+                + "即保留够量后往前再没有用户轮起点");
         System.out.println("  ⑦ 摘要产物          末轮摘要消息 " + (last == null ? 0 : last.summaryMessages())
                 + " 条，正文上限 " + summaryMaxChars(context)
                 + " 字符（按预算派生，调试预算下会夹到下限 " + SUMMARY_MAX_FLOOR_CHARS

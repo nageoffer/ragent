@@ -20,7 +20,9 @@ import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicInteger;
 
-/** Offline collection checks. No HTTP, database connection, credentials or business-state mutation. */
+/**
+ * 离线自检采集逻辑，不发 HTTP、不连库、不用凭据、不改业务数据
+ */
 public final class MemoryAuditSelfTest {
     private static final MemoryAuditMain.Timing TIMING = new MemoryAuditMain.Timing(60, 90, 5, 20);
 
@@ -150,7 +152,7 @@ public final class MemoryAuditSelfTest {
         Path out = root.resolve("account-lifecycle");
         Files.createDirectories(out);
         MemoryAuditMain.requireUnusedIdentity(out, "summary");
-        // Losing the credentials must not allow a new user to append to another user's old evidence.
+        // 凭据丢了也不能让新用户往旧用户的证据里追加
         Files.writeString(out.resolve("summary-turns.jsonl"), "old evidence\n");
         try { MemoryAuditMain.requireUnusedIdentity(out, "summary"); throw new AssertionError("existing evidence reused"); }
         catch (IllegalStateException expected) { }
