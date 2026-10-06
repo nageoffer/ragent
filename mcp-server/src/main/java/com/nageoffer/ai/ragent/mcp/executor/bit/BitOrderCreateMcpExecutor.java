@@ -21,6 +21,7 @@ import cn.hutool.core.map.MapUtil;
 import cn.hutool.core.util.StrUtil;
 import com.nageoffer.ai.ragent.mcp.config.bit.BitProperties;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.nageoffer.ai.ragent.mcp.dao.entity.CartDO;
 import com.nageoffer.ai.ragent.mcp.dao.entity.OrderDO;
 import com.nageoffer.ai.ragent.mcp.dao.entity.OrderItemDO;
@@ -32,6 +33,7 @@ import com.nageoffer.ai.ragent.mcp.dao.mapper.UserCouponMapper;
 import com.nageoffer.ai.ragent.mcp.dao.result.CartLineResult;
 import com.nageoffer.ai.ragent.mcp.dao.result.HeldCouponResult;
 import com.nageoffer.ai.ragent.mcp.config.McpToolAnnotations;
+import com.nageoffer.ai.ragent.mcp.executor.McpToolException;
 import com.nageoffer.ai.ragent.mcp.executor.McpToolResults;
 import com.nageoffer.ai.ragent.mcp.executor.McpToolSchema;
 import io.modelcontextprotocol.server.McpServerFeatures;
@@ -52,10 +54,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import static com.nageoffer.ai.ragent.mcp.executor.McpToolSchema.array;
+import static com.nageoffer.ai.ragent.mcp.executor.McpToolSchema.integer;
 import static com.nageoffer.ai.ragent.mcp.executor.McpToolSchema.string;
 
 /**
- * 从购物车下单，一个事务里走完校验、扣库存、核销券、建单、清车
+ * 从购物车下单，一个事务里走完校验、扣库存、核销券、建单、扣减购物车
  * <p>
  * 金额、库存、券三样全部服务端现算现扣，模型转述的价格和可用性一律不采信
  */
@@ -65,11 +69,6 @@ import static com.nageoffer.ai.ragent.mcp.executor.McpToolSchema.string;
 public class BitOrderCreateMcpExecutor {
 
     private static final String TOOL_ID = "create_order";
-
-    /**
-     * 起始号避开种子数据占用的号段，真实下单从它之后往后排
-     */
-    private static final long ORDER_NO_BASE = 88000L;
 
     private final CartMapper cartMapper;
     private final ProductSkuMapper productSkuMapper;
@@ -89,9 +88,12 @@ public class BitOrderCreateMcpExecutor {
 
     private Tool buildTool() {
         JsonSchema inputSchema = McpToolSchema.object()
-                .optional(string("skuCodes", "要下单的商品 SKU 型号，多个用逗号分隔，如 BIT-A18,BIT-W3。"
-                        + "不传表示购物车里的全部商品一起下单")
-                        .title("要下单的商品型号"))
+                .required(array("items", "要购买的商品列表，每项填写 skuCode 和 quantity。"
+                        + "数量是本次购买数量，可以少于购物车数量；买全部商品也要逐项列出型号与数量。",
+                        McpToolSchema.object()
+                                .required(string("skuCode", "商品 SKU 型号，来自购物车查询").title("商品型号"))
+                                .required(integer("quantity", "本次购买数量，必须为正整数").title("数量")))
+                        .title("商品与数量"))
                 .optional(string("couponCode", "要使用的优惠券编码，来自券包查询。不确定能不能用就先查券包试算，"
                         + "能不能用最终由本工具判定")
                         .title("优惠券编码"))
@@ -108,7 +110,7 @@ public class BitOrderCreateMcpExecutor {
                 .name(TOOL_ID)
                 .description("用当前登录用户购物车里的商品创建订单，下单后为待支付状态，需要再调用支付工具完成支付。"
                         + "下单会占用库存并核销所选优惠券，商品单价与优惠金额以本工具返回的为准，不要自行计算后告知用户。"
-                        + "下单前先用购物车查询确认商品与数量")
+                        + "下单前先用购物车查询确认商品与数量，按 items 中的数量购买，购物车剩余数量保留")
                 .inputSchema(inputSchema)
                 .annotations(McpToolAnnotations.WRITE)
                 .build();
@@ -122,7 +124,7 @@ public class BitOrderCreateMcpExecutor {
         }
         try {
             Map<String, Object> args = McpToolResults.args(request);
-            List<String> skuCodes = BitToolSupport.csv(MapUtil.getStr(args, "skuCodes"));
+            Map<String, Integer> quantities = parseItems(args.get("items"));
             String couponCode = StrUtil.trimToNull(MapUtil.getStr(args, "couponCode"));
             Receiver input = new Receiver(
                     StrUtil.trimToNull(MapUtil.getStr(args, "receiverName")),
@@ -130,10 +132,10 @@ public class BitOrderCreateMcpExecutor {
                     StrUtil.trimToNull(MapUtil.getStr(args, "receiverAddress")));
 
             CallToolResult result = bitTransactionTemplate.execute(
-                    status -> placeOrder(status, userId, skuCodes, couponCode, input));
+                    status -> placeOrder(status, userId, quantities, couponCode, input));
 
             log.info("MCP 工具调用完成, toolId={}, 指定商品={}, 用券={}, elapsed={}ms",
-                    TOOL_ID, skuCodes.size(), couponCode != null, System.currentTimeMillis() - startMs);
+                    TOOL_ID, quantities.size(), couponCode != null, System.currentTimeMillis() - startMs);
             return result;
         } catch (Exception e) {
             log.error("MCP 工具调用失败, toolId={}, elapsed={}ms",
@@ -142,15 +144,43 @@ public class BitOrderCreateMcpExecutor {
         }
     }
 
+    private Map<String, Integer> parseItems(Object value) {
+        if (!(value instanceof List<?> items) || items.isEmpty()) {
+            throw new McpToolException("请在 items 中逐项填写商品型号和购买数量，订单未创建");
+        }
+        Map<String, Integer> quantities = new LinkedHashMap<>();
+        for (Object item : items) {
+            if (!(item instanceof Map<?, ?> fields)
+                    || !(fields.get("skuCode") instanceof String code) || StrUtil.isBlank(code)
+                    || !(fields.get("quantity") instanceof Number quantity)) {
+                throw new McpToolException("每项商品必须填写 skuCode 和正整数 quantity，订单未创建");
+            }
+            int count;
+            try {
+                count = new BigDecimal(quantity.toString()).intValueExact();
+            } catch (NumberFormatException | ArithmeticException e) {
+                throw new McpToolException("购买数量必须为正整数且不超过整数范围，订单未创建");
+            }
+            if (count <= 0) {
+                throw new McpToolException("购买数量必须大于 0，订单未创建");
+            }
+            if (quantities.putIfAbsent(code.trim(), count) != null) {
+                throw new McpToolException("同一商品型号不能重复填写，订单未创建");
+            }
+        }
+        return quantities;
+    }
+
     /**
      * 六步全在一个事务里，任何一步不成立就整单回滚
      * <p>
      * 回绝路径也 setRollbackOnly：前面几步可能已经扣了库存，让它们留在库里就是漏
      */
     private CallToolResult placeOrder(TransactionStatus status, String userId,
-                                      List<String> skuCodes, String couponCode, Receiver input) {
+                                      Map<String, Integer> quantities, String couponCode, Receiver input) {
+        List<String> skuCodes = new ArrayList<>(quantities.keySet());
         List<CartLineResult> lines = loadLines(userId, skuCodes);
-        CallToolResult rejection = checkLines(lines, skuCodes);
+        CallToolResult rejection = checkLines(lines, quantities);
         if (rejection != null) {
             status.setRollbackOnly();
             return rejection;
@@ -198,7 +228,7 @@ public class BitOrderCreateMcpExecutor {
             }
         }
 
-        String orderNo = nextOrderNo();
+        String orderNo = IdWorker.getIdStr();
         BigDecimal payAmount = total.subtract(discount).max(BigDecimal.ZERO);
         orderMapper.insert(OrderDO.builder()
                 .orderNo(orderNo).userId(userId).status(BitOrderReleaser.STATUS_PENDING)
@@ -222,9 +252,14 @@ public class BitOrderCreateMcpExecutor {
             }
         }
 
+        for (CartLineResult line : lines) {
+            if (cartMapper.deductQuantity(userId, line.getSkuCode(), line.getQuantity()) != 1) {
+                throw new IllegalStateException("锁定的购物车行扣减失败");
+            }
+        }
         List<String> ordered = lines.stream().map(CartLineResult::getSkuCode).toList();
         cartMapper.delete(Wrappers.<CartDO>lambdaQuery()
-                .eq(CartDO::getUserId, userId).in(CartDO::getSkuCode, ordered));
+                .eq(CartDO::getUserId, userId).in(CartDO::getSkuCode, ordered).eq(CartDO::getQuantity, 0));
 
         log.info("订单已创建, orderNo={}, userId={}, 商品行={}, 合计={}, 优惠={}, 实付={}",
                 orderNo, userId, lines.size(), total, discount, payAmount);
@@ -239,22 +274,27 @@ public class BitOrderCreateMcpExecutor {
     /**
      * 下架与库存不足在这里一次说清，别让用户下单失败三次才知道是同一件商品的问题
      */
-    private CallToolResult checkLines(List<CartLineResult> lines, List<String> skuCodes) {
+    private CallToolResult checkLines(List<CartLineResult> lines, Map<String, Integer> quantities) {
+        List<String> skuCodes = new ArrayList<>(quantities.keySet());
         if (lines.isEmpty()) {
-            return BitToolSupport.rejected(skuCodes.isEmpty()
-                    ? "购物车是空的，先把要买的商品加入购物车再下单"
-                    : "购物车里没有这些商品: " + String.join("、", skuCodes));
+            return BitToolSupport.rejected("购物车里没有这些商品: " + String.join("、", skuCodes));
         }
-        if (!skuCodes.isEmpty()) {
-            List<String> missing = new ArrayList<>(skuCodes);
-            lines.forEach(line -> missing.removeIf(each -> each.equalsIgnoreCase(line.getSkuCode())));
-            if (!missing.isEmpty()) {
-                return BitToolSupport.rejected(String.format(
-                        "购物车里没有 %s，本单未创建。可以先加入购物车，或只买车里已有的商品",
-                        String.join("、", missing)));
-            }
+        List<String> missing = new ArrayList<>(skuCodes);
+        lines.forEach(line -> missing.remove(line.getSkuCode()));
+        if (!missing.isEmpty()) {
+            return BitToolSupport.rejected(String.format(
+                    "购物车里没有 %s，本单未创建。可以先加入购物车，或只买车里已有的商品",
+                    String.join("、", missing)));
         }
         for (CartLineResult line : lines) {
+            int quantity = quantities.get(line.getSkuCode());
+            if (line.getQuantity() < quantity) {
+                return BitToolSupport.rejected(String.format(
+                        "%s（%s）购物车数量不足，要买 %d 件但车里只有 %d 件，本单未创建",
+                        line.getSkuName(), line.getSkuCode(), quantity, line.getQuantity()));
+            }
+            // 后续库存校验、计价、订单明细与购物车扣减均使用本次购买数量。
+            line.setQuantity(quantity);
             if (!"在售".equals(line.getStatus())) {
                 return BitToolSupport.rejected(String.format(
                         "%s（%s）已下架，本单未创建。把它从购物车移除后可以继续买其余商品",
@@ -291,10 +331,6 @@ public class BitOrderCreateMcpExecutor {
                 input.phone() != null ? input.phone() : last.phone(),
                 input.address() != null ? input.address() : last.address());
         return merged.complete() ? merged : null;
-    }
-
-    private String nextOrderNo() {
-        return String.valueOf(orderMapper.selectNextOrderNo(ORDER_NO_BASE));
     }
 
     private String buildReceipt(String orderNo, List<CartLineResult> lines, BigDecimal total, BigDecimal discount,

@@ -67,6 +67,16 @@ public interface CartMapper extends BaseMapper<CartDO> {
                                               @Param("skuCodes") List<String> skuCodes);
 
     /**
+     * 下单事务已锁定该行，只扣本次购买数量；数量归零后由执行器删除。
+     */
+    @Update("""
+            UPDATE t_cart SET quantity = quantity - #{quantity}, update_time = now()
+            WHERE user_id = #{userId} AND sku_code = #{skuCode} AND quantity >= #{quantity}
+            """)
+    int deductQuantity(@Param("userId") String userId, @Param("skuCode") String skuCode,
+                       @Param("quantity") int quantity);
+
+    /**
      * 冲突时只改数量，不动 added_price 与 create_time——加购价被改写，「这件降了多少」就永远算成 0
      */
     @Update("""

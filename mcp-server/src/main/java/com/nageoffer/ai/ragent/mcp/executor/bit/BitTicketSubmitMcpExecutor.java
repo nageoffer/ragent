@@ -76,8 +76,9 @@ public class BitTicketSubmitMcpExecutor {
                 .required(string("category", "问题分类")
                         .title("问题分类")
                         .options(CATEGORIES))
-                .required(string("content", "问题描述，把用户原话的诉求、涉及的订单号或商品型号、已经尝试过的处理一并写清楚，"
-                        + "人工接手时不用再问一遍")
+                .required(string("content", "问题描述，只写用户说过的和工具查到的：订单号、商品型号、故障现象、"
+                        + "用户已试过的处理、用户原话里的诉求。用户还没选定的事（寄修还是到店、什么时间）写「待与用户确认」，"
+                        + "不替用户选；用户没答应的事不写；收货人、电话、地址不写，人工凭订单号能查到")
                         .title("问题描述"))
                 .build();
 

@@ -29,8 +29,7 @@ import java.util.Map;
 /**
  * MCP 工具入参 schema 构造器，把各执行器手拼的 {@code Map.of("type", "string", ...)} 收成一处
  * <p>
- * 只覆盖本仓工具实际用到的形态：三种标量类型、title/description/default/enum。
- * 需要数组或嵌套对象时再扩，不提前造无人调用的分支
+ * 覆盖本仓工具实际用到的标量和对象数组，以及 title/description/default/enum。
  */
 public final class McpToolSchema {
 
@@ -55,6 +54,15 @@ public final class McpToolSchema {
 
     public static Property number(String name, String description) {
         return new Property(name, "number", description);
+    }
+
+    public static Property array(String name, String description, McpToolSchema itemSchema) {
+        Property property = new Property(name, "array", description);
+        property.attributes.put("items", Map.of(
+                "type", "object", "properties", unmodifiableOrdered(itemSchema.properties),
+                "required", List.copyOf(itemSchema.required), "additionalProperties", false));
+        property.attributes.put("minItems", 1);
+        return property;
     }
 
     /**

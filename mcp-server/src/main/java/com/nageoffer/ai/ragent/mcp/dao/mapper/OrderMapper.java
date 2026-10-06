@@ -69,12 +69,6 @@ public interface OrderMapper extends BaseMapper<OrderDO> {
                 .last("LIMIT 1"));
     }
 
-    /**
-     * 混进非数字单号也不会让整条 cast 炸掉，正则先把它们滤掉
-     */
-    @Select("SELECT COALESCE(MAX(order_no::bigint), #{base}) + 1 FROM t_order WHERE order_no ~ '^[0-9]+$'")
-    long selectNextOrderNo(@Param("base") long base);
-
     @Select("""
             SELECT order_no FROM t_order
             WHERE status = '待支付' AND create_time < now() - CAST(#{interval} AS interval)
