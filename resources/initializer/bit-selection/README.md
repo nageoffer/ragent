@@ -86,15 +86,17 @@ diff <(ls docs/knowledge/product/detail/*.md | xargs -n1 basename | sed 's|\.md$
 
 `agent-profile.properties` 走的是「新建一份人设并激活」，内置智能体一个字不动，切回企业助手只要把 active 切回内置。人设由 `AgentProfileInitMain` 单独执行，也包含在整套初始化流程里，顺序上必须排在 cleanup 之后——cleanup 按 `builtin = 0` 删行，先建的人设会被它删掉。
 
-十二个槽位只填三个，其余留空即回落内置那份：
+十个槽位只填五个，其余留空即回落内置那份：
 
 | 槽位 | 生效档位 | 为什么填 |
 | --- | --- | --- |
 | `AGENT_MAIN` | agent | 本数据集的主人设，身份、工具选择与结果处理都在这里 |
 | `CONVERSATION_SUMMARY` | workflow | 内置那份拿年假、报销举例，换成电商语料 |
 | `SYSTEM_CHAT` | workflow | 内置那份整段写着「企业内部知识助手」，兜底话术是「建议联系 HR」 |
+| `AGENT_MEMORY_EXTRACTION` | agent | 规则与内置一致，「什么该记、什么不该记」的例子换成售后排查、维修进度、比较中的商品 |
+| `AGENT_CONTEXT_COMPACTION` | agent | 按商城的事整理：一副耳机、一笔订单、一款在考虑的商品各占一条；价格库存只记查过不抄数值；分清用户自述、工具查得、助手判断 |
 
-后两个在 `agent` 档下没有调用方，填它们是为了这套数据集切到 `workflow` 档也不自报企业助手。剩下的知识与记忆工具声明、上下文压缩、长期记忆抽取与合并本就与领域无关，填了反而要跟着内置那份一起维护。
+`CONVERSATION_SUMMARY` 与 `SYSTEM_CHAT` 在 `agent` 档下没有调用方，填它们是为了这套数据集切到 `workflow` 档也不自报企业助手。`AGENT_MEMORY_EXTRACTION` 与 `AGENT_CONTEXT_COMPACTION` 都是整份覆盖，内置那份改了通用规则（围栏、原话保留、暂缓与放弃的写法）要同步过来。上下文压缩单独填，是因为内置那份按通用办事写，在商城会话里会把每次追问记成一条「了解 X」、把价格库存逐个抄进摘要，摘要随轮数越续越长。剩下的知识与记忆工具声明、长期记忆合并本就与领域无关，填了反而要跟着内置那份一起维护。
 
 ## 五、示例问题的选题口径
 
