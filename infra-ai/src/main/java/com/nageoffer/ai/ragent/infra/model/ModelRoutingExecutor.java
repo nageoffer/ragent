@@ -63,7 +63,7 @@ public class ModelRoutingExecutor {
 
             try {
                 T response = caller.call(client, target);
-                healthStore.markSuccess(target.id());
+                healthStore.markSuccess(permit);
                 return response;
             } catch (Exception e) {
                 if (TaskCancellation.isCancellation(e)) {
@@ -72,7 +72,7 @@ public class ModelRoutingExecutor {
                     throw TaskCancellation.asCancellation(e);
                 }
                 last = e;
-                healthStore.markFailure(target.id());
+                healthStore.markFailure(permit);
                 log.warn("{} model failed, fallback to next. modelId={}, provider={}", label, target.id(), target.candidate().getProvider(), e);
             }
         }

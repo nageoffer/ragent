@@ -41,9 +41,9 @@ public class ModelHealthStore {
     private final AtomicLong probeTokenSeq = new AtomicLong();
 
     /**
-     * 模型调用许可，halfOpenToken 为 0 时不持有半开探测名额
+     * 模型调用许可：halfOpenToken 标识半开探测所有者，generation 隔离不同熔断周期
      */
-    public record CallPermit(String modelId, long halfOpenToken) {
+    public record CallPermit(String modelId, long halfOpenToken, long generation) {
     }
 
     public boolean isUnavailable(String id) {
@@ -75,9 +75,10 @@ public class ModelHealthStore {
                     return v;
                 }
                 v.state = State.HALF_OPEN;
+                v.generation++;
                 v.halfOpenInFlight = true;
                 v.halfOpenToken = probeTokenSeq.incrementAndGet();
-                granted.set(new CallPermit(id, v.halfOpenToken));
+                granted.set(new CallPermit(id, v.halfOpenToken, v.generation));
                 return v;
             }
             if (v.state == State.HALF_OPEN) {
@@ -86,45 +87,55 @@ public class ModelHealthStore {
                 }
                 v.halfOpenInFlight = true;
                 v.halfOpenToken = probeTokenSeq.incrementAndGet();
-                granted.set(new CallPermit(id, v.halfOpenToken));
+                granted.set(new CallPermit(id, v.halfOpenToken, v.generation));
                 return v;
             }
-            granted.set(new CallPermit(id, 0L));
+            granted.set(new CallPermit(id, 0L, v.generation));
             return v;
         });
         return granted.get();
     }
 
-    public void markSuccess(String id) {
-        if (id == null) {
+    public void markSuccess(CallPermit permit) {
+        if (permit == null) {
             return;
         }
-        healthById.compute(id, (k, v) -> {
-            if (v == null) {
-                return new ModelHealth();
+        healthById.computeIfPresent(permit.modelId(), (k, v) -> {
+            if (!ownsCurrentGeneration(v, permit)) {
+                return v;
             }
+            boolean halfOpen = v.state == State.HALF_OPEN;
             v.state = State.CLOSED;
             v.consecutiveFailures = 0;
             v.openUntil = 0L;
             v.halfOpenInFlight = false;
+            v.halfOpenToken = 0L;
+            if (halfOpen) {
+                v.generation++;
+            }
             return v;
         });
     }
 
-    public void markFailure(String id) {
-        if (id == null) {
+    public void markFailure(CallPermit permit) {
+        if (permit == null) {
             return;
         }
         long now = System.currentTimeMillis();
-        healthById.compute(id, (k, v) -> {
-            if (v == null) {
-                v = new ModelHealth();
+        healthById.computeIfPresent(permit.modelId(), (k, v) -> {
+            if (!ownsCurrentGeneration(v, permit)) {
+                return v;
             }
             if (v.state == State.HALF_OPEN) {
                 v.state = State.OPEN;
                 v.openUntil = now + properties.getSelection().getOpenDurationMs();
                 v.consecutiveFailures = 0;
                 v.halfOpenInFlight = false;
+                v.halfOpenToken = 0L;
+                v.generation++;
+                return v;
+            }
+            if (v.state != State.CLOSED) {
                 return v;
             }
             v.consecutiveFailures++;
@@ -132,6 +143,7 @@ public class ModelHealthStore {
                 v.state = State.OPEN;
                 v.openUntil = now + properties.getSelection().getOpenDurationMs();
                 v.consecutiveFailures = 0;
+                v.generation++;
             }
             return v;
         });
@@ -145,11 +157,19 @@ public class ModelHealthStore {
             return;
         }
         healthById.computeIfPresent(permit.modelId(), (k, v) -> {
-            if (v.state == State.HALF_OPEN && v.halfOpenInFlight && v.halfOpenToken == permit.halfOpenToken()) {
+            if (ownsCurrentGeneration(v, permit) && v.state == State.HALF_OPEN && v.halfOpenInFlight) {
                 v.halfOpenInFlight = false;
             }
             return v;
         });
+    }
+
+    private boolean ownsCurrentGeneration(ModelHealth health, CallPermit permit) {
+        if (health.generation != permit.generation()) {
+            return false;
+        }
+        // 半开状态同一周期可能在取消后重新发放探测名额，还需校验具体 token
+        return health.state != State.HALF_OPEN || health.halfOpenToken == permit.halfOpenToken();
     }
 
     private static class ModelHealth {
@@ -157,6 +177,7 @@ public class ModelHealthStore {
         private long openUntil;
         private boolean halfOpenInFlight;
         private long halfOpenToken;
+        private long generation;
         private State state;
 
         private ModelHealth() {
@@ -164,6 +185,7 @@ public class ModelHealthStore {
             this.openUntil = 0L;
             this.halfOpenInFlight = false;
             this.halfOpenToken = 0L;
+            this.generation = 0L;
             this.state = State.CLOSED;
         }
     }

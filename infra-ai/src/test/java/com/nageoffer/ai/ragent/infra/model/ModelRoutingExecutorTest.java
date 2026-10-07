@@ -44,7 +44,7 @@ class ModelRoutingExecutorTest {
         ModelRoutingExecutor executor = new ModelRoutingExecutor(healthStore);
         ModelTarget primary = target("primary", "bailian");
         ModelTarget fallback = target("fallback", "deepseek");
-        ModelHealthStore.CallPermit permit = new ModelHealthStore.CallPermit(primary.id(), 7L);
+        ModelHealthStore.CallPermit permit = new ModelHealthStore.CallPermit(primary.id(), 7L, 1L);
         when(healthStore.allowCall(primary.id())).thenReturn(permit);
 
         AtomicInteger calls = new AtomicInteger();
@@ -70,7 +70,7 @@ class ModelRoutingExecutorTest {
 
         assertThat(calls).hasValue(1);
         verify(healthStore).releaseHalfOpenPermit(permit);
-        verify(healthStore, never()).markFailure(primary.id());
+        verify(healthStore, never()).markFailure(permit);
         verify(healthStore, never()).allowCall(fallback.id());
     }
 
@@ -79,7 +79,7 @@ class ModelRoutingExecutorTest {
         ModelHealthStore healthStore = mock(ModelHealthStore.class);
         ModelRoutingExecutor executor = new ModelRoutingExecutor(healthStore);
         ModelTarget target = target("primary", "deepseek");
-        ModelHealthStore.CallPermit permit = new ModelHealthStore.CallPermit(target.id(), 0L);
+        ModelHealthStore.CallPermit permit = new ModelHealthStore.CallPermit(target.id(), 0L, 1L);
         when(healthStore.allowCall(target.id())).thenReturn(permit);
 
         try {
@@ -97,7 +97,7 @@ class ModelRoutingExecutorTest {
         }
 
         verify(healthStore).releaseHalfOpenPermit(permit);
-        verify(healthStore, never()).markFailure(target.id());
+        verify(healthStore, never()).markFailure(permit);
     }
 
     @Test
@@ -106,7 +106,7 @@ class ModelRoutingExecutorTest {
         ModelRoutingExecutor executor = new ModelRoutingExecutor(healthStore);
         ModelTarget primary = target("primary", "bailian");
         ModelTarget fallback = target("fallback", "deepseek");
-        ModelHealthStore.CallPermit permit = new ModelHealthStore.CallPermit(primary.id(), 9L);
+        ModelHealthStore.CallPermit permit = new ModelHealthStore.CallPermit(primary.id(), 9L, 1L);
         when(healthStore.allowCall(primary.id())).thenReturn(permit);
 
         assertThatThrownBy(() -> executor.executeWithFallback(
@@ -119,7 +119,7 @@ class ModelRoutingExecutorTest {
                 .isInstanceOf(CancellationException.class);
 
         verify(healthStore).releaseHalfOpenPermit(permit);
-        verify(healthStore, never()).markFailure(primary.id());
+        verify(healthStore, never()).markFailure(permit);
         verify(healthStore, never()).allowCall(fallback.id());
     }
 
@@ -129,10 +129,10 @@ class ModelRoutingExecutorTest {
         ModelRoutingExecutor executor = new ModelRoutingExecutor(healthStore);
         ModelTarget primary = target("primary", "bailian");
         ModelTarget fallback = target("fallback", "deepseek");
-        when(healthStore.allowCall(primary.id()))
-                .thenReturn(new ModelHealthStore.CallPermit(primary.id(), 0L));
-        when(healthStore.allowCall(fallback.id()))
-                .thenReturn(new ModelHealthStore.CallPermit(fallback.id(), 0L));
+        ModelHealthStore.CallPermit primaryPermit = new ModelHealthStore.CallPermit(primary.id(), 0L, 1L);
+        ModelHealthStore.CallPermit fallbackPermit = new ModelHealthStore.CallPermit(fallback.id(), 0L, 1L);
+        when(healthStore.allowCall(primary.id())).thenReturn(primaryPermit);
+        when(healthStore.allowCall(fallback.id())).thenReturn(fallbackPermit);
 
         String result = executor.executeWithFallback(
                 ModelCapability.CHAT,
@@ -146,8 +146,8 @@ class ModelRoutingExecutorTest {
                 });
 
         assertThat(result).isEqualTo("ok");
-        verify(healthStore).markFailure(primary.id());
-        verify(healthStore).markSuccess(fallback.id());
+        verify(healthStore).markFailure(primaryPermit);
+        verify(healthStore).markSuccess(fallbackPermit);
     }
 
     private static ModelTarget target(String id, String provider) {
