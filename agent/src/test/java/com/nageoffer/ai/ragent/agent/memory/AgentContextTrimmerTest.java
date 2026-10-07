@@ -131,6 +131,30 @@ class AgentContextTrimmerTest {
         assertThat(context).containsExactlyElementsOf(before);
     }
 
+    @Test
+    void shouldReturnUnchangedForEmptyContext() {
+        assertThat(trimmer.trimInPlace(new ArrayList<>())).isSameAs(AgentContextTrimmer.TrimResult.UNCHANGED);
+    }
+
+    @Test
+    void shouldKeepEmptyInputInPlaceholderWhenToolUseHasNoInput() {
+        List<Msg> context = new ArrayList<>();
+        context.add(userMessage("历史".repeat(2_500)));
+        context.add(Msg.builder().name("assistant").role(MsgRole.ASSISTANT)
+                .content(ToolUseBlock.builder().id("no-input").name(SEARCH).build()).build());
+        Msg oldest = toolResult("no-input", SEARCH, SEARCH_OUTPUT);
+        context.add(oldest);
+        addCycle(context, "recent-one", SEARCH, SEARCH_OUTPUT);
+        addCycle(context, "recent-two", SEARCH, SEARCH_OUTPUT);
+        context.add(userMessage("继续查询"));
+
+        AgentContextTrimmer.TrimResult result = trimmer.trimInPlace(context);
+
+        assertThat(result.replacements()).containsOnlyKeys(oldest);
+        String placeholder = ((TextBlock) resultBlock(context.get(2)).getOutput().get(0)).getText();
+        assertThat(placeholder).isEqualTo("[历史工具结果已省略，原长 " + SEARCH_OUTPUT.length() + " 字符，原入参 {}]");
+    }
+
     private static Msg userMessage(String text) {
         return Msg.builder().name("user").role(MsgRole.USER).textContent(text).build();
     }

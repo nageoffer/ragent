@@ -217,7 +217,8 @@ class AgentRunGateTest {
             assertThat(validator.validate(properties)).isEmpty();
             properties.setSseTimeoutMs(1_800_000L);
             assertThat(validator.validate(properties)).singleElement()
-                    .satisfies(violation -> assertThat(violation.getMessage()).contains("30 分钟"));
+                    .satisfies(violation -> assertThat(violation.getPropertyPath().toString())
+                            .isEqualTo("sseTimeoutWithinTaskRetention"));
             properties.setSseTimeoutMs(900_000L);
             properties.setMaxConcurrentRunsPerUser(0);
             assertThat(validator.validate(properties)).singleElement()

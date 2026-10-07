@@ -38,8 +38,8 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * 会话上下文裁剪：把过老的工具结果换成等长占位说明，不碰 IO 也不改列表长度
- * 只替换 tool_result 而不动 tool_use，因此永远不会产生孤儿结果块
+ * 会话上下文裁剪：把过老的工具结果换成短占位说明，不碰 IO 也不改消息条数
+ * 保留工具调用、结果和配对 id，只替换旧结果正文
  */
 @Slf4j
 @Component
@@ -65,25 +65,22 @@ public class AgentContextTrimmer {
     /**
      * 就地裁剪，返回替换映射供调用方同步上行列表
      */
-    public TrimResult trimInPlace(List<Msg> context) {
-        if (context == null || context.isEmpty()) {
-            return TrimResult.UNCHANGED;
-        }
-        int totalChars = AgentContextChars.total(context);
+    public TrimResult trimInPlace(List<Msg> messages) {
+        int totalChars = AgentContextChars.total(messages);
         if (totalChars <= memoryProperties.resolveTrimTriggerChars()) {
             return TrimResult.UNCHANGED;
         }
 
-        List<Cycle> cycles = splitCycles(context);
-        Set<Integer> protectedCycles = protectedCycles(context, cycles, memoryProperties.resolveKeepRecentCycles());
-        List<Candidate> candidates = collectCandidates(context, cycles, protectedCycles,
+        List<Cycle> cycles = splitCycles(messages);
+        Set<Integer> protectedCycles = protectedCycles(messages, cycles, memoryProperties.resolveKeepRecentCycles());
+        List<Candidate> candidates = collectCandidates(messages, cycles, protectedCycles,
                 memoryProperties.getEvictableTools());
         if (candidates.isEmpty()) {
             return TrimResult.UNCHANGED;
         }
 
         int reclaimable = candidates.stream().mapToInt(Candidate::reclaimable).sum();
-        Map<Msg, Msg> replacements = apply(context, candidates);
+        Map<Msg, Msg> replacements = apply(messages, candidates);
         log.info("上下文裁剪完成, 总字符: {} -> {}, 命中消息: {}, 工具结果: {}",
                 totalChars, totalChars - reclaimable, replacements.size(), candidates.size());
         return new TrimResult(reclaimable, replacements);
@@ -92,22 +89,22 @@ public class AgentContextTrimmer {
     /**
      * 按工具循环切分：一条带 tool_use 的 assistant 消息开启一个循环，遇到用户消息或纯文本回答即闭合
      */
-    private List<Cycle> splitCycles(List<Msg> context) {
+    private List<Cycle> splitCycles(List<Msg> messages) {
         List<Cycle> cycles = new ArrayList<>();
         Cycle current = null;
-        for (int i = 0; i < context.size(); i++) {
-            Msg msg = context.get(i);
+        for (int i = 0; i < messages.size(); i++) {
+            Msg msg = messages.get(i);
             MsgRole role = msg.getRole();
             if (role == MsgRole.TOOL) {
                 if (current != null) {
                     current.toolIndexes().add(i);
-                    for (ToolResultBlock block : blocks(msg, ToolResultBlock.class)) {
+                    for (ToolResultBlock block : msg.getContentBlocks(ToolResultBlock.class)) {
                         current.pendingIds().remove(block.getId());
                     }
                 }
                 continue;
             }
-            List<ToolUseBlock> toolUses = blocks(msg, ToolUseBlock.class);
+            List<ToolUseBlock> toolUses = msg.getContentBlocks(ToolUseBlock.class);
             if (role == MsgRole.ASSISTANT && !toolUses.isEmpty()) {
                 current = new Cycle(i, new ArrayList<>(), new HashSet<>());
                 for (ToolUseBlock block : toolUses) {
@@ -124,8 +121,8 @@ public class AgentContextTrimmer {
     /**
      * 本轮和未闭合的循环额外保护不占配额，keepRecentCycles 只在本轮之前计数
      */
-    private Set<Integer> protectedCycles(List<Msg> context, List<Cycle> cycles, int keepRecentCycles) {
-        int turnStart = lastUserIndex(context);
+    private Set<Integer> protectedCycles(List<Msg> messages, List<Cycle> cycles, int keepRecentCycles) {
+        int turnStart = lastUserIndex(messages);
         Set<Integer> result = new HashSet<>();
         int kept = 0;
         for (int i = cycles.size() - 1; i >= 0; i--) {
@@ -145,16 +142,16 @@ public class AgentContextTrimmer {
     /**
      * 取不到用户消息返回 -1，全部循环落保护区
      */
-    private int lastUserIndex(List<Msg> context) {
-        for (int i = context.size() - 1; i >= 0; i--) {
-            if (context.get(i).getRole() == MsgRole.USER) {
+    private int lastUserIndex(List<Msg> messages) {
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            if (messages.get(i).getRole() == MsgRole.USER) {
                 return i;
             }
         }
         return -1;
     }
 
-    private List<Candidate> collectCandidates(List<Msg> context, List<Cycle> cycles,
+    private List<Candidate> collectCandidates(List<Msg> messages, List<Cycle> cycles,
                                               Set<Integer> protectedCycles, List<String> evictableTools) {
         List<Candidate> candidates = new ArrayList<>();
         for (int c = 0; c < cycles.size(); c++) {
@@ -162,18 +159,18 @@ public class AgentContextTrimmer {
                 continue;
             }
             Cycle cycle = cycles.get(c);
-            Map<String, String> inputs = toolInputs(context.get(cycle.startIndex()));
+            Map<String, String> inputs = toolInputs(messages.get(cycle.startIndex()));
             for (int msgIndex : cycle.toolIndexes()) {
-                for (ToolResultBlock block : blocks(context.get(msgIndex), ToolResultBlock.class)) {
+                for (ToolResultBlock block : messages.get(msgIndex).getContentBlocks(ToolResultBlock.class)) {
                     // 工具名为空即框架级错误结果，跳过
                     if (block.getName() == null || !evictableTools.contains(block.getName()) || isEvicted(block)) {
                         continue;
                     }
-                    String input = inputs.get(block.getId());
                     int originChars = AgentContextChars.ofOutput(block);
-                    int reclaimable = originChars - previewChars(originChars, input);
+                    String preview = preview(originChars, inputs.get(block.getId()));
+                    int reclaimable = originChars - preview.length();
                     if (reclaimable > 0) {
-                        candidates.add(new Candidate(msgIndex, block, originChars, reclaimable, input));
+                        candidates.add(new Candidate(msgIndex, block, reclaimable, preview));
                     }
                 }
             }
@@ -186,25 +183,25 @@ public class AgentContextTrimmer {
      */
     private Map<String, String> toolInputs(Msg msg) {
         Map<String, String> inputs = new HashMap<>();
-        for (ToolUseBlock block : blocks(msg, ToolUseBlock.class)) {
+        for (ToolUseBlock block : msg.getContentBlocks(ToolUseBlock.class)) {
             inputs.put(block.getId(), clipInput(String.valueOf(block.getInput())));
         }
         return inputs;
     }
 
+    /**
+     * SDK 把空入参归一成空 Map，这里拿到的总是 Map 的字符串形式
+     */
     private String clipInput(String input) {
-        if (input == null || input.isBlank() || "null".equals(input)) {
-            return null;
-        }
         return input.length() <= EVICTED_INPUT_MAX_CHARS
                 ? input
                 : input.substring(0, EVICTED_INPUT_MAX_CHARS) + "…";
     }
 
     /**
-     * 原位替换：先全部重建再统一 set，中途异常不改 context
+     * 原位替换：先全部重建再统一 set，中途异常不改 messages
      */
-    private Map<Msg, Msg> apply(List<Msg> context, List<Candidate> candidates) {
+    private Map<Msg, Msg> apply(List<Msg> messages, List<Candidate> candidates) {
         Map<ToolResultBlock, Candidate> hit = new IdentityHashMap<>();
         Set<Integer> touched = new HashSet<>();
         for (Candidate candidate : candidates) {
@@ -214,7 +211,7 @@ public class AgentContextTrimmer {
         Map<Integer, Msg> staged = new LinkedHashMap<>();
         Map<Msg, Msg> replacements = new IdentityHashMap<>();
         for (int msgIndex : touched) {
-            Msg origin = context.get(msgIndex);
+            Msg origin = messages.get(msgIndex);
             List<ContentBlock> rebuilt = new ArrayList<>(origin.getContent().size());
             for (ContentBlock block : origin.getContent()) {
                 Candidate candidate = block instanceof ToolResultBlock result ? hit.get(result) : null;
@@ -224,7 +221,7 @@ public class AgentContextTrimmer {
             staged.put(msgIndex, replaced);
             replacements.put(origin, replaced);
         }
-        staged.forEach(context::set);
+        staged.forEach(messages::set);
         return replacements;
     }
 
@@ -236,14 +233,14 @@ public class AgentContextTrimmer {
         return ToolResultBlock.builder()
                 .id(origin.getId())
                 .name(origin.getName())
-                .output(TextBlock.builder().text(preview(candidate.originChars(), candidate.input())).build())
+                .output(TextBlock.builder().text(candidate.preview()).build())
                 .metadata(origin.getMetadata())
                 .state(origin.getState())
                 .build();
     }
 
     /**
-     * 占位带原入参，让模型知道当时问的是什么
+     * 占位带原入参，让模型知道当时问的是什么；配不上 tool_use 时不写入参
      */
     private String preview(int originChars, String input) {
         StringBuilder text = new StringBuilder(EVICTED_PREFIX).append(originChars).append(EVICTED_CHARS);
@@ -253,23 +250,15 @@ public class AgentContextTrimmer {
         return text.append(EVICTED_SUFFIX).toString();
     }
 
-    private int previewChars(int originChars, String input) {
-        return preview(originChars, input).length();
-    }
-
     /**
      * 靠占位前缀识别已清理块，不依赖 metadata
      * 对外开放供技能遮蔽复用：正文被换成占位后 metadata 仍在，判"已加载"必须再过这一道
      */
     public static boolean isEvicted(ToolResultBlock block) {
         List<ContentBlock> output = block.getOutput();
-        return output != null && output.size() == 1
+        return output.size() == 1
                 && output.get(0) instanceof TextBlock text
-                && text.getText() != null && text.getText().startsWith(EVICTED_PREFIX);
-    }
-
-    private <T extends ContentBlock> List<T> blocks(Msg msg, Class<T> type) {
-        return msg.getContent() == null ? List.of() : msg.getContentBlocks(type);
+                && text.getText().startsWith(EVICTED_PREFIX);
     }
 
     /**
@@ -280,13 +269,13 @@ public class AgentContextTrimmer {
         public static final TrimResult UNCHANGED = new TrimResult(0, Map.of());
 
         public boolean changed() {
-            return reclaimedChars > 0 && !replacements.isEmpty();
+            return !replacements.isEmpty();
         }
     }
 
     private record Cycle(int startIndex, List<Integer> toolIndexes, Set<String> pendingIds) {
     }
 
-    private record Candidate(int msgIndex, ToolResultBlock block, int originChars, int reclaimable, String input) {
+    private record Candidate(int msgIndex, ToolResultBlock block, int reclaimable, String preview) {
     }
 }

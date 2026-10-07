@@ -56,8 +56,8 @@ public class AgentMemoryProperties {
     private static final int KEEP_RECENT_CYCLES = 2;
 
     /**
-     * 摘要正文上限：0.1×预算 夹进 [1500, 6000]
-     * 上限受同步阻塞预算约束，六千字符折约四千 token 输出已接近 STANDARD 档时限
+     * 摘要字数目标：0.1×预算 夹进 [1500, 6000]，写进提示词
+     * 超出目标不单独拒收，仍需正文非空且正常结束；摘要同步阻塞首字，所以目标封顶 6000
      */
     private static final double SUMMARY_MAX_RATIO = 0.1D;
     private static final int SUMMARY_MAX_FLOOR_CHARS = 1500;
@@ -124,9 +124,9 @@ public class AgentMemoryProperties {
     }
 
     /**
-     * 夹在上下限之间返回
+     * 摘要字数目标，夹在上下限之间返回，供压缩提示词使用
      */
-    public int resolveSummaryMaxChars() {
+    public int resolveSummaryTargetChars() {
         int derived = (int) (contextWindowChars * SUMMARY_MAX_RATIO);
         return Math.min(Math.max(derived, SUMMARY_MAX_FLOOR_CHARS), SUMMARY_MAX_CEIL_CHARS);
     }

@@ -404,9 +404,10 @@ CREATE TABLE t_agent_profile (
     update_by   VARCHAR(20),
     create_time TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     update_time TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    deleted     SMALLINT     NOT NULL DEFAULT 0,
-    CONSTRAINT uk_agent_name UNIQUE (name)
+    deleted     SMALLINT     NOT NULL DEFAULT 0
 );
+-- 逻辑删除后名称应可重新占用，唯一性只约束未删除的行
+CREATE UNIQUE INDEX uk_agent_name ON t_agent_profile (name) WHERE deleted = 0;
 CREATE INDEX idx_agent_active ON t_agent_profile (active);
 COMMENT ON TABLE t_agent_profile IS '智能体人设配置表';
 
