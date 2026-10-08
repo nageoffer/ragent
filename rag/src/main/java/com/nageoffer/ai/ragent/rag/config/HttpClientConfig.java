@@ -18,6 +18,7 @@
 package com.nageoffer.ai.ragent.rag.config;
 
 import okhttp3.OkHttpClient;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
@@ -56,6 +57,21 @@ public class HttpClientConfig {
                 .readTimeout(Duration.ofSeconds(30))
                 .callTimeout(Duration.ofSeconds(45))
                 .retryOnConnectionFailure(true)
+                .build();
+    }
+
+    /**
+     * 文档抓取专用客户端：拒绝解析到保留地址，且不跟随重定向
+     * <p>
+     * 只给 ingestion 的抓取链路使用（HttpClientHelper）。不要把这些限制加到 syncHttpClient 上：
+     * 会话 / 向量 / 重排 / VLM 的上游可能是本机或内网地址（出厂配置里 Ollama 就是
+     * http://localhost:11434），保留地址校验会把这些调用一起打死
+     */
+    @Bean
+    public OkHttpClient documentFetchHttpClient(@Qualifier("syncHttpClient") OkHttpClient syncHttpClient) {
+        return syncHttpClient.newBuilder()
+                .followRedirects(false)
+                .dns(new GuardedDns())
                 .build();
     }
 }
