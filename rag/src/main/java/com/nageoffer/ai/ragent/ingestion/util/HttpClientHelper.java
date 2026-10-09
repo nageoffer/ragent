@@ -52,6 +52,7 @@ public class HttpClientHelper {
     }
 
     public HttpFetchStream openStream(String url, Map<String, String> headers, long maxBytes) {
+        OutboundUrlGuard.validate(url);
         Request.Builder builder = new Request.Builder().url(url);
         if (headers != null) {
             headers.forEach(builder::addHeader);
@@ -84,6 +85,7 @@ public class HttpClientHelper {
     }
 
     private HttpFetchResponse doGet(String url, Map<String, String> headers, long maxBytes) {
+        OutboundUrlGuard.validate(url);
         Request.Builder builder = new Request.Builder().url(url);
         if (headers != null) {
             headers.forEach(builder::addHeader);
@@ -118,6 +120,7 @@ public class HttpClientHelper {
     }
 
     public HttpHeadResponse head(String url, Map<String, String> headers) {
+        OutboundUrlGuard.validate(url);
         Request.Builder builder = new Request.Builder().url(url);
         if (headers != null) {
             headers.forEach(builder::addHeader);
