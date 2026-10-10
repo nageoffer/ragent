@@ -30,14 +30,17 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.util.List;
+import java.util.Map;
 import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -51,6 +54,7 @@ class VectorSearchChannelTest {
     private static final RetrievalBudget PRODUCTION_BUDGET = new RetrievalBudget(20, 40, 10);
 
     private VectorRetrieverService retrieverService;
+    private KbCollectionProvider kbCollectionProvider;
     private SearchChannelProperties properties;
 
     @BeforeEach
@@ -64,6 +68,8 @@ class VectorSearchChannelTest {
                     RetrieveRequest request = invocation.getArgument(1);
                     return roundRobin(request.getEffectiveCollectionNames(), request.getTopK());
                 });
+        kbCollectionProvider = mock(KbCollectionProvider.class);
+        when(kbCollectionProvider.listActiveCollectionModels()).thenReturn(Map.of());
         properties = new SearchChannelProperties();
     }
 
@@ -289,6 +295,67 @@ class VectorSearchChannelTest {
                 "下游 RRF 按列表位次取分，出口乱序等于名次基准失真");
     }
 
+    @Test
+    @DisplayName("按知识库绑定的 embedding 模型分组生成查询向量，组内同模型、跨组不混用")
+    void embedsQueryPerKnowledgeBaseEmbeddingModel() {
+        // issue #159 回归：query 向量必须与库向量同模型，否则不同语义空间算相似度无意义
+        when(kbCollectionProvider.listActiveCollectionModels()).thenReturn(Map.of(
+                "kb-finance", "embed-bge",
+                "kb-hr", "embed-bge",
+                "kb-tech", "embed-text2vec"));
+        when(retrieverService.embedAndNormalize(QUESTION, "embed-bge")).thenReturn(new float[]{1F, 0F});
+        when(retrieverService.embedAndNormalize(QUESTION, "embed-text2vec")).thenReturn(new float[]{0F, 1F});
+
+        search(directedScope(), PRODUCTION_BUDGET);
+
+        verify(retrieverService).embedAndNormalize(QUESTION, "embed-bge");
+        verify(retrieverService).embedAndNormalize(QUESTION, "embed-text2vec");
+        // 全部库都绑定了模型，不得走默认优先级链
+        verify(retrieverService, never()).embedAndNormalize(QUESTION);
+        // 检索只使用按模型生成的向量，绝不混用
+        ArgumentCaptor<float[]> vectorCaptor = ArgumentCaptor.forClass(float[].class);
+        verify(retrieverService, atLeastOnce()).retrieveByVector(vectorCaptor.capture(), any(RetrieveRequest.class));
+        assertTrue(vectorCaptor.getAllValues().stream().anyMatch(vector -> vector[0] == 1F));
+        assertTrue(vectorCaptor.getAllValues().stream().anyMatch(vector -> vector[1] == 1F));
+    }
+
+    @Test
+    @DisplayName("同模型的多库合并为一次跨库检索，不同模型按组分别检索")
+    void sameModelCollectionsShareOneQuery() {
+        when(kbCollectionProvider.listActiveCollectionModels()).thenReturn(Map.of(
+                "kb-finance", "embed-a",
+                "kb-hr", "embed-a",
+                "kb-tech", "embed-b"));
+        when(retrieverService.embedAndNormalize(QUESTION, "embed-a")).thenReturn(new float[]{1F, 0F});
+        when(retrieverService.embedAndNormalize(QUESTION, "embed-b")).thenReturn(new float[]{0F, 1F});
+
+        search(RetrievalScope.global(0.3, List.of("kb-finance", "kb-hr", "kb-tech")), PRODUCTION_BUDGET);
+
+        List<RetrieveRequest> requests = captureRequests();
+        assertEquals(2, requests.size(), "两个模型组各发一次检索");
+        assertTrue(requests.stream()
+                .anyMatch(request -> request.getEffectiveCollectionNames().equals(List.of("kb-finance", "kb-hr"))));
+        assertTrue(requests.stream()
+                .anyMatch(request -> request.getEffectiveCollectionNames().equals(List.of("kb-tech"))));
+        verify(retrieverService).embedAndNormalize(QUESTION, "embed-a");
+        verify(retrieverService).embedAndNormalize(QUESTION, "embed-b");
+    }
+
+    @Test
+    @DisplayName("知识库绑定模型不可用时回退默认 embedding 模型并告警")
+    void boundModelFailureFallsBackToDefaultEmbedding() {
+        when(kbCollectionProvider.listActiveCollectionModels()).thenReturn(Map.of("kb-finance", "embed-broken"));
+        when(retrieverService.embedAndNormalize(QUESTION, "embed-broken"))
+                .thenThrow(new IllegalStateException("模型不可用"));
+
+        List<RetrievedChunk> chunks = search(directedScope(), PRODUCTION_BUDGET).getChunks();
+
+        verify(retrieverService).embedAndNormalize(QUESTION, "embed-broken");
+        // 命中库回退默认模型，补充库未绑定也走默认模型
+        verify(retrieverService, atLeast(2)).embedAndNormalize(QUESTION);
+        assertEquals(20, chunks.size(), "模型故障只降级 embedding，不应吞掉整个向量通道");
+    }
+
     /**
      * 断言给定意图数与候选池上限下，主路 / 补充路各自的实际产出条数
      */
@@ -319,7 +386,7 @@ class VectorSearchChannelTest {
                 .budget(budget)
                 .retrievalScope(scope)
                 .build();
-        return new VectorSearchChannel(retrieverService, properties, Runnable::run).search(context);
+        return new VectorSearchChannel(retrieverService, properties, kbCollectionProvider, Runnable::run).search(context);
     }
 
     private List<RetrieveRequest> captureRequests() {
