@@ -265,6 +265,7 @@ public class SystemSettingsVO {
              * defaultModel 供 embedding/rerank/vlm 使用；chat 组走档位（tiers）字段
              */
             private String defaultModel;
+            private Long timeoutMs;
             private List<ModelCandidate> candidates;
             private String defaultTier;
             private String deepThinkingTier;
