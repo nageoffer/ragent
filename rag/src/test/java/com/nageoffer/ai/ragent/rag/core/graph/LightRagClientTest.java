@@ -37,6 +37,7 @@ import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class LightRagClientTest {
@@ -44,14 +45,16 @@ class LightRagClientTest {
     private MockWebServer server;
     private LightRagClient client;
     private SearchChannelProperties searchProperties;
+    private GraphProperties properties;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @BeforeEach
     void setUp() throws Exception {
         server = new MockWebServer();
         server.start();
-        GraphProperties properties = new GraphProperties();
+        properties = new GraphProperties();
         properties.getLightrag().setBaseUrl(server.url("/").toString());
+        properties.getLightrag().setSyncPollIntervalMs(10);
         searchProperties = new SearchChannelProperties();
         client = new LightRagClient(new OkHttpClient(), objectMapper, properties, searchProperties);
     }
@@ -72,7 +75,8 @@ class LightRagClientTest {
                   {"id":"doc-kb-hr-2","file_path":"kb_hr_1954071234567890300"}
                 ]}}
                 """));
-        server.enqueue(json("{}"));
+        server.enqueue(json("{\"status\":\"deletion_started\"}"));
+        server.enqueue(json("{\"busy\":false,\"destructive_busy\":false}"));
 
         client.deleteByCollection("kb");
 
@@ -126,7 +130,8 @@ class LightRagClientTest {
                   {"id":"doc-kb","file_path":"kb_1954071234567890100"}
                 ]}}
                 """).newBuilder().bodyDelay(1, TimeUnit.SECONDS).build());
-        server.enqueue(json("{}"));
+        server.enqueue(json("{\"status\":\"deletion_started\"}"));
+        server.enqueue(json("{\"busy\":false,\"destructive_busy\":false}"));
 
         client.deleteByCollection("kb");
 
@@ -145,6 +150,90 @@ class LightRagClientTest {
         GraphEvidence evidence = client.retrieveByScope("报销流程", "mix", 10, List.of());
 
         assertTrue(evidence.matched().isEmpty());
+    }
+
+    @Test
+    @DisplayName("删除返回 busy 时有限重试，deletion_started 后等后台删除真正完成才返回")
+    void deleteByDocWaitsUntilBackgroundDeletionFinishes() throws Exception {
+        // 回归：deletion_started 只表示后台任务已启动，紧接着的重建写入会撞上 destructive_busy 返回 409
+        server.enqueue(json("""
+                {"statuses":{"processed":[
+                  {"id":"doc-target","file_path":"kb_1954071234567890100"}
+                ]}}
+                """));
+        server.enqueue(json("{\"status\":\"busy\",\"message\":\"Pipeline is busy\"}"));
+        server.enqueue(json("{\"status\":\"deletion_started\"}"));
+        server.enqueue(json("{\"busy\":true,\"destructive_busy\":true}"));
+        server.enqueue(json("{\"busy\":false,\"destructive_busy\":false}"));
+
+        client.deleteByDoc("1954071234567890100");
+
+        assertEquals(List.of("/documents", "/documents/delete_document", "/documents/delete_document",
+                "/documents/pipeline_status", "/documents/pipeline_status"), takeTargets(5));
+        assertEquals(0, server.getRequestCount() - 5, "删除完成后不应再有多余请求");
+    }
+
+    @Test
+    @DisplayName("后台删除超过等待上限仍未完成时抛出异常，而不是当作成功")
+    void deleteByDocFailsWhenDeletionNeverFinishes() {
+        properties.getLightrag().setSyncWaitTimeoutMs(100);
+        server.enqueue(json("""
+                {"statuses":{"processed":[
+                  {"id":"doc-target","file_path":"kb_1954071234567890100"}
+                ]}}
+                """));
+        server.enqueue(json("{\"status\":\"deletion_started\"}"));
+        for (int i = 0; i < 50; i++) {
+            server.enqueue(json("{\"busy\":true,\"destructive_busy\":true}"));
+        }
+
+        IllegalStateException e = assertThrows(IllegalStateException.class,
+                () -> client.deleteByDoc("1954071234567890100"));
+        assertTrue(e.getMessage().contains("doc-target"), "日志需带上远程文档 ID: " + e.getMessage());
+    }
+
+    @Test
+    @DisplayName("删除进行中写入被 409 拒绝时，等删除完成后重试写入")
+    void insertTextRetriesAfterDeletionInFlight() throws Exception {
+        server.enqueue(new MockResponse.Builder().code(409).body("{\"detail\":\"busy\"}").build());
+        server.enqueue(json("{\"busy\":true,\"destructive_busy\":true}"));
+        server.enqueue(json("{\"busy\":false,\"destructive_busy\":false}"));
+        server.enqueue(json("{\"status\":\"success\",\"message\":\"ok\",\"track_id\":\"t1\"}"));
+
+        client.insertText("全文", "kb_1954071234567890100");
+
+        assertEquals(List.of("/documents/text", "/documents/pipeline_status", "/documents/pipeline_status",
+                "/documents/text"), takeTargets(4));
+    }
+
+    @Test
+    @DisplayName("写入返回 409 且没有删除在进行（同名冲突）时抛出异常，不被静默吞掉")
+    void insertTextFailsOnConflictWithoutDeletionInFlight() {
+        server.enqueue(new MockResponse.Builder().code(409).body("{\"detail\":\"duplicate\"}").build());
+        server.enqueue(json("{\"busy\":false,\"destructive_busy\":false}"));
+
+        IllegalStateException e = assertThrows(IllegalStateException.class,
+                () -> client.insertText("全文", "kb_1954071234567890100"));
+        assertTrue(e.getMessage().contains("409"), e.getMessage());
+        assertTrue(e.getMessage().contains("kb_1954071234567890100"), e.getMessage());
+    }
+
+    @Test
+    @DisplayName("写入返回 2xx 但业务状态为 failure 时抛出异常")
+    void insertTextFailsOnBusinessFailure() {
+        server.enqueue(json("{\"status\":\"failure\",\"message\":\"boom\",\"track_id\":\"t1\"}"));
+
+        assertThrows(IllegalStateException.class, () -> client.insertText("全文", "kb_1954071234567890100"));
+    }
+
+    private List<String> takeTargets(int count) throws Exception {
+        List<String> targets = new ArrayList<>();
+        for (int i = 0; i < count; i++) {
+            RecordedRequest request = server.takeRequest(2, TimeUnit.SECONDS);
+            assertNotNull(request, "第 " + (i + 1) + " 个请求未发出，已收到: " + targets);
+            targets.add(request.getTarget());
+        }
+        return targets;
     }
 
     private MockResponse json(String body) {

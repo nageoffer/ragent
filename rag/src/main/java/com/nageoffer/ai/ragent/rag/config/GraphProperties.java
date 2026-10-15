@@ -79,5 +79,17 @@ public class GraphProperties {
          * hybrid 只回图结构关联的证据，与向量 / 关键词通道正交；naive 完全不走图，本架构下不建议
          */
         private String queryMode = "hybrid";
+
+        /**
+         * 写入 / 删除同步的等待上限（毫秒）
+         * LightRAG 删除在后台异步执行，返回 deletion_started 后需等其释放 destructive_busy 才能重新写入；
+         * 删除遇到 busy 时也在此上限内重试，超时抛异常而不是当作成功
+         */
+        private long syncWaitTimeoutMs = 60000;
+
+        /**
+         * 等待删除完成 / busy 重试时的轮询间隔（毫秒）
+         */
+        private long syncPollIntervalMs = 1000;
     }
 }
