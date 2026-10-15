@@ -58,17 +58,12 @@ public class GraphQueryService {
         int maxDepth = depth > 0 ? depth : 2;
         int maxNodes = limit > 0 ? Math.min(limit, 1000) : 200;
         String label = StrUtil.isNotBlank(entity) ? entity : "*";
-        // 范围过滤 token：文档最细粒度优先（docId 雪花唯一），否则按知识库 {collectionName}_ 前缀
-        // 与 LightRagClient.deleteByCollection/deleteByDoc 同款约定，命中节点 properties.file_path 承载的来源
-        String token = null;
-        if (StrUtil.isNotBlank(doc)) {
-            token = doc;
-        } else if (StrUtil.isNotBlank(collection)) {
-            token = collection + "_";
-        }
+        // 文档范围优先于知识库范围；归属判定在 mapGraph 中统一按 GraphFileSource 解析后的分量等值匹配
+        String scopedDoc = StrUtil.isNotBlank(doc) ? doc : null;
+        String scopedCollection = scopedDoc == null && StrUtil.isNotBlank(collection) ? collection : null;
         // 有范围过滤时向 LightRAG 拉宽到服务端上限，保证按 file_path 过滤后仍有足量节点
-        int fetchNodes = token != null ? 1000 : maxNodes;
-        return mapGraph(client.fetchGraph(label, maxDepth, fetchNodes), token, maxNodes);
+        int fetchNodes = scopedDoc != null || scopedCollection != null ? 1000 : maxNodes;
+        return mapGraph(client.fetchGraph(label, maxDepth, fetchNodes), scopedCollection, scopedDoc, maxNodes);
     }
 
     /**
@@ -92,13 +87,14 @@ public class GraphQueryService {
      * 节点展示名取 properties.entity_id、回退 labels[0]、再回退内部 id；类型 / 描述取 properties 对应字段
      * 边标签取 properties.keywords、回退 type，关系描述取 properties.description；缺失 id 的边用 source-target 兜底，防御式读取
      * <p>
-     * token 非空时按节点 properties.file_path 过滤（只保留来源含 token 的节点），并丢弃两端不全保留的悬空边；
+     * collection 或 doc 非空时按节点 properties.file_path 的来源分量精确过滤，并丢弃两端不全保留的悬空边；
      * 过滤后仍超 limit 则截断到 limit 并置 truncated，file_path 仅用于内部过滤、不进 VO
      *
-     * @param token 来源过滤 token，null 表示不过滤
-     * @param limit 展示节点上限
+     * @param collection 来源知识库过滤值，null 表示不限知识库
+     * @param doc        来源文档过滤值，null 表示不限文档；非空时优先于 collection
+     * @param limit      展示节点上限
      */
-    private GraphViewVO mapGraph(JsonNode root, String token, int limit) {
+    private GraphViewVO mapGraph(JsonNode root, String collection, String doc, int limit) {
         List<GraphViewVO.Node> nodes = new ArrayList<>();
         List<GraphViewVO.Edge> edges = new ArrayList<>();
         boolean truncated = false;
@@ -113,8 +109,8 @@ public class GraphQueryService {
                         continue;
                     }
                     JsonNode props = node.path("properties");
-                    // 范围过滤：token 非空且该节点来源 file_path 不含 token 则剔除
-                    if (token != null && !props.path("file_path").asText("").contains(token)) {
+                    // LightRAG 会用 <SEP> 合并同一节点的多个来源；逐段解析后等值匹配，避免 kb 误命中 kb_hr
+                    if (!matchesSource(props.path("file_path").asText(""), collection, doc)) {
                         continue;
                     }
                     // 过滤后按展示上限截断：达上限即标记截断、停止收节点（LightRAG 已按跳数+度数排序，取前 limit 最相关）
@@ -167,6 +163,30 @@ public class GraphQueryService {
             }
         }
         return GraphViewVO.builder().nodes(nodes).edges(edges).truncated(truncated).build();
+    }
+
+    /**
+     * 判断 LightRAG 的一个或多个合并来源是否命中查询范围
+     * <p>
+     * 启用范围过滤后，无法解析的来源按不命中处理，避免未知来源绕过知识库 / 文档隔离
+     */
+    private static boolean matchesSource(String filePath, String collection, String doc) {
+        if (collection == null && doc == null) {
+            return true;
+        }
+        if (StrUtil.isBlank(filePath)) {
+            return false;
+        }
+        for (String part : filePath.split("<SEP>")) {
+            GraphFileSource source = GraphFileSource.parse(part.trim());
+            if (source == null) {
+                continue;
+            }
+            if (doc != null ? doc.equals(source.docId()) : collection.equals(source.collectionName())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
