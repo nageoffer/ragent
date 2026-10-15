@@ -90,6 +90,12 @@ public class MinerUResultUnpacker {
             .extensions(List.of(TablesExtension.create()))
             .build();
 
+    /** 单个结果 zip 的条目数上限 */
+    private static final int MAX_ENTRIES = 2_000;
+
+    /** 单个结果 zip 的解压总量上限 */
+    private static final long MAX_TOTAL_BYTES = 512L * 1024 * 1024;
+
     private final FileStorageService fileStorageService;
     private final VlmService vlmService;
     private final ImageParseProperties imageParseProperties;
@@ -145,6 +151,8 @@ public class MinerUResultUnpacker {
     private ZipContents readZip(byte[] zipBytes) {
         String markdown = null;
         Map<String, byte[]> images = new HashMap<>();
+        int entries = 0;
+        long totalBytes = 0;
 
         try (ZipInputStream zin = new ZipInputStream(new ByteArrayInputStream(zipBytes))) {
             ZipEntry entry;
@@ -152,8 +160,12 @@ public class MinerUResultUnpacker {
                 if (entry.isDirectory()) {
                     continue;
                 }
+                if (++entries > MAX_ENTRIES) {
+                    throw new ServiceException("MinerU zip 条目数超过上限: " + MAX_ENTRIES);
+                }
                 String name = entry.getName();
-                byte[] data = readAll(zin);
+                byte[] data = readAll(zin, MAX_TOTAL_BYTES - totalBytes);
+                totalBytes += data.length;
 
                 if (name.toLowerCase(Locale.ROOT).endsWith(".md") && markdown == null) {
                     markdown = new String(data, StandardCharsets.UTF_8);
@@ -167,11 +179,19 @@ public class MinerUResultUnpacker {
         return new ZipContents(markdown, images);
     }
 
-    private static byte[] readAll(ZipInputStream zin) throws IOException {
+    /**
+     * 按剩余预算读取当前条目：单个超大条目也会在撑爆堆之前被拦下
+     */
+    private static byte[] readAll(ZipInputStream zin, long remaining) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         byte[] buf = new byte[8192];
+        long read = 0;
         int n;
         while ((n = zin.read(buf)) != -1) {
+            read += n;
+            if (read > remaining) {
+                throw new ServiceException("MinerU zip 解压总量超过上限: " + MAX_TOTAL_BYTES + " bytes");
+            }
             out.write(buf, 0, n);
         }
         return out.toByteArray();
