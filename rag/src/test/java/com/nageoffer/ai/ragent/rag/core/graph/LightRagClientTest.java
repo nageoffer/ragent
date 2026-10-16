@@ -87,6 +87,32 @@ class LightRagClientTest {
     }
 
     @Test
+    @DisplayName("Document deletion matches the parsed docId exactly")
+    void deleteByDocMatchesExactDocIdOnly() throws Exception {
+        String targetDocId = "1954071234567890100";
+        server.enqueue(json("""
+                {"statuses":{"processed":[
+                  {"id":"target","file_path":"kb_1954071234567890100"},
+                  {"id":"collection-hit","file_path":"archive_1954071234567890100_1954071234567890200"},
+                  {"id":"directory-hit","file_path":"/backup/1954071234567890100/kb_1954071234567890300"},
+                  {"id":"legacy-hit","file_path":"legacy-1954071234567890100"}
+                ]}}
+                """));
+        server.enqueue(json("{}"));
+
+        client.deleteByDoc(targetDocId);
+
+        RecordedRequest listRequest = server.takeRequest(2, TimeUnit.SECONDS);
+        assertNotNull(listRequest);
+        assertEquals("/documents", listRequest.getTarget());
+
+        RecordedRequest deleteRequest = server.takeRequest(2, TimeUnit.SECONDS);
+        assertNotNull(deleteRequest, "The target document should trigger a deletion request");
+        assertEquals("/documents/delete_document", deleteRequest.getTarget());
+        assertEquals(List.of("target"), docIdsOf(deleteRequest));
+    }
+
+    @Test
     @DisplayName("检索证据按库名精确归属切分主份与补充份")
     void retrieveByScopeSplitsByExactCollection() {
         // 回归：旧 contains 谓词会把 kb_hr 的证据归入 kb 的主份，跨库证据混进定向主路
