@@ -24,6 +24,7 @@ import com.nageoffer.ai.ragent.agent.memory.AgentMemoryOutcome;
 import com.nageoffer.ai.ragent.agent.memory.AgentMemoryLearner;
 import com.nageoffer.ai.ragent.agent.service.AgentConversationService;
 import com.nageoffer.ai.ragent.agent.service.handler.AgentRunGate;
+import com.nageoffer.ai.ragent.agent.service.handler.AgentRunLifecycle;
 import com.nageoffer.ai.ragent.agent.tool.AgentToolCatalog.ResolvedCatalog;
 import com.nageoffer.ai.ragent.agent.trace.AgentTraceContextKeys;
 import com.nageoffer.ai.ragent.agent.tool.AgentMcpMeta;
@@ -76,6 +77,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
@@ -111,7 +113,8 @@ class AgentChatServiceImplTest {
         runGate = mock(AgentRunGate.class);
         agent = mock(ReActAgent.class);
         memoryLearner = mock(AgentMemoryLearner.class);
-        service = new AgentChatServiceImpl(agentProvider, conversationService, taskManager, runGate, memoryLearner);
+        service = new AgentChatServiceImpl(agentProvider, conversationService, taskManager, runGate,
+                memoryLearner, List.of());
 
         gateReleased = new AtomicInteger();
         when(runGate.acquire(anyString(), anyString(), anyString())).thenReturn(gateReleased::incrementAndGet);
@@ -339,6 +342,35 @@ class AgentChatServiceImplTest {
     private static String contextId(RuntimeContext ctx, String key) {
         String value = ctx.get(key);
         return value;
+    }
+
+    @Test
+    void shouldInterruptBeforeBusinessPersistenceAndFinishBeforeReleasingGate() {
+        AgentRunLifecycle lifecycle = mock(AgentRunLifecycle.class);
+        Runnable release = mock(Runnable.class);
+        service = new AgentChatServiceImpl(agentProvider, conversationService, taskManager, runGate,
+                memoryLearner, List.of(lifecycle));
+        when(runGate.acquire(anyString(), anyString(), anyString())).thenReturn(release);
+        when(agent.streamEvents(any(Msg.class), any(RuntimeContext.class))).thenReturn(Flux.never());
+        doAnswer(invocation -> {
+            verify(lifecycle).onInterrupt(any());
+            throw new IllegalStateException("interrupt");
+        }).when(agent).interrupt(USER_ID, CONVERSATION_ID);
+        ArgumentCaptor<Runnable> interrupt = ArgumentCaptor.forClass(Runnable.class);
+        ArgumentCaptor<Runnable> finalizer = ArgumentCaptor.forClass(Runnable.class);
+        ArgumentCaptor<RuntimeContext> context = ArgumentCaptor.forClass(RuntimeContext.class);
+        service.streamChat("问题", CONVERSATION_ID, new SseEmitter());
+        verify(lifecycle).onStart(context.capture(), isNull());
+        verify(taskManager).bindHandle(anyString(), interrupt.capture());
+        verify(taskManager).register(anyString(), anyString(), finalizer.capture());
+        when(taskManager.isCancelled(anyString())).thenReturn(true);
+        interrupt.getValue().run();
+        verify(lifecycle, never()).onFinish(any());
+        finalizer.getValue().run();
+        InOrder order = inOrder(lifecycle, agent, release);
+        order.verify(agent).interrupt(USER_ID, CONVERSATION_ID);
+        order.verify(lifecycle).onFinish(context.getValue());
+        order.verify(release).run();
     }
 
     @Test

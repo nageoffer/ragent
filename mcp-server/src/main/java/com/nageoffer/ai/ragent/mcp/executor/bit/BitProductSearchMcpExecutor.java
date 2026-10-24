@@ -128,13 +128,20 @@ public class BitProductSearchMcpExecutor {
                     BitToolSupport.limit(MapUtil.getInt(args, "limit"), DEFAULT_LIMIT, MAX_LIMIT)
             );
 
-            String result = criteria.bySku() ? renderSkus(criteria, querySkus(criteria))
+            List<SkuDetailResult> skus = criteria.bySku() ? querySkus(criteria) : List.of();
+            String result = criteria.bySku() ? renderSkus(criteria, skus)
                     : renderSpus(criteria, querySpus(criteria));
 
             log.info("MCP 工具调用完成, toolId={}, spuCodes={}, skuCodes={}, category={}, keyword={}, elapsed={}ms",
                     TOOL_ID, criteria.spuCodes(), criteria.skuCodes(), criteria.category(), criteria.keyword(),
                     System.currentTimeMillis() - startMs);
-            return McpToolResults.success(result);
+            if (!criteria.bySku()) return McpToolResults.success(result);
+            Map<String, String> productNames = new java.util.LinkedHashMap<>();
+            skus.forEach(sku -> {
+                if (sku.getName() != null) productNames.put(sku.getSkuCode(), sku.getName());
+            });
+            return CallToolResult.builder().addTextContent(result)
+                    .structuredContent(Map.of("productNames", productNames)).isError(false).build();
         } catch (Exception e) {
             log.error("MCP 工具调用失败, toolId={}, elapsed={}ms",
                     TOOL_ID, System.currentTimeMillis() - startMs, e);

@@ -29,6 +29,7 @@ import com.nageoffer.ai.ragent.agent.memory.AgentMemoryLearner;
 import com.nageoffer.ai.ragent.agent.service.AgentChatService;
 import com.nageoffer.ai.ragent.agent.service.AgentConversationService;
 import com.nageoffer.ai.ragent.agent.service.handler.AgentRunGate;
+import com.nageoffer.ai.ragent.agent.service.handler.AgentRunLifecycle;
 import com.nageoffer.ai.ragent.agent.service.handler.AgentRunHandle;
 import com.nageoffer.ai.ragent.agent.service.handler.AgentStreamEventBridge;
 import com.nageoffer.ai.ragent.agent.tool.AgentToolExecutionFacts;
@@ -62,6 +63,7 @@ import java.time.Clock;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 
 /**
  * Agent 流式对话，负责发起提问与用户确认两条入口
@@ -77,6 +79,7 @@ public class AgentChatServiceImpl implements AgentChatService {
     private final StreamTaskManager taskManager;
     private final AgentRunGate runGate;
     private final AgentMemoryLearner memoryLearner;
+    private final List<AgentRunLifecycle> runLifecycles;
 
     @Override
     public void streamChat(String question, String conversationId, SseEmitter emitter) {
@@ -176,6 +179,7 @@ public class AgentChatServiceImpl implements AgentChatService {
                 .replyToMessageId(settlement.replyToMessageId())
                 .confirmMessageId(messageId)
                 .confirmApproved(approved)
+                .confirmResults(confirmResults)
                 .releaseGate(releaseGate)
                 .build());
     }
@@ -229,14 +233,19 @@ public class AgentChatServiceImpl implements AgentChatService {
         AgentToolExecutionFacts facts = new AgentToolExecutionFacts(taskId, clock);
         // 上下文传到底，中断时句柄从这里取根 span
         RuntimeContext runtimeContext = buildRuntimeContext(scope, facts);
+        runLifecycles.forEach(lifecycle -> lifecycle.onStart(runtimeContext, scope.confirmResults()));
         SseEmitterSender sender = new SseEmitterSender(scope.emitter());
         AgentRunHandle runHandle = new AgentRunHandle(taskId, sender, taskManager, facts, runtimeContext);
+        runLifecycles.forEach(lifecycle -> runHandle.onRelease(() -> lifecycle.onFinish(runtimeContext)));
         bindReleaseHooks(runHandle, agent, scope);
         try {
-            bindEmitterLifecycle(scope.emitter(), runHandle, taskId);
+            bindEmitterLifecycle(scope.emitter(), runHandle, taskId, runtimeContext);
             sender.sendEvent(AgentSSEEventType.META.value(), new AgentMetaPayload(conversationId, taskId));
             AgentStreamEventBridge bridge = buildBridge(activeAgent, scope, runHandle, facts, clock);
-            taskManager.register(taskId, userId, bridge::finishCancelledStream);
+            taskManager.register(taskId, userId, () -> {
+                notifyRunLifecycle(lifecycle -> lifecycle.onInterrupt(runtimeContext));
+                bridge.finishCancelledStream();
+            });
             // 预埋取消标记会让 register 当场跑完收尾，此时不再启动 Agent
             if (runHandle.isSettled()) {
                 return;
@@ -248,13 +257,26 @@ public class AgentChatServiceImpl implements AgentChatService {
             runHandle.start(() -> {
                 settleConfirmCard(scope);
                 Disposable disposable = events.subscribe(bridge::onEvent, bridge::onError, bridge::onComplete);
-                runHandle.bindStream(disposable, () -> agent.interrupt(userId, conversationId));
+                runHandle.bindStream(disposable, () -> {
+                    notifyRunLifecycle(lifecycle -> lifecycle.onInterrupt(runtimeContext));
+                    agent.interrupt(userId, conversationId);
+                });
                 taskManager.bindHandle(taskId, runHandle::interruptUpstream);
             });
         } catch (RuntimeException | Error e) {
             // 启动失败时释放钩子不会执行，手动清掉缓存里的坏状态
             agent.clearStateCache(userId, conversationId);
             throw e;
+        }
+    }
+
+    private void notifyRunLifecycle(Consumer<AgentRunLifecycle> callback) {
+        for (AgentRunLifecycle lifecycle : runLifecycles) {
+            try {
+                callback.accept(lifecycle);
+            } catch (RuntimeException e) {
+                log.error("Agent 业务生命周期回调失败，继续取消和收尾", e);
+            }
         }
     }
 
@@ -334,7 +356,7 @@ public class AgentChatServiceImpl implements AgentChatService {
     @Builder
     private record RunScope(SseEmitter emitter, String userId, String conversationId,
                             String taskId, String title, String replyToMessageId, String confirmMessageId,
-                            boolean confirmApproved, Runnable releaseGate) {
+                            boolean confirmApproved, List<ConfirmResult> confirmResults, Runnable releaseGate) {
     }
 
     /**
@@ -351,13 +373,14 @@ public class AgentChatServiceImpl implements AgentChatService {
     /**
      * SSE 断开（关页/断网/超时）时触发取消，否则 ReAct 循环会空跑到迭代上限
      */
-    private void bindEmitterLifecycle(SseEmitter emitter, AgentRunHandle runHandle, String taskId) {
+    private void bindEmitterLifecycle(SseEmitter emitter, AgentRunHandle runHandle, String taskId, RuntimeContext runtimeContext) {
         AtomicBoolean recycled = new AtomicBoolean(false);
         Runnable recycleUpstream = () -> {
             // 已结算的任务不再重复提交本地取消
             if (!runHandle.isSettled() && recycled.compareAndSet(false, true)) {
                 // 中断最多等待 2 秒，随后还需补存状态，不占用容器生命周期回调线程
                 try {
+                    notifyRunLifecycle(lifecycle -> lifecycle.onDisconnect(runtimeContext));
                     Schedulers.boundedElastic().schedule(() -> taskManager.cancel(taskId));
                 } catch (RuntimeException e) {
                     recycled.set(false);

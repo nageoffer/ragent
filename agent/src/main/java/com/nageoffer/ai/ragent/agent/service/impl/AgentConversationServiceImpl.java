@@ -17,6 +17,7 @@
 
 package com.nageoffer.ai.ragent.agent.service.impl;
 
+import com.nageoffer.ai.ragent.agent.cart.CartOperationStore;
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
@@ -72,6 +73,7 @@ public class AgentConversationServiceImpl implements AgentConversationService {
     private final AgentMessageMapper messageMapper;
     private final PgAgentStateStore agentStateStore;
     private final AgentRunGate runGate;
+    private final CartOperationStore cartOperationStore;
 
     @Override
     public String touchConversation(String conversationId, String userId, String question) {
@@ -323,6 +325,7 @@ public class AgentConversationServiceImpl implements AgentConversationService {
     public void delete(String conversationId, String userId) {
         Runnable releaseLock = runGate.acquireConversation(userId, conversationId);
         try {
+            cartOperationStore.guardDeletion(userId, conversationId);
             conversationMapper.delete(Wrappers.lambdaQuery(AgentConversationDO.class)
                     .eq(AgentConversationDO::getConversationId, conversationId)
                     .eq(AgentConversationDO::getUserId, userId));
