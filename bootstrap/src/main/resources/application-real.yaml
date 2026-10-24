@@ -1,0 +1,17 @@
+spring:
+  datasource:
+    username: postgres
+    password: pg20260527
+    url: jdbc:postgresql://100.67.140.111:5432/ragent?client_encoding=UTF8
+
+rocketmq:
+  name-server: 100.67.140.111:9876
+  client-api-timeout: 30000
+  producer:
+    send-message-timeout: 30000
+    retry-times-when-send-failed: 0
+
+rustfs:
+  url: http://100.67.140.111:9000
+  access-key-id: rustfsadmin
+  secret-access-key: rustfsadmin
