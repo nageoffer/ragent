@@ -286,6 +286,18 @@ public class IntentTreeServiceImpl implements IntentTreeService {
         if (node == null || Objects.equals(node.getDeleted(), 1)) {
             throw new ServiceException("节点不存在或已删除: id=" + id);
         }
+        // 子节点不随父节点删除：管理端树只从 parentCode 为空的节点往下递归，子节点会从树里消失，
+        // 而运行时分类器对找不到父节点的节点兜底当根节点，导致删除后仍参与意图识别
+        List<IntentNodeDO> children = intentNodeMapper.selectList(new LambdaQueryWrapper<IntentNodeDO>()
+                .eq(IntentNodeDO::getParentCode, node.getIntentCode())
+                .eq(IntentNodeDO::getDeleted, 0));
+        if (CollectionUtils.isNotEmpty(children)) {
+            throw new ClientException(String.format(
+                    "删除失败：节点 [%s] 存在子节点（如：%s），请先删除子节点，或勾选完整子树后批量删除",
+                    node.getName(),
+                    summarizeNodeNames(children)
+            ));
+        }
         IntentNodeDO before = BeanUtil.copyProperties(node, IntentNodeDO.class);
         intentNodeMapper.deleteById(id);
 
