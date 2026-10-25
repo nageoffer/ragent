@@ -272,17 +272,17 @@ class StreamTaskManagerTest {
     @Test
     void shouldNotThrowWhenFinalizerFails() {
         AtomicInteger interrupted = new AtomicInteger();
-        //1.finalizer执行逻辑抛出异常
+        // 1.finalizer执行逻辑抛出异常
         taskManager.register(TASK_ID, OWNER_ID, () -> {
             throw new IllegalStateException("收尾失败");
         });
-        //2.取消逻辑正常执行
+        // 2.取消逻辑正常执行
         taskManager.bindHandle(TASK_ID, interrupted::incrementAndGet);
 
-        //3.断言异常是否抛出 -> 被捕获且打印错误日志
+        // 3.断言异常是否抛出 -> 被捕获且打印错误日志
         assertThatCode(() -> taskManager.cancel(TASK_ID)).doesNotThrowAnyException();
 
-        //4.判断取消逻辑是否正确执行
+        // 4.判断取消逻辑是否正确执行
         assertThat(interrupted.get()).isOne();
     }
 

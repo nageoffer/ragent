@@ -146,7 +146,7 @@ public class StreamChatEventHandler implements StreamCallback {
             sender.sendEvent(SSEEventType.CANCEL.value(), actualPayload);
             sender.sendEvent(SSEEventType.DONE.value(), "[DONE]");
         } finally {
-            //收尾链路中可能遇到异常，finally保证complete方法执行，连接断开
+            // 收尾链路中可能遇到异常，finally保证complete方法执行，连接断开
             sender.complete();
         }
     }
@@ -280,7 +280,7 @@ public class StreamChatEventHandler implements StreamCallback {
                 return conversation.getTitle();
             }
         } catch (Exception e) {
-            //防止getTitle()执行失败，破坏数据一致性
+            // 防止getTitle()执行失败，破坏数据一致性
             log.error("查询会话标题失败，降级处理，conversationId：{}", conversationId, e);
         }
         return "新对话";
