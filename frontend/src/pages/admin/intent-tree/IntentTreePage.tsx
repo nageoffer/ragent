@@ -593,8 +593,11 @@ function IntentNodeDialog({
   }, [open, resolvedDefaults, form]);
 
   const parentOptions = useMemo(() => {
-    const filtered =
-        mode === "edit" && node ? treeOptions.filter((item) => item.value !== node.intentCode) : treeOptions;
+    // 当前节点和整棵子树都不能作为父节点，避免通过编辑弹窗形成循环引用。
+    const excludedCodes = new Set(
+        mode === "edit" && node ? buildTreeOptions([node]).map((item) => item.value) : []
+    );
+    const filtered = treeOptions.filter((item) => !excludedCodes.has(item.value));
     const rootOption: TreeOption = { label: "ROOT", value: ROOT_PARENT, node: null, depth: 0 };
     return [rootOption, ...filtered];
   }, [mode, node, treeOptions]);
