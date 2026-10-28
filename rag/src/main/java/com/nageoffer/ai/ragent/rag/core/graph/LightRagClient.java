@@ -208,15 +208,19 @@ public class LightRagClient {
     }
 
     /**
-     * 删除某文档的图谱数据（按 docId 匹配 file_path）
+     * 删除某文档的图谱数据（按解析出的 docId 等值匹配）
      * <p>
-     * docId 全局唯一（雪花），作为 token 落在 file_path 中，不受服务端 basename 归一化影响，匹配稳
+     * file_path 还可能带目录前缀，collectionName 也允许用户自定义；直接子串匹配会把路径或库名中包含
+     * 目标 docId 的其他文档一并删除。无法解析的来源按 fail-closed 处理，避免不可逆的误删
      */
     public void deleteByDoc(String docId) {
         if (StrUtil.isBlank(docId)) {
             return;
         }
-        deleteMatching(filePath -> filePath.contains(docId), "docId=" + docId);
+        deleteMatching(filePath -> {
+            GraphFileSource source = GraphFileSource.parse(filePath);
+            return source != null && docId.equals(source.docId());
+        }, "docId=" + docId);
     }
 
     /**
