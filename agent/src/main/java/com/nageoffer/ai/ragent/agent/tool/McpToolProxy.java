@@ -53,7 +53,11 @@ public class McpToolProxy extends McpTool {
     private final McpClientWrapper client;
 
     public McpToolProxy(McpToolBinding binding) {
-        super(binding.toolId(), binding.description(), binding.inputSchema(),
+        this(binding, binding.description());
+    }
+
+    protected McpToolProxy(McpToolBinding binding, String description) {
+        super(binding.toolId(), description, binding.inputSchema(),
                 binding.remote().definition().outputSchema(), binding.remote().client(), null,
                 binding.remote().client().getName(), binding.readOnly());
         this.needsConfirm = binding.needsConfirm();
@@ -89,23 +93,25 @@ public class McpToolProxy extends McpTool {
                     .state(ToolResultState.ERROR)
                     .build());
         }
-        return AgentToolBodyTracer.trace(this, param, () -> {
-            Map<String, Object> meta = context.map(ctx -> ctx.get(McpMeta.class))
-                    .map(McpMeta::entries)
-                    .orElseGet(Map::of);
-            return Mono.defer(() -> client.callTool(getName(), param.getInput(), meta))
-                    .map(McpContentConverter::convertCallToolResult)
-                    .map(result -> result.getState() == ToolResultState.RUNNING
-                            ? result.withState(ToolResultState.SUCCESS) : result)
-                    .onErrorResume(e -> {
-                        if (TaskCancellation.isCancellation(e)) {
-                            return Mono.just(ToolResultBlock.text("用户已停止，本次工具调用未完成")
-                                    .withState(ToolResultState.INTERRUPTED));
-                        }
-                        log.error("MCP 工具调用异常, toolId={}", getName(), e);
-                        return Mono.just(ToolResultBlock.error(CALL_FAILED_MESSAGE));
-                    });
-        });
+        return AgentToolBodyTracer.trace(this, param, () -> execute(param));
+    }
+
+    /** 业务可替换执行方式，权限、技能遮蔽与追踪仍由通用入口处理。 */
+    protected Mono<ToolResultBlock> execute(ToolCallParam param) {
+        Map<String, Object> meta = Optional.ofNullable(param.getRuntimeContext())
+                .map(ctx -> ctx.get(McpMeta.class)).map(McpMeta::entries).orElseGet(Map::of);
+        return Mono.defer(() -> client.callTool(getName(), param.getInput(), meta))
+                .map(McpContentConverter::convertCallToolResult)
+                .map(result -> result.getState() == ToolResultState.RUNNING
+                        ? result.withState(ToolResultState.SUCCESS) : result)
+                .onErrorResume(e -> {
+                    if (TaskCancellation.isCancellation(e)) {
+                        return Mono.just(ToolResultBlock.text("用户已停止，本次工具调用未完成")
+                                .withState(ToolResultState.INTERRUPTED));
+                    }
+                    log.error("MCP 工具调用异常, toolId={}", getName(), e);
+                    return Mono.just(ToolResultBlock.error(CALL_FAILED_MESSAGE));
+                });
     }
 
     private boolean isMasked(RuntimeContext context) {

@@ -29,6 +29,7 @@ import com.nageoffer.ai.ragent.rag.core.prompt.AgentPromptSlot;
 import com.nageoffer.ai.ragent.rag.core.skill.AgentSkill;
 import com.nageoffer.ai.ragent.rag.core.skill.AgentSkillRegistry;
 import com.nageoffer.ai.ragent.rag.service.KnowledgeSearchFacade;
+import io.agentscope.core.tool.AgentTool;
 import io.agentscope.core.tool.Toolkit;
 import io.agentscope.core.tool.mcp.McpTool;
 import io.modelcontextprotocol.spec.McpSchema.JsonSchema;
@@ -44,6 +45,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -67,6 +69,7 @@ public class AgentToolCatalog {
     private final AgentMemoryProperties memoryProperties;
     private final AgentMemoryFlusher memoryFlusher;
     private final AgentSkillRegistry skillRegistry;
+    private final List<AgentToolContributor> toolContributors;
 
     /**
      * 解析当前可用工具并生成快照，同一请求内指纹与 Toolkit 都从此快照派生
@@ -95,7 +98,13 @@ public class AgentToolCatalog {
         if (catalog.hasSkills) {
             toolkit.registerAgentTool(new SkillLoadTool(skillRegistry));
         }
-        catalog.bindings.forEach(binding -> toolkit.registerAgentTool(new McpToolProxy(binding)));
+        catalog.bindings.forEach(binding -> {
+            AgentTool tool = toolContributors.stream().map(contributor -> contributor.createTool(binding))
+                    .filter(Objects::nonNull).findFirst().orElseGet(() -> new McpToolProxy(binding));
+            toolkit.registerAgentTool(tool);
+        });
+        toolContributors.forEach(contributor -> contributor.additionalTools(catalog.bindings)
+                .forEach(toolkit::registerAgentTool));
         // 只在构建实例时记，不随每次 resolve 刷日志
         catalog.unavailableToolIds.forEach(toolId ->
                 log.warn("意图树配置的 MCP 工具未挂载: 服务端未发现或与内置工具重名, toolId: {}", toolId));
@@ -138,7 +147,8 @@ public class AgentToolCatalog {
         for (IntentNode node : intentNodeRegistry.listMcpToolNodes()) {
             String toolId = node.getMcpToolId().trim();
             RemoteTool remote = mcpClients.get(toolId);
-            if (remote == null || RESERVED_TOOL_NAMES.contains(toolId)) {
+            if (remote == null || RESERVED_TOOL_NAMES.contains(toolId)
+                    || toolContributors.stream().anyMatch(contributor -> contributor.reservedToolNames().contains(toolId))) {
                 unavailableToolIds.add(toolId);
                 continue;
             }

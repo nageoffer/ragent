@@ -5031,6 +5031,172 @@ textarea {
   }
 }
 
+/* 加购结果与输入框共用内容列，历史结果收成一行。 */
+.agent-app .agent-cart {
+  padding: var(--agent-s2) var(--agent-s6);
+  font-family: var(--agent-font-sans);
+  font-size: var(--agent-t-sm);
+  color: var(--agent-ink);
+}
+
+.agent-app .agent-cart-bar {
+  max-width: 880px;
+  margin: 0 auto;
+  border: 1px solid var(--agent-grid);
+  border-radius: var(--agent-radius);
+  background: var(--agent-surface);
+}
+
+.agent-app .agent-cart-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--agent-s2);
+  width: 100%;
+  min-height: 40px;
+  padding: var(--agent-s2) var(--agent-s3);
+  border-radius: inherit;
+  text-align: left;
+  color: var(--agent-muted);
+}
+
+.agent-app .agent-cart-toggle:hover {
+  background: var(--agent-sunk);
+}
+
+.agent-app .agent-cart-title {
+  font-weight: 600;
+  color: var(--agent-ink);
+}
+
+.agent-app .agent-cart-summary {
+  flex: 1;
+  font-size: var(--agent-t-xs);
+}
+
+.agent-app .agent-cart-bar[data-attention="true"] .agent-cart-summary {
+  color: var(--agent-caution);
+}
+
+.agent-app .agent-cart-chevron[data-expanded="true"] {
+  transform: rotate(180deg);
+}
+
+.agent-app .agent-cart-items {
+  max-height: min(32vh, 260px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 var(--agent-s3);
+  border-top: 1px solid var(--agent-grid);
+}
+
+.agent-app .agent-cart-item {
+  padding: var(--agent-s3) 0;
+}
+
+.agent-app .agent-cart-item + .agent-cart-item {
+  border-top: 1px solid var(--agent-grid);
+}
+
+.agent-app .agent-cart-item-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--agent-s2);
+}
+
+.agent-app .agent-cart-product {
+  display: flex;
+  flex: 1 1 180px;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+  overflow-wrap: anywhere;
+}
+
+.agent-app .agent-cart-name {
+  font-weight: 600;
+}
+
+.agent-app .agent-cart-sku {
+  color: var(--agent-muted);
+  font-size: var(--agent-t-xs);
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  font-family: var(--agent-font-mono);
+  font-weight: 500;
+}
+
+.agent-app .agent-cart-quantity {
+  color: var(--agent-muted);
+  white-space: nowrap;
+}
+
+.agent-app .agent-cart-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  font-size: var(--agent-t-xs);
+}
+
+.agent-app .agent-cart-details {
+  margin-top: var(--agent-s2);
+  color: var(--agent-muted);
+  font-size: var(--agent-t-xs);
+  overflow-wrap: anywhere;
+}
+
+.agent-app .agent-cart-details summary {
+  width: fit-content;
+  cursor: pointer;
+}
+
+.agent-app .agent-cart-details p,
+.agent-app .agent-cart-notice {
+  margin: var(--agent-s2) 0;
+  line-height: 1.6;
+}
+
+.agent-app .agent-cart-notice {
+  color: var(--agent-caution);
+  font-size: var(--agent-t-xs);
+}
+
+.agent-app .agent-cart-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--agent-s2);
+  margin-top: var(--agent-s3);
+}
+
+.agent-app .agent-cart-stop {
+  padding: 5px 4px;
+  color: var(--agent-muted);
+  font-size: var(--agent-t-xs);
+}
+
+.agent-app .agent-cart-stop:hover {
+  color: var(--agent-error);
+}
+
+.agent-app .agent-cart button:focus-visible,
+.agent-app .agent-cart summary:focus-visible {
+  outline: 2px solid var(--agent-signal-ink);
+  outline-offset: 2px;
+}
+
+.agent-app .agent-cart + .agent-composer::before {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .agent-app .agent-cart {
+    padding-inline: var(--agent-s4);
+  }
+}
+
 /* ── 输入条 ─────────────────────────────── */
 /* 条只负责留白 不画边不铺底：横贯全宽的分界线与框在说相反的话（框是列里的下一个物件 不是页脚） */
 .agent-app .agent-composer {

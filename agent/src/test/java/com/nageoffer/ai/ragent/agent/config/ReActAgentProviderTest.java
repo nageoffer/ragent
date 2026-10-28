@@ -107,7 +107,7 @@ class ReActAgentProviderTest {
                 mcpClients,
                 new AgentMemoryProperties(),
                 mock(AgentMemoryFlusher.class),
-                mock(AgentSkillRegistry.class)));
+                mock(AgentSkillRegistry.class), List.of()));
         AgentProperties agentProperties = new AgentProperties();
         model = mock(OpenAIChatModel.class);
         when(model.getModelName()).thenReturn("recovery-test");

@@ -21,9 +21,7 @@ import cn.hutool.core.map.MapUtil;
 import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.nageoffer.ai.ragent.mcp.dao.entity.CartDO;
-import com.nageoffer.ai.ragent.mcp.dao.entity.ProductSkuDO;
 import com.nageoffer.ai.ragent.mcp.dao.mapper.CartMapper;
-import com.nageoffer.ai.ragent.mcp.dao.mapper.ProductSkuMapper;
 import com.nageoffer.ai.ragent.mcp.config.McpToolAnnotations;
 import com.nageoffer.ai.ragent.mcp.executor.McpToolResults;
 import com.nageoffer.ai.ragent.mcp.executor.McpToolSchema;
@@ -56,7 +54,7 @@ public class BitCartUpdateMcpExecutor {
     private static final int MAX_QUANTITY = 99;
 
     private final CartMapper cartMapper;
-    private final ProductSkuMapper productSkuMapper;
+    private final CartReceiptService cartReceiptService;
 
     @Bean
     public McpServerFeatures.SyncToolSpecification updateCartItemToolSpecification() {
@@ -72,14 +70,52 @@ public class BitCartUpdateMcpExecutor {
                 .description("修改当前登录用户的购物车。add：没有则新增，已有则累加，总数最多 99，超限不修改；"
                         + "decrease：减少指定件数，最低保留 1 件；remove：直接移除商品。"
                         + "新增、减少的 quantity 是本次变化量，不是最终总数。"
-                        + "增减结果不确定时先查购物车，不要直接重试。已下架商品不能新增")
+                        + "加购结果不确定时按操作编号查询回执，不要根据当前数量推断。已下架商品不能新增")
                 .inputSchema(inputSchema)
+                .meta(Map.of("com.nageoffer.ragent/cartReliabilityVersion", 1))
                 .annotations(McpToolAnnotations.WRITE)
                 .build();
         return McpServerFeatures.SyncToolSpecification.builder()
                 .tool(tool)
                 .callHandler((exchange, request) -> handleCall(request))
                 .build();
+    }
+
+    /** 专用协议入口：旧版 MCP 没有此工具，回滚时也不会误走无去重的 add。 */
+    @Bean
+    public McpServerFeatures.SyncToolSpecification addCartItemOnceToolSpecification() {
+        Tool tool = Tool.builder().name("add_cart_item_once")
+                .description("可靠加购内部入口，必须携带系统操作编号，仅允许 add")
+                .inputSchema(McpToolSchema.object().required(string("skuCode", "商品 SKU"))
+                        .required(string("action", "固定 add").options(List.of("add")))
+                        .required(integer("quantity", "本次增加量，1 到 99")).build())
+                .meta(Map.of("com.nageoffer.ragent/cartReliabilityVersion", 1))
+                .annotations(McpToolAnnotations.WRITE).build();
+        return McpServerFeatures.SyncToolSpecification.builder().tool(tool).callHandler((exchange, request) -> {
+            if (!"add".equals(McpToolResults.args(request).get("action")))
+                return McpToolResults.error("可靠加购入口仅允许 add");
+            return handleCall(request);
+        }).build();
+    }
+
+    @Bean
+    public McpServerFeatures.SyncToolSpecification queryCartOperationToolSpecification() {
+        Tool tool = Tool.builder().name(CartReceiptService.QUERY_TOOL)
+                .description("按操作编号只读核实一次加购结果；未找到不代表未执行")
+                .inputSchema(McpToolSchema.object().required(string("operationId", "业务操作编号")).build())
+                .meta(Map.of("com.nageoffer.ragent/cartReliabilityVersion", 1))
+                .annotations(McpToolAnnotations.READ_ONLY).build();
+        return McpServerFeatures.SyncToolSpecification.builder().tool(tool).callHandler((exchange, request) -> {
+            String userId = McpToolResults.userId(request);
+            if (userId == null) return McpToolResults.identityRequired(CartReceiptService.QUERY_TOOL);
+            try {
+                return cartReceiptService.query(java.util.UUID.fromString(
+                        MapUtil.getStr(McpToolResults.args(request), "operationId")), userId);
+            } catch (Exception e) {
+                log.warn("加购回执查询异常", e);
+                return McpToolResults.error("暂时无法查询加购回执，结果待核实");
+            }
+        }).build();
     }
 
     private CallToolResult handleCall(CallToolRequest request) {
@@ -91,6 +127,8 @@ public class BitCartUpdateMcpExecutor {
             Map<String, Object> args = McpToolResults.args(request);
             String skuCode = StrUtil.trimToNull(MapUtil.getStr(args, "skuCode"));
             String action = MapUtil.getStr(args, "action", "");
+            if (request.meta() != null && request.meta().containsKey(CartReceiptService.META_OPERATION_ID)
+                    && !"add".equals(action)) return McpToolResults.error("操作编号绑定 add，不能替换动作");
             if (skuCode == null) {
                 return BitToolSupport.rejected("请先确认商品编码");
             }
@@ -121,25 +159,14 @@ public class BitCartUpdateMcpExecutor {
                         ? BitToolSupport.rejected("购物车中没有 " + skuCode + "，无法减少")
                         : McpToolResults.success(String.format("已调整 %s 的数量，车内共 %d 件（最低保留 1 件）", skuCode, total));
             }
-            ProductSkuDO product = productSkuMapper.selectOne(Wrappers.<ProductSkuDO>lambdaQuery()
-                    .eq(ProductSkuDO::getSkuCode, skuCode));
-            if (product == null || !"在售".equals(product.getStatus())) {
-                return BitToolSupport.rejected("商品不存在或已下架，无法加入购物车：" + skuCode);
+            Object operationId = request.meta() == null ? null : request.meta().get(CartReceiptService.META_OPERATION_ID);
+            if (!(operationId instanceof String id)) {
+                return McpToolResults.error("缺少可靠加购操作编号，本次未执行");
             }
-            Integer total = cartMapper.addQuantity(userId, skuCode, quantity, product.getPrice(), MAX_QUANTITY);
-            if (total == null) {
-                return BitToolSupport.rejected("加入后同款商品将超过 " + MAX_QUANTITY + " 件，本次未加入");
-            }
-            String result = String.format("已加入购物车: %s（%s），本次新增 %d 件，车内共 %d 件%n单价 %s，小计 %s",
-                    product.getName(), skuCode, quantity, total, BitToolSupport.money(product.getPrice()),
-                    BitToolSupport.money(product.getPrice().multiply(BigDecimal.valueOf(total))));
-            if (product.getStock() < total) {
-                result += String.format("%n提示: 当前库存 %d 件，下单时会重新检查库存", product.getStock());
-            }
-            return McpToolResults.success(result);
+            return cartReceiptService.add(java.util.UUID.fromString(id), userId, skuCode, quantity);
         } catch (Exception e) {
             log.error("MCP 工具调用失败, toolId={}", TOOL_ID, e);
-            return McpToolResults.failure("购物车调整", e);
+            return McpToolResults.error("购物车处理异常，结果尚未确定；加购请按操作编号核实");
         }
     }
 }
