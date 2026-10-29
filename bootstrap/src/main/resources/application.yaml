@@ -302,11 +302,11 @@ ai:
         priority: 100
 
   vlm:
-    default-model: qwen-vl-max
+    default-model: qwen-vl-plus
     candidates:
-      - id: qwen-vl-max
+      - id: qwen-vl-plus
         provider: bailian
-        model: qwen-vl-max
+        model: qwen3-vl-plus
 
 # MinerU SaaS API 配置（PDF / Word / PPT 走 MinerU 解析）
 mineru:
@@ -336,7 +336,7 @@ rocketmq:
   name-server: 127.0.0.1:9876
   producer:
     group: ragent-producer${unique-name:}_pg
-    send-message-timeout: 2000
+    send-message-timeout: 10000
 
 milvus:
   uri: http://localhost:19530
