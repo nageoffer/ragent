@@ -204,8 +204,9 @@ public class DefaultFileStorageService implements FileStorageService {
 
     private String extractSuffix(String filename) {
         if (filename == null) return "";
+        int separator = Math.max(filename.lastIndexOf('/'), filename.lastIndexOf('\\'));
         int idx = filename.lastIndexOf('.');
-        return (idx < 0 || idx == filename.length() - 1) ? "" : filename.substring(idx + 1).trim();
+        return (idx <= separator || idx == filename.length() - 1) ? "" : filename.substring(idx + 1).trim();
     }
 
     /**
