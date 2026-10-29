@@ -240,6 +240,7 @@ public class RAGSettingsController {
         }
         return AISettings.ModelGroup.builder()
                 .defaultModel(group.getDefaultModel())
+                .timeoutMs(group.getTimeoutMs())
                 .candidates(group.getCandidates() == null
                         ? null
                         : group.getCandidates().stream()
