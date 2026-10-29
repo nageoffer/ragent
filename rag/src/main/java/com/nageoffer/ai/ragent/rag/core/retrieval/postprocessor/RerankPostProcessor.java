@@ -35,7 +35,7 @@ import java.util.Set;
  * Rerank 后置处理器
  * <p>
  * 使用 Rerank 模型对结果进行重排序
- * 这是最后一个处理器，输出最终的 Top-K 结果
+ * 这是倒数第二个处理器，输出最终的 Top-K 结果
  */
 @Slf4j
 @Component
