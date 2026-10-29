@@ -92,7 +92,7 @@ class RoutingLLMServiceHalfOpenRecoveryTest {
     @Test
     void interruptedHalfOpenProbeReleasesPermit() throws InterruptedException {
         initService(1, 0L);
-        healthStore.markFailure(MODEL_ID);
+        recordFailure();
         streamChatExpectingInterrupt();
         assertNotNull(healthStore.allowCall(MODEL_ID));
     }
@@ -100,7 +100,7 @@ class RoutingLLMServiceHalfOpenRecoveryTest {
     @Test
     void interruptedHalfOpenProbeKeepsModelAvailable() throws InterruptedException {
         initService(1, 0L);
-        healthStore.markFailure(MODEL_ID);
+        recordFailure();
 
         streamChatExpectingInterrupt();
         assertFalse(healthStore.isUnavailable(MODEL_ID));
@@ -111,7 +111,7 @@ class RoutingLLMServiceHalfOpenRecoveryTest {
         initService(2, 60_000L);
 
         streamChatExpectingInterrupt();
-        healthStore.markFailure(MODEL_ID);
+        recordFailure();
         assertNotNull(healthStore.allowCall(MODEL_ID));
     }
 
@@ -129,7 +129,7 @@ class RoutingLLMServiceHalfOpenRecoveryTest {
     void staleClosedCallCannotReleaseAnotherProbePermit() throws InterruptedException {
         initService(1, 0L);
         when(probe.awaitFirstPacket(any(), anyLong(), any(TimeUnit.class))).thenAnswer(invocation -> {
-            healthStore.markFailure(MODEL_ID);
+            recordFailure();
             healthStore.allowCall(MODEL_ID);
             throw new InterruptedException("stale closed caller interrupted");
         });
@@ -142,11 +142,11 @@ class RoutingLLMServiceHalfOpenRecoveryTest {
     @Test
     void staleHalfOpenPermitCannotReleaseCurrentPermit() throws InterruptedException {
         initService(1, 0L);
-        healthStore.markFailure(MODEL_ID);
+        recordFailure();
         ModelHealthStore.CallPermit permit1 = healthStore.allowCall(MODEL_ID);
         assertNotNull(permit1);
         assertTrue(permit1.halfOpenToken() > 0);
-        healthStore.markFailure(MODEL_ID);
+        healthStore.markFailure(permit1);
         ModelHealthStore.CallPermit permit2 = healthStore.allowCall(MODEL_ID);
         assertNotNull(permit2);
         assertTrue(permit2.halfOpenToken() > 0);
@@ -159,7 +159,7 @@ class RoutingLLMServiceHalfOpenRecoveryTest {
     @Test
     void interruptCancelsProbeBeforeReleasingPermit() throws InterruptedException {
         initService(1, 0L);
-        healthStore.markFailure(MODEL_ID);
+        recordFailure();
         AtomicBoolean heldAtCancelTime = new AtomicBoolean(false);
         when(client.streamChat(any(), any(), any())).thenReturn(
                 () -> heldAtCancelTime.set(healthStore.isUnavailable(MODEL_ID)));
@@ -173,7 +173,7 @@ class RoutingLLMServiceHalfOpenRecoveryTest {
     @Test
     void cancelFailureStillReleasesPermit() throws InterruptedException {
         initService(1, 0L);
-        healthStore.markFailure(MODEL_ID);
+        recordFailure();
         when(client.streamChat(any(), any(), any())).thenReturn(() -> {
             throw new IllegalStateException("cancel failed");
         });
@@ -181,5 +181,11 @@ class RoutingLLMServiceHalfOpenRecoveryTest {
         assertThrows(RuntimeException.class, () -> service.streamChat(new ChatRequest(), callback));
 
         assertFalse(healthStore.isUnavailable(MODEL_ID));
+    }
+
+    private void recordFailure() {
+        ModelHealthStore.CallPermit permit = healthStore.allowCall(MODEL_ID);
+        assertNotNull(permit);
+        healthStore.markFailure(permit);
     }
 }
