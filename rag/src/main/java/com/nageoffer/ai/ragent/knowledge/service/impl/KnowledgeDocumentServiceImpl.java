@@ -217,6 +217,8 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
                 event,
                 arg -> {
                     // Wrapper 更新不触发 updateTime 自动填充, 显式刷新, 使卡死恢复以分块开始时刻为基准
+                    // 状态 CAS 同时排除 RUNNING（已有分块在跑）与 DELETING（删除流程已独占该文档），
+                    // 保证与删除流程互斥，不会在删除期间启动分块
                     int updated = documentMapper.update(
                             new LambdaUpdateWrapper<KnowledgeDocumentDO>()
                                     .set(KnowledgeDocumentDO::getStatus, DocumentStatus.RUNNING.getCode())
@@ -224,10 +226,14 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
                                     .set(KnowledgeDocumentDO::getUpdateTime, new Date())
                                     .eq(KnowledgeDocumentDO::getId, docId)
                                     .ne(KnowledgeDocumentDO::getStatus, DocumentStatus.RUNNING.getCode())
+                                    .ne(KnowledgeDocumentDO::getStatus, DocumentStatus.DELETING.getCode())
                     );
                     if (updated == 0) {
                         KnowledgeDocumentDO documentDO = documentMapper.selectById(docId);
                         Assert.notNull(documentDO, () -> new ClientException("文档不存在"));
+                        if (DocumentStatus.DELETING.getCode().equals(documentDO.getStatus())) {
+                            throw new ClientException("文档正在删除中，无法分块");
+                        }
                         throw new ClientException("文档分块操作正在进行中，请稍后再试");
                     }
                     KnowledgeDocumentDO documentDO = documentMapper.selectById(docId);
@@ -315,12 +321,18 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
     }
 
     private void markChunkSucceeded(String docId, int chunkCount) {
-        documentMapper.updateById(KnowledgeDocumentDO.builder()
-                .id(docId)
-                .chunkCount(chunkCount)
-                .status(DocumentStatus.SUCCESS.getCode())
-                .updatedBy(UserContext.getUsername())
-                .build());
+        // 只有仍处于 RUNNING 才是本次分块的产物。若文档已被删除流程抢占到 DELETING，
+        // 这里不得把状态改回 SUCCESS，否则等于绕过删除流程的互斥闸门
+        int updated = documentMapper.update(new LambdaUpdateWrapper<KnowledgeDocumentDO>()
+                .set(KnowledgeDocumentDO::getChunkCount, chunkCount)
+                .set(KnowledgeDocumentDO::getStatus, DocumentStatus.SUCCESS.getCode())
+                .set(KnowledgeDocumentDO::getUpdatedBy, UserContext.getUsername())
+                .eq(KnowledgeDocumentDO::getId, docId)
+                .eq(KnowledgeDocumentDO::getStatus, DocumentStatus.RUNNING.getCode())
+        );
+        if (updated == 0) {
+            log.warn("文档状态已不是 RUNNING，跳过分块成功回写（可能已被删除），docId={}", docId);
+        }
     }
 
     private void refreshMimeType(String docId, String mimeType) {
@@ -410,11 +422,16 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
 
     private void markChunkFailed(String docId) {
         transactionOperations.executeWithoutResult(status -> {
-            KnowledgeDocumentDO update = new KnowledgeDocumentDO();
-            update.setId(docId);
-            update.setStatus(DocumentStatus.FAILED.getCode());
-            update.setUpdatedBy(UserContext.getUsername());
-            documentMapper.updateById(update);
+            // 与 markChunkSucceeded 同理：文档已被删除流程接管时不再回写 FAILED
+            int updated = documentMapper.update(new LambdaUpdateWrapper<KnowledgeDocumentDO>()
+                    .set(KnowledgeDocumentDO::getStatus, DocumentStatus.FAILED.getCode())
+                    .set(KnowledgeDocumentDO::getUpdatedBy, UserContext.getUsername())
+                    .eq(KnowledgeDocumentDO::getId, docId)
+                    .eq(KnowledgeDocumentDO::getStatus, DocumentStatus.RUNNING.getCode())
+            );
+            if (updated == 0) {
+                log.warn("文档状态已不是 RUNNING，跳过分块失败回写（可能已被删除），docId={}", docId);
+            }
         });
     }
 
@@ -435,10 +452,9 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
         bizChangeLogContext.putName(documentDO.getDocName());
         KnowledgeDocumentDO before = BeanUtil.copyProperties(documentDO, KnowledgeDocumentDO.class);
 
-        // 禁止在文档分块运行时删除
-        if (DocumentStatus.RUNNING.getCode().equals(documentDO.getStatus())) {
-            throw new ClientException("文档正在分块中，无法删除");
-        }
+        // 抢占删除权：用状态 CAS 取代「先查状态再删除」，消除 TOCTOU 窗口。
+        // 与分块入口的 CAS 争抢同一行的写锁，先提交者获胜；落败方条件不再成立，update 返回 0。
+        acquireDeletingStatus(docId);
 
         scheduleService.deleteByDocId(docId);
         chunkLogMapper.delete(Wrappers.lambdaQuery(KnowledgeDocumentChunkLogDO.class)
@@ -453,6 +469,39 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
         chunkIndexWriter.deleteDocument(vectorTargetResolver.resolve(kbDO), documentRef(documentDO));
         deleteStoredFileQuietly(documentDO);
         bizChangeLogContext.put(docId, before, null);
+    }
+
+    /**
+     * 把文档状态 CAS 到 DELETING，作为删除流程与分块流程之间的互斥闸门
+     *
+     * <p>本方法一旦返回，删除流程即已独占该文档：分块入口的 CAS 要求状态既不是 RUNNING
+     * 也不是 DELETING，此后必然失败，不会再有新分块写入孤儿数据与残留向量。
+     *
+     * <p>状态在删除事务内更新 —— 后续任一步骤失败回滚时状态随之失效，
+     * 不会把文档永久卡在 DELETING。
+     */
+    private void acquireDeletingStatus(String docId) {
+        int updated = documentMapper.update(new LambdaUpdateWrapper<KnowledgeDocumentDO>()
+                .set(KnowledgeDocumentDO::getStatus, DocumentStatus.DELETING.getCode())
+                .set(KnowledgeDocumentDO::getUpdatedBy, UserContext.getUsername())
+                .eq(KnowledgeDocumentDO::getId, docId)
+                .ne(KnowledgeDocumentDO::getStatus, DocumentStatus.RUNNING.getCode())
+                .ne(KnowledgeDocumentDO::getStatus, DocumentStatus.DELETING.getCode())
+        );
+        if (updated != 0) {
+            return;
+        }
+
+        // CAS 落败：重新读取当前状态给出可区分的原因，避免把并发场景笼统报成「文档不存在」
+        KnowledgeDocumentDO current = documentMapper.selectById(docId);
+        Assert.notNull(current, () -> new ClientException("文档不存在"));
+        if (DocumentStatus.RUNNING.getCode().equals(current.getStatus())) {
+            throw new ClientException("文档正在分块中，无法删除");
+        }
+        if (DocumentStatus.DELETING.getCode().equals(current.getStatus())) {
+            throw new ClientException("文档正在删除中，请稍后重试");
+        }
+        throw new ClientException("文档状态已变更，请刷新后重试");
     }
 
     @Override
