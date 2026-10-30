@@ -173,10 +173,10 @@ public class ConditionEvaluator {
 
     private boolean in(Object left, Object right) {
         if (right instanceof List<?> list) {
-            return list.contains(left);
+            return containsNormalized(list, left);
         }
         if (left instanceof List<?> list) {
-            return list.contains(right);
+            return containsNormalized(list, right);
         }
         return Objects.equals(normalize(left), normalize(right));
     }
@@ -186,10 +186,27 @@ public class ConditionEvaluator {
             return false;
         }
         if (left instanceof String ls) {
-            return ls.contains(String.valueOf(right));
+            return ls.contains(String.valueOf(normalize(right)));
         }
         if (left instanceof List<?> list) {
-            return list.contains(right);
+            return containsNormalized(list, right);
+        }
+        return false;
+    }
+
+    /**
+     * 列表包含判定：元素与目标值都先过 {@link #normalize} 再比
+     * <p>
+     * 直接 {@code List#contains} 走的是 {@code equals}，字符串不做 trim。
+     * 于是同一个字段、同一个取值，{@code eq} 命中而 {@code in} 不命中——规则只在换操作符后失效，
+     * 排查时极难联想到是空白字符
+     */
+    private boolean containsNormalized(List<?> list, Object target) {
+        Object normalizedTarget = normalize(target);
+        for (Object element : list) {
+            if (Objects.equals(normalize(element), normalizedTarget)) {
+                return true;
+            }
         }
         return false;
     }
