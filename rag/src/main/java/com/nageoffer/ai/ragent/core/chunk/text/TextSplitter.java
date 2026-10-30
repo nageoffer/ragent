@@ -27,6 +27,8 @@ import java.util.List;
  * <p>
  * 边界回溯顺序为换行 → 中文句末标点 → 英文句末标点，另做 URL 断行修复与 CJK 软换行合并，
  * 换用裸 {@code substring} 会把句子、URL、数字腰斩
+ * <p>
+ * 切点与重叠起点另外都会对齐到字符边界，保证不会把代理对（emoji、CJK 扩展区汉字）切成孤立的两半
  */
 public final class TextSplitter {
 
@@ -61,6 +63,8 @@ public final class TextSplitter {
             if (end <= start || end <= lastEnd) {
                 end = targetEnd;
             }
+            // 切点不能落在代理对中间，否则片段首尾会出现孤立代理，构成非法 UTF-16
+            end = alignToCharBoundary(normalized, start, end);
             String piece = normalized.substring(start, end);
             if (StringUtils.hasText(piece.strip())) {
                 pieces.add(piece);
@@ -70,6 +74,11 @@ public final class TextSplitter {
                 break;
             }
             int nextStart = Math.max(0, end - overlap);
+            if (nextStart <= start) {
+                nextStart = end;
+            }
+            // 重叠回退同样可能落在代理对中间，起点要挪回成对的位置
+            nextStart = alignStartOutsideSurrogatePair(normalized, nextStart);
             if (nextStart <= start) {
                 nextStart = end;
             }
@@ -125,6 +134,39 @@ public final class TextSplitter {
             }
         }
         return targetEnd;
+    }
+
+    /**
+     * 把切点挪到字符边界上，避免把代理对（surrogate pair）切成孤立的两半
+     * <p>
+     * 补充平面字符（emoji、CJK 扩展 B 区汉字等）在 {@code String} 里占两个 char，按下标切分若落在两者之间，
+     * 片段末尾会留下孤立高代理、下一片开头留下孤立低代理，构成非法 UTF-16 序列——送去向量化会被编码器
+     * 替换成 {@code ?} 或 {@code \uFFFD}，写 utf8mb4 列甚至直接报错
+     * <p>
+     * 正常情况退一位把整个代理对留给下一片；退无可退（该代理对就是片段首字符）则进一位，
+     * 宁可让本片超出预算一个 char，也不要产出半个字符
+     */
+    private static int alignToCharBoundary(String text, int start, int end) {
+        if (end <= start || end >= text.length()) {
+            return end;
+        }
+        if (!Character.isHighSurrogate(text.charAt(end - 1)) || !Character.isLowSurrogate(text.charAt(end))) {
+            return end;
+        }
+        return end - 1 > start ? end - 1 : end + 1;
+    }
+
+    /**
+     * 把片段起点挪出代理对内部（重叠回退 {@code end - overlap} 可能正好落在低代理上）
+     */
+    private static int alignStartOutsideSurrogatePair(String text, int index) {
+        if (index <= 0 || index >= text.length()) {
+            return index;
+        }
+        if (Character.isLowSurrogate(text.charAt(index)) && Character.isHighSurrogate(text.charAt(index - 1))) {
+            return index - 1;
+        }
+        return index;
     }
 
     /**
