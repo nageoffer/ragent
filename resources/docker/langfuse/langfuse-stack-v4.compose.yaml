@@ -51,9 +51,15 @@ services:
       REDIS_PORT: 6379
       REDIS_AUTH: langfuse
     restart: unless-stopped
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "3"
     deploy:
       resources:
         limits:
+          cpus: "1.0"
           memory: 1G
 
   langfuse-web:
@@ -78,9 +84,15 @@ services:
       # Web 启动峰值高于 Worker，单独覆盖共享环境里的堆上限
       NODE_OPTIONS: --max-old-space-size=1024
     restart: unless-stopped
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "3"
     deploy:
       resources:
         limits:
+          cpus: "2.0"
           memory: 1536M
 
   clickhouse:
@@ -92,6 +104,8 @@ services:
       CLICKHOUSE_USER: clickhouse
       CLICKHOUSE_PASSWORD: langfuse
     volumes:
+      - ./clickhouse-config/90-local-development.xml:/etc/clickhouse-server/config.d/90-local-development.xml:ro
+      - ./clickhouse-users/90-local-development.xml:/etc/clickhouse-server/users.d/90-local-development.xml:ro
       - langfuse-clickhouse-data:/var/lib/clickhouse
       - langfuse-clickhouse-logs:/var/log/clickhouse-server
     healthcheck:
@@ -101,10 +115,16 @@ services:
       retries: 10
       start_period: 1s
     restart: unless-stopped
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "3"
     deploy:
       resources:
         limits:
-          memory: 3G
+          cpus: "2.0"
+          memory: 4G
 
   minio:
     container_name: langfuse-minio
@@ -125,6 +145,11 @@ services:
       retries: 5
       start_period: 1s
     restart: unless-stopped
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "3"
     deploy:
       resources:
         limits:
@@ -146,6 +171,11 @@ services:
       timeout: 10s
       retries: 10
     restart: unless-stopped
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "3"
     deploy:
       resources:
         limits:
@@ -168,6 +198,11 @@ services:
       timeout: 3s
       retries: 10
     restart: unless-stopped
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "3"
     deploy:
       resources:
         limits:

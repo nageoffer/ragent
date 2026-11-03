@@ -16,7 +16,7 @@ docker compose -f langfuse-stack-v4.compose.yaml up -d
 |------|---------|-----------|------|
 | langfuse-web | 1536 MB | **3000** | UI 与 OTLP 摄取入口 |
 | langfuse-worker | 1 GB | 无 | 异步消费摄取队列写入 ClickHouse |
-| langfuse-clickhouse | 3 GB | 无 | 观测数据主库，这套里最吃内存的一个 |
+| langfuse-clickhouse | 4 GB | 无 | 观测数据主库，这套里最吃内存的一个 |
 | langfuse-postgres | 256 MB | 无 | 项目、用户、密钥等事务数据 |
 | langfuse-redis | 128 MB | 无 | BullMQ 队列，内部数据上限 96 MB |
 | langfuse-minio | 256 MB | 无 | 摄取事件与媒体的对象存储 |
@@ -103,3 +103,14 @@ ClickHouse 是观测数据主库、对象存储是摄取事件的落盘位置，
 docker compose -f langfuse-stack-v4.compose.yaml down          # 停容器，追踪数据保留
 docker compose -f langfuse-stack-v4.compose.yaml down -v       # 连数据卷一起删
 ```
+
+
+## 本机资源与日志配置（2026-11-02）
+
+- ClickHouse 内存上限 4 GiB、CPU 上限 2 核；Worker 上限 1 核，Web 上限 2 核。
+- `clickhouse-config/90-local-development.xml` 将后台调度池设为 32、合并池设为 8，保留 15% 内存余量。`clickhouse-users/90-local-development.xml` 将单查询线程数设为 2。
+- ClickHouse 文件日志使用 `information` 级别，单文件 100 MiB，轮转保留 3 份；七张核心系统诊断日志表设置 7 天 TTL。TTL 随后台合并生效，不保证到期立刻释放磁盘。
+- 指标改为每 10 秒采集；`system.metric_log` 使用 256 行的合并块、8–64 KiB 压缩块及 Wide 数据分片，降低宽表合并的内存峰值。
+- 六个容器统一使用 Docker `local` 日志驱动，每份 10 MiB、保留 3 份。
+- 这些限制面向本机开发环境；增加并发或数据量前重新评估 CPU、内存和日志保留期。
+- 应用配置使用 `docker compose -f langfuse-stack-v4.compose.yaml up -d --pull never`，会重建配置变化的容器，命名数据卷保留。

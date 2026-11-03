@@ -1,0 +1,46 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<clickhouse>
+  <max_server_memory_usage_to_ram_ratio>0.85</max_server_memory_usage_to_ram_ratio>
+  <background_schedule_pool_size>32</background_schedule_pool_size>
+  <background_pool_size>8</background_pool_size>
+  <asynchronous_metrics_update_period_s>10</asynchronous_metrics_update_period_s>
+  <merge_tree>
+    <number_of_free_entries_in_pool_to_lower_max_size_of_merge>4</number_of_free_entries_in_pool_to_lower_max_size_of_merge>
+    <number_of_free_entries_in_pool_to_execute_mutation>8</number_of_free_entries_in_pool_to_execute_mutation>
+    <number_of_free_entries_in_pool_to_execute_optimize_entire_partition>8</number_of_free_entries_in_pool_to_execute_optimize_entire_partition>
+  </merge_tree>
+  <logger>
+    <level>information</level>
+    <size>100M</size>
+    <count>3</count>
+  </logger>
+  <metric_log>
+    <ttl>event_date + INTERVAL 7 DAY DELETE</ttl>
+    <collect_interval_milliseconds>10000</collect_interval_milliseconds>
+    <flush_interval_milliseconds>30000</flush_interval_milliseconds>
+    <max_size_rows>1024</max_size_rows>
+    <reserved_size_rows>128</reserved_size_rows>
+    <buffer_size_rows_flush_threshold>512</buffer_size_rows_flush_threshold>
+    <settings>index_granularity = 8192, merge_max_block_size = 256, min_compress_block_size = 8192, max_compress_block_size = 65536, min_bytes_for_wide_part = 0</settings>
+  </metric_log>
+  <asynchronous_metric_log>
+    <ttl>event_date + INTERVAL 7 DAY DELETE</ttl>
+    <flush_interval_milliseconds>30000</flush_interval_milliseconds>
+  </asynchronous_metric_log>
+  <trace_log>
+    <ttl>event_date + INTERVAL 7 DAY DELETE</ttl>
+  </trace_log>
+  <text_log>
+    <ttl>event_date + INTERVAL 7 DAY DELETE</ttl>
+    <level>information</level>
+  </text_log>
+  <part_log>
+    <ttl>event_date + INTERVAL 7 DAY DELETE</ttl>
+  </part_log>
+  <query_log>
+    <ttl>event_date + INTERVAL 7 DAY DELETE</ttl>
+  </query_log>
+  <error_log>
+    <ttl>event_date + INTERVAL 7 DAY DELETE</ttl>
+  </error_log>
+</clickhouse>
