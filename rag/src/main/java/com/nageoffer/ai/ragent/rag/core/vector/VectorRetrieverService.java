@@ -109,6 +109,19 @@ public interface VectorRetrieverService {
     float[] embedAndNormalize(String query);
 
     /**
+     * 根据自然语言 Query 生成并归一化查询向量（指定 embedding 模型）
+     * <p>
+     * 检索侧生成 query 向量时必须使用目标知识库绑定的 embedding 模型：
+     * 若 query 向量与库向量来自不同模型，二者不在同一语义空间，相似度计算无意义（issue #159）。
+     * 任何向量后端都必须支持指定模型嵌入，因此为抽象方法而非可选默认实现
+     *
+     * @param query   用户自然语言问题
+     * @param modelId 目标知识库绑定的 embedding 模型 id
+     * @return 最终用于向量数据库查询的向量
+     */
+    float[] embedAndNormalize(String query, String modelId);
+
+    /**
      * 是否支持在一次查询里跨多个 collection 过滤
      * <p>
      * - 返回 true 时，调用方用一次 {@link #retrieveByVector} 带总预算跨库召回（PG 单表按列过滤 / Milvus 共享库按标量过滤）
