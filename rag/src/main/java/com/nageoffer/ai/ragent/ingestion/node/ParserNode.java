@@ -104,7 +104,7 @@ public class ParserNode implements IngestionNode {
             options.put("documentId", context.getTaskId());
         }
 
-        // v1.1：调 parseStructured 拿结构化 Block 列表
+        // 调 parseStructured 拿结构化 Block 列表
         ParsedDocument parsed = parser.parseStructured(context.getRawBytes(), mimeType, options);
         List<Block> blocks = parsed.blocks() == null ? List.of() : parsed.blocks();
 

@@ -1063,7 +1063,7 @@ export function KnowledgeGraphPage() {
       degree[edge.target] = (degree[edge.target] || 0) + 1;
     }
     // 碰撞半径按度数：节点视觉半径(12~30) + 22 呼吸间距，度数越高留白越多
-    // 力导据此把邻居摊成环而非堆成实心球，是「均匀散布」的主力；间距收到 22 让整图面积贴近视口、取景比例更接近 1（节点不缩小）
+    // 力导据此把邻居摊成环而非堆成实心球，是「均匀散布」的主力；间距取 22 让整图面积贴近视口、取景比例更接近 1（节点不缩小）
     // 22 的余量也是后续 reshapeToViewport 纵向压缩时不产生视觉重叠的安全垫
     const radiusById: Record<string, number> = {};
     for (const node of data.nodes) {

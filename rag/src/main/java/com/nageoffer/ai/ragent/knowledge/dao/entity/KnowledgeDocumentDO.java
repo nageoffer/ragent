@@ -118,8 +118,8 @@ public class KnowledgeDocumentDO {
      * 文档级摄取配置（JSON）：解析档位 + 分块预算
      * 仅在 processMode=chunk 时有效
      * <p>
-     * 取代原先的"分块策略列 + 自由 JSON 配置列"：策略枚举在真实链路上不产生任何差异，
-     * 而自由 JSON 的键由前端手工拼、后端分三处用硬编码字符串探测
+     * 不设"分块策略列 + 自由 JSON 配置列"：策略枚举在真实链路上不产生任何差异，
+     * 而自由 JSON 的键只能由前端手工拼、后端靠硬编码字符串探测
      */
     @TableField(typeHandler = JsonbTypeHandler.class)
     private String ingestionSpec;

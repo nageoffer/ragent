@@ -88,7 +88,7 @@ export function AgentChatInput() {
           aria-label="消息"
         />
         {/* 两态共用一枚圆钮：图标换 位置与尺寸不动 换态时框内不跳
-            字换成图形后标签只剩无障碍名 title 顺带把上一轮删掉的键位提示接回来（只在悬停时占位） */}
+            钮上只有图形 标签只剩无障碍名 title 顺带带出键位提示（只在悬停时占位） */}
         {isStreaming ? (
           <button
             type="button"

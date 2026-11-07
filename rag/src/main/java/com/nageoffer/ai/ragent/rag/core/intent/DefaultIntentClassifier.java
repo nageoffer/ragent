@@ -339,7 +339,7 @@ public class DefaultIntentClassifier implements IntentClassifier, IntentNodeRegi
             parent.getChildren().add(node);
         }
 
-        // 4. 填充 fullPath（跟你原来的 fillFullPath 一样的逻辑）
+        // 4. 填充 fullPath
         fillFullPath(roots, null);
 
         return roots;

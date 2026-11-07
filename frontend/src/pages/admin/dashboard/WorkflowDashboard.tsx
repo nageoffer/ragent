@@ -254,7 +254,7 @@ const TrendChartItem = ({
         </div>
         {/*
           图表贴底且不锁死高度：图例在组件内部、位于 svg 之上，外层写死高度会让多序列图溢出，
-          三张图的 x 轴基线就此错开。改成内容撑高 + mt-auto，同一行的卡片被拉平后基线自然对齐。
+          三张图的 x 轴基线就此错开。所以由内容撑高 + mt-auto，同一行的卡片被拉平后基线自然对齐。
         */}
         <div className="mt-auto pt-3">
           <SimpleLineChart
@@ -709,7 +709,7 @@ const INSIGHT_COLS: Record<number, string> = {
 };
 
 /**
- * 运营洞察落在左列末尾、趋势区下方。它不锁高度，也不再需要那套滚动壳：
+ * 运营洞察落在左列末尾、趋势区下方。它不锁高度，也不套滚动壳：
  * 一行放得下全部条目，卡片高度由内容定，剩余高由右侧的 AI 性能卡去补齐
  */
 const InsightSection = ({
@@ -751,7 +751,7 @@ const InsightSection = ({
 
 /**
  * 洞察卡进左列后左列比右列高一截，两列靠栅格默认的 stretch 拉齐，
- * 余量由 AI 性能卡的环区吃掉——原来那 149px 的洞就是 xl:items-start 把矮的一列留在原地留下的
+ * 余量由 AI 性能卡的环区吃掉——不能用 xl:items-start，它把矮的一列留在原地，底下空出约 149px 的洞
  */
 export const WorkflowDashboard = ({
                                     overview,

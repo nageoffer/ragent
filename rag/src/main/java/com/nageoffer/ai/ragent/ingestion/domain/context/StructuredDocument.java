@@ -62,7 +62,7 @@ public class StructuredDocument {
     private Map<String, Object> metadata;
 
     /**
-     * 结构化 Block 列表（v1.1 多模态解析改造引入）
+     * 结构化 Block 列表
      * <p>
      * 由 DocumentParser.parseStructured() 输出，作为 ChunkerNode 的输入。
      * 老字段 {@link #sections}/{@link #tables} 仍保留以维持向后兼容，

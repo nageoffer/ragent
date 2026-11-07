@@ -73,7 +73,7 @@ class AgentToolExecutionFactsTest {
     }
 
     /**
-     * 第二轮的批不从 0 起算，这是 6A 冻结的 per-reply 口径，不是 bug
+     * 第二轮的批不从 0 起算：调用序号按整条回复（per-reply）单调递增，不是 bug
      */
     @Test
     void shouldKeepCallIndexMonotonicAcrossBatches() {

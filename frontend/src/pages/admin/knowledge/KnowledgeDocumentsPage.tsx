@@ -146,7 +146,7 @@ const FALLBACK_BUDGET = {
 /**
  * 组装摄取配置 JSON：按后端下发的 schema 字段逐个取值，缺失取 schema 默认
  * <p>
- * 不再需要"表格强制某个策略当载体骗过校验"这类花招——用户能配的就是档位与预算本身
+ * 用户能配的只有档位与预算本身
  */
 const buildIngestionSpec = (
   parseProfile: string,
@@ -251,7 +251,7 @@ const ProcessModeCell = ({ doc, pipelineMap, specSchema }: {
 /**
  * 档位展示名：label 由后端随 schema 下发，前端不留第二份
  * <p>
- * 原先这里硬编码"快速 / 保真"，与后端 schema 里的 label 是同一句话的两个副本，
+ * 前端再硬编码一份就与后端 schema 里的 label 成了同一句话的两个副本，
  * 改文案必漏一处
  */
 const parseProfileLabelOf = (schema: IngestionSpecSchema | null, profile?: string | null) => {
