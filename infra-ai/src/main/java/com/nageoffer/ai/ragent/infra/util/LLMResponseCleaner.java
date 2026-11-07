@@ -19,6 +19,7 @@ package com.nageoffer.ai.ragent.infra.util;
 
 import lombok.NoArgsConstructor;
 
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
@@ -30,12 +31,14 @@ public final class LLMResponseCleaner {
     private static final String FENCE = "```";
 
     private static final Pattern LEADING_CODE_FENCE = Pattern.compile("^```[\\w-]*\\s*\\n?");
+    private static final Pattern CLOSING_CODE_FENCE = Pattern.compile("(?m)^[\\t ]*```[\\t ]*$");
     private static final Pattern TRAILING_CODE_FENCE = Pattern.compile("\\n?```\\s*$");
 
     /**
      * 移除 Markdown 代码块围栏（例如 ```json ... ```）
      * <p>
-     * 有开头围栏截到最后一道收尾围栏为止，没有则只削末尾那道
+     * 有开头围栏时只保留第一段代码块，忽略闭栏后的说明或其他代码块。
+     * 独立闭栏行前后允许空格或制表符；没有独立闭栏时，仅剥离末尾围栏以兼容单行输出。
      */
     public static String stripMarkdownCodeFence(String raw) {
         if (raw == null) {
@@ -46,7 +49,9 @@ public final class LLMResponseCleaner {
             return TRAILING_CODE_FENCE.matcher(cleaned).replaceFirst("").trim();
         }
         cleaned = LEADING_CODE_FENCE.matcher(cleaned).replaceFirst("");
-        int closing = cleaned.lastIndexOf(FENCE);
-        return (closing < 0 ? cleaned : cleaned.substring(0, closing)).trim();
+        Matcher closing = CLOSING_CODE_FENCE.matcher(cleaned);
+        return (closing.find()
+                ? cleaned.substring(0, closing.start())
+                : TRAILING_CODE_FENCE.matcher(cleaned).replaceFirst("")).trim();
     }
 }
