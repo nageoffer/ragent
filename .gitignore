@@ -49,6 +49,8 @@ resources/docker/graphrag/.env
 docs/temp
 .claude/
 
-### Regression artifacts ###
-# Local reports, credentials, logs, snapshots and compiled CLI classes.
-/resources/regression/*/artifacts/
+### Frontend build outputs ###
+# tsc -b emits these next to the sources; Vite would load vite.config.js ahead of vite.config.ts
+frontend/*.tsbuildinfo
+frontend/vite.config.js
+frontend/vite.config.d.ts
