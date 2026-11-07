@@ -90,13 +90,14 @@ class BitSchemaInitializerTest {
     }
 
     /**
-     * 版本对不上不做增量迁移，报错里必须写清楚重来的两步
+     * 未知版本不能引导删库，避免丢失业务回执
      */
     @Test
     void versionMismatchMustTellHowToRecover() {
         String message = BitSchemaInitializer.versionMismatch(0, "ragent_bit");
 
-        assertTrue(message.contains("dropdb ragent_bit"));
-        assertTrue(message.contains("BizDataInitMain"));
+        assertTrue(message.contains("不要删除业务库"));
+        assertTrue(message.contains("ragent_bit"));
+        assertTrue(message.contains("迁移脚本"));
     }
 }

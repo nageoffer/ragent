@@ -208,7 +208,7 @@ class AgentToolBodyTracerCoverageTest {
                 mcpClients,
                 memoryProperties,
                 mock(AgentMemoryFlusher.class),
-                skillRegistry);
+                skillRegistry, List.of());
         return catalog.buildToolkit(catalog.resolve(prompts));
     }
 

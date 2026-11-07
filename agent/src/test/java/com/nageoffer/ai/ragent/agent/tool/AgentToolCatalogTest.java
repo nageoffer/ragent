@@ -67,7 +67,7 @@ class AgentToolCatalogTest {
                 mcpClients,
                 memoryProperties(false),
                 mock(AgentMemoryFlusher.class),
-                mock(AgentSkillRegistry.class));
+                mock(AgentSkillRegistry.class), List.of());
 
         AgentToolCatalog.ResolvedCatalog resolved = catalog.resolve(KNOWLEDGE_ONLY);
         Toolkit toolkit = catalog.buildToolkit(resolved);
@@ -310,7 +310,7 @@ class AgentToolCatalogTest {
                 mcpClients,
                 memoryProperties(false),
                 mock(AgentMemoryFlusher.class),
-                mock(AgentSkillRegistry.class));
+                mock(AgentSkillRegistry.class), List.of());
     }
 
     /**
@@ -327,7 +327,7 @@ class AgentToolCatalogTest {
                 mcpClients,
                 memoryProperties(longTermEnabled),
                 mock(AgentMemoryFlusher.class),
-                mock(AgentSkillRegistry.class));
+                mock(AgentSkillRegistry.class), List.of());
     }
 
     private Map<String, String> promptsWithMemory(String memorySlotContent) {

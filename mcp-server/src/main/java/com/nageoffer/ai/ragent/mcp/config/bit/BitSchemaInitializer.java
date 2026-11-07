@@ -47,7 +47,7 @@ public class BitSchemaInitializer {
     /**
      * 改了 bit-schema.sql 就把这个数加一
      */
-    static final int SCHEMA_VERSION = 7;
+    static final int SCHEMA_VERSION = 8;
 
     private static final String SCHEMA_SCRIPT = "db/bit-schema.sql";
 
@@ -120,6 +120,22 @@ public class BitSchemaInitializer {
             }
             Integer current = readVersion(connection);
             if (current != null && current == SCHEMA_VERSION) {
+                return;
+            }
+            if (current != null && current == 7) {
+                connection.setAutoCommit(false);
+                try {
+                    ScriptUtils.executeSqlScript(connection, new EncodedResource(
+                            new ClassPathResource("db/cart-reliability.sql"), StandardCharsets.UTF_8));
+                    try (PreparedStatement statement = connection.prepareStatement("INSERT INTO t_schema_version(version) VALUES (?)")) {
+                        statement.setInt(1, SCHEMA_VERSION);
+                        statement.executeUpdate();
+                    }
+                    connection.commit();
+                } catch (RuntimeException | SQLException e) {
+                    connection.rollback();
+                    throw e;
+                } finally { connection.setAutoCommit(true); }
                 return;
             }
             if (current != null) {
@@ -198,8 +214,8 @@ public class BitSchemaInitializer {
     }
 
     static String versionMismatch(int current, String database) {
-        return ("业务库结构版本 %d，代码要求 %d。本项目不做增量迁移，"
-                + "请执行 dropdb %s 后重启，再跑一次 BizDataInitMain 灌数据")
+        return ("业务库结构版本 %d，代码要求 %d。请核对 %s 的迁移脚本；"
+                + "不要删除业务库，以免丢失购物车回执")
                 .formatted(current, SCHEMA_VERSION, database);
     }
 
