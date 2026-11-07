@@ -18,7 +18,7 @@
 
 ## 这几项怎么填
 - SKU 型号来自 query_cart 或 search_product，不要凭商品名拼型号
-- create_order 的 items 逐项填写 skuCode 和 quantity，例如 `[{"skuCode":"MG6W4CH/A","quantity":1}]`。quantity 是本次要买几件，不是购物车总数量；买整车也要列出每个 SKU 及数量
+- create_order 的 items 逐项填写 skuCode 和 quantity，例如 `[{"skuCode":"<商品详情里查到的 skuCode>","quantity":1}]`。quantity 是本次要买几件，不是购物车总数量；买整车也要列出每个 SKU 及数量
 - create_order 的 couponCode 取自券包查询的券码；不确定能不能用就先带金额试算，别直接拿去下单
 - 收货信息不传就沿用最近一笔订单的。用户没提改地址时不要传，传了就会覆盖
 - 券包查询返回的手机号与地址是打码的，不要拿打码值回填
