@@ -32,18 +32,6 @@ public class GuidanceProperties {
     private Boolean enabled = true;
 
     /**
-     * 歧义阈值
-     * 歧义判定按候选意图路径重名触发，该值当前不参与判定，保留以兼容既有 yaml
-     */
-    private Double ambiguityScoreRatio = 0.8D;
-
-    /**
-     * 歧义阈值缓冲区宽度
-     * 同 {@link #ambiguityScoreRatio}，当前不参与判定
-     */
-    private Double ambiguityMargin = 0.15D;
-
-    /**
      * 单次最多展示的选项数量
      */
     private Integer maxOptions = 6;

@@ -74,7 +74,7 @@ final class JdbcClient implements Closeable {
 
     /**
      * 查询任意结果集并按字符串取值，NULL 取空串
-     * 只给排障与回归读数用，参数拼接由调用方经 literal 转义
+     * 参数拼接由调用方经 literal 转义
      */
     List<List<String>> queryRows(String sql) throws SQLException, IOException {
         try (Connection connection = openConnection();
@@ -93,18 +93,6 @@ final class JdbcClient implements Closeable {
                 }
                 return List.copyOf(rows);
             }
-        }
-    }
-
-    /**
-     * 执行一条写语句并返回影响行数
-     * 只给机制回归造现场用：翻开关、推水位、灌语料都得动库，参数拼接同样经 literal 转义
-     */
-    int update(String sql) throws SQLException, IOException {
-        try (Connection connection = openConnection();
-             Statement statement = connection.createStatement()) {
-            statement.setQueryTimeout(config.getInt(prefix + ".statement-timeout-seconds", 120));
-            return statement.executeUpdate(sql);
         }
     }
 

@@ -12,9 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Properties;
 
 /** UTF-8 properties loader with ${ENV} and ${ENV:default} expansion. */
@@ -103,18 +101,6 @@ final class InitializerConfig {
         }
     }
 
-    double getDouble(String key, double defaultValue) {
-        String value = get(key, null);
-        if (value == null || value.isBlank()) {
-            return defaultValue;
-        }
-        try {
-            return Double.parseDouble(value);
-        } catch (NumberFormatException ex) {
-            throw new IllegalArgumentException("配置项不是小数: " + key + "=" + value, ex);
-        }
-    }
-
     boolean getBoolean(String key, boolean defaultValue) {
         String value = get(key, null);
         return value == null || value.isBlank() ? defaultValue : Boolean.parseBoolean(value);
@@ -132,19 +118,6 @@ final class InitializerConfig {
             }
         }
         return List.copyOf(result);
-    }
-
-    Path resolveAgainst(Path base, String key) {
-        Path path = Path.of(require(key));
-        return (path.isAbsolute() ? path : base.resolve(path)).normalize();
-    }
-
-    Map<String, String> snapshot() {
-        Map<String, String> snapshot = new LinkedHashMap<>();
-        for (String key : values.stringPropertyNames()) {
-            snapshot.put(key, values.getProperty(key));
-        }
-        return Map.copyOf(snapshot);
     }
 
     static String expandPlaceholders(String input) {

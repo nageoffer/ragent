@@ -132,17 +132,6 @@ final class RagentHttpClient implements AutoCloseable {
     }
 
     /**
-     * 供同包内其他 CLI 复用登录态，自行发起本客户端未封装的请求（如 Agent 侧的 SSE 端点）
-     */
-    String baseUrl() {
-        return baseUrl;
-    }
-
-    String authorization() {
-        return requireToken("(caller-managed request)");
-    }
-
-    /**
      * 预热走 Agent 链而不是 RAG 直答链
      * <p>
      * 两条链是两个接口：示例问题在 Agent 对话页同样渲染成卡片，用户点下去发往这里，
