@@ -105,7 +105,7 @@ docker compose -f langfuse-stack-v4.compose.yaml down -v       # 连数据卷一
 ```
 
 
-## 本机资源与日志配置（2026-11-02）
+## 本机资源与日志配置
 
 - ClickHouse 内存上限 4 GiB、CPU 上限 2 核；Worker 上限 1 核，Web 上限 2 核。
 - `clickhouse-config/90-local-development.xml` 将后台调度池设为 32、合并池设为 8，保留 15% 内存余量。`clickhouse-users/90-local-development.xml` 将单查询线程数设为 2。

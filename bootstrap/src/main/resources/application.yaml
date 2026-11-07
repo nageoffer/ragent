@@ -99,11 +99,11 @@ rag:
       search-analyzer: ik_smart
 
   graph:
-    type: none  # 图谱后端总开关，可选 none / lightrag。lightrag 即接入后端供「后台可视化 / 检索读取」；是否参与检索、是否写入分别由 rag.search.channels.graph.enabled 与下方 ingestion.enabled 独立控制
+    type: none  # 图谱后端总开关，可选 none / lightrag。lightrag 时向量写入同步维护图谱、后台可视化可用；是否参与检索由 rag.search.channels.graph.enabled 单独控制
     lightrag:
       base-url: http://127.0.0.1:9621
       query-mode: hybrid
-    embedding-model: qwen-emb-8b  # 与 LightRAG 的 SiliconFlow Qwen3-Embedding-8B 配置一致
+    embedding-model: qwen-emb-8b  # 与 LightRAG Compose 的百炼 text-embedding-v4 配置一致
 
   default:
     collection-name: rag_default_store
