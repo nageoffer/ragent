@@ -47,7 +47,15 @@ public enum DocumentStatus {
     /**
      * 文档处理成功
      */
-    SUCCESS("success");
+    SUCCESS("success"),
+
+    /**
+     * 文档删除中
+     *
+     * <p>删除流程的互斥标记：进入该状态后，分块入口的状态 CAS 会被拒绝，
+     * 避免「删除已放行、分块才开始」时写入孤儿分块与残留向量
+     */
+    DELETING("deleting");
 
     /**
      * 状态码
