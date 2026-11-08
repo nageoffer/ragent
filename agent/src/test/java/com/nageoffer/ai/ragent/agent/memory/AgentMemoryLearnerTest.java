@@ -27,11 +27,13 @@ import org.redisson.api.RLock;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
@@ -52,7 +54,8 @@ class AgentMemoryLearnerTest {
     /**
      * 仓库减好的背景，用例据此核对学习流程把它原样交给了裁决
      */
-    private static final List<AgentMessageDO> BACKGROUND = List.of(message("1900000000000000002", "A"));
+    private static final Map<String, List<AgentMessageDO>> BACKGROUND =
+            Map.of("A", List.of(message("1900000000000000002", "A")));
 
     private RLock lock;
     private AgentMemoryLock memoryLock;
@@ -77,7 +80,7 @@ class AgentMemoryLearnerTest {
         when(memoryRepository.listActiveItems(USER_ID)).thenReturn(List.of());
         when(memoryRepository.loadBackground(eq(USER_ID), anyList())).thenReturn(BACKGROUND);
         when(memoryRepository.commitBackground(anyString(), any(), anyString(), any())).thenReturn(true);
-        when(memoryJudge.judgeBackground(anyList(), anyList(), anyList()))
+        when(memoryJudge.judgeBackground(anyList(), anyList(), anyMap()))
                 .thenReturn(new AgentMemoryJudgement(List.of(), "这批只是在提问"));
     }
 
@@ -164,7 +167,7 @@ class AgentMemoryLearnerTest {
     void judgeFailureShouldLeaveCursorUntouched() {
         when(memoryRepository.loadUserMessagesAfter(eq(USER_ID), eq(CURSOR), any(Integer.class))).thenReturn(List.of(
                 message("1900000000000000010", "A"), message("1900000000000000020", "A"), message("1900000000000000030", "A")));
-        when(memoryJudge.judgeBackground(anyList(), anyList(), anyList())).thenThrow(new IllegalStateException("超时"));
+        when(memoryJudge.judgeBackground(anyList(), anyList(), anyMap())).thenThrow(new IllegalStateException("超时"));
 
         assertThat(learner.learn(USER_ID).status()).isEqualTo(Status.FAILED);
         verify(memoryRepository, never()).commitBackground(anyString(), any(), anyString(), any());
