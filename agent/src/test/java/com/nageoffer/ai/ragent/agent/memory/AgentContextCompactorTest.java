@@ -21,6 +21,7 @@ import com.nageoffer.ai.ragent.agent.dao.mapper.AgentContextCompactionMapper;
 import com.nageoffer.ai.ragent.agent.config.AgentProperties;
 import com.nageoffer.ai.ragent.rag.core.prompt.AgentPromptResolver;
 import com.nageoffer.ai.ragent.rag.core.prompt.AgentPromptSlot;
+import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.MsgRole;
 import io.agentscope.core.message.TextBlock;
@@ -53,6 +54,7 @@ class AgentContextCompactorTest {
 
     private static final String FIRST_SUMMARY = "## 用户诉求\n邮件确认后再发\n## 待办\n等待确认\n## 当前进度\n已起草，未发出";
     private static final String SECOND_SUMMARY = "## 用户诉求\n邮件确认后再发\n## 待办\n无\n## 当前进度\n已发出";
+    private static final RuntimeContext RUN = RuntimeContext.builder().userId("u-1").sessionId("c-1").build();
 
     private AgentConversationSummarizer summarizer;
     private AgentContextCompactor compactor;
@@ -93,7 +95,7 @@ class AgentContextCompactorTest {
                 message(MsgRole.USER, "继续")));
         List<Msg> before = List.copyOf(context);
 
-        assertThat(compactor.compactInPlace(context, "u-1", "c-1")).isFalse();
+        assertThat(compactor.compactInPlace(context, RUN)).isFalse();
         assertThat(context).containsExactlyElementsOf(before);
         for (int i = 0; i < before.size(); i++) {
             assertThat(context.get(i)).isSameAs(before.get(i));
@@ -110,9 +112,9 @@ class AgentContextCompactorTest {
         Msg reachesKeep = message(MsgRole.ASSISTANT, "助".repeat(keep / 2));
         List<Msg> context = new ArrayList<>(List.of(early, history, turnStart, reachesKeep,
                 message(MsgRole.ASSISTANT, "手".repeat(keep / 2)), message(MsgRole.USER, "继续")));
-        when(summarizer.summarize(anyList(), isNull())).thenReturn(FIRST_SUMMARY);
+        when(summarizer.summarize(anyList(), isNull(), any())).thenReturn(FIRST_SUMMARY);
 
-        assertThat(compactor.compactInPlace(context, "u-1", "c-1")).isTrue();
+        assertThat(compactor.compactInPlace(context, RUN)).isTrue();
         assertThat(capturedMaterial(1).get(0)).containsExactly(early, history);
         assertThat(context.get(1)).isSameAs(turnStart);
     }
@@ -124,10 +126,10 @@ class AgentContextCompactorTest {
         Msg turnStart = message(MsgRole.USER, "问".repeat(100));
         List<Msg> context = new ArrayList<>(List.of(early, history, turnStart,
                 message(MsgRole.ASSISTANT, "答".repeat(keep - 102)), message(MsgRole.USER, "继续")));
-        when(summarizer.summarize(anyList(), isNull())).thenReturn(FIRST_SUMMARY);
+        when(summarizer.summarize(anyList(), isNull(), any())).thenReturn(FIRST_SUMMARY);
 
         assertThat(AgentContextChars.total(context.subList(2, context.size()))).isEqualTo(keep);
-        assertThat(compactor.compactInPlace(context, "u-1", "c-1")).isTrue();
+        assertThat(compactor.compactInPlace(context, RUN)).isTrue();
         assertThat(capturedMaterial(1).get(0)).containsExactly(early, history);
         assertThat(context.get(1)).isSameAs(turnStart);
     }
@@ -143,11 +145,11 @@ class AgentContextCompactorTest {
                 message(MsgRole.ASSISTANT, "近".repeat(keep * 2 + keep / 4)),
                 message(MsgRole.USER, "继续")));
         int beforeChars = AgentContextChars.total(context);
-        when(summarizer.summarize(anyList(), isNull())).thenReturn(FIRST_SUMMARY);
+        when(summarizer.summarize(anyList(), isNull(), any())).thenReturn(FIRST_SUMMARY);
 
         assertThat(beforeChars).isGreaterThan(memoryProperties.resolveCompactTriggerChars());
         assertThat(AgentContextChars.total(List.of(early, history)) * 2).isLessThan(beforeChars);
-        assertThat(compactor.compactInPlace(context, "u-1", "c-1")).isTrue();
+        assertThat(compactor.compactInPlace(context, RUN)).isTrue();
         assertThat(capturedMaterial(1).get(0)).containsExactly(early, history);
         assertThat(context.get(1)).isSameAs(turnStart);
         assertThat(AgentContextChars.total(context)).isLessThan(beforeChars);
@@ -155,7 +157,7 @@ class AgentContextCompactorTest {
 
     @Test
     void shouldKeepPreviousSummaryOutOfMaterialOnNextGeneration() {
-        when(summarizer.summarize(anyList(), any())).thenReturn(FIRST_SUMMARY, SECOND_SUMMARY);
+        when(summarizer.summarize(anyList(), any(), any())).thenReturn(FIRST_SUMMARY, SECOND_SUMMARY);
         List<Msg> context = compactedOnce();
         Msg carried = context.get(1);
         context.addAll(List.of(
@@ -165,7 +167,7 @@ class AgentContextCompactorTest {
                 message(MsgRole.USER, "继续")));
         ArgumentCaptor<String> existing = ArgumentCaptor.forClass(String.class);
 
-        assertThat(compactor.compactInPlace(context, "u-1", "c-1")).isTrue();
+        assertThat(compactor.compactInPlace(context, RUN)).isTrue();
         List<List<Msg>> materials = capturedMaterial(2, existing);
         assertThat(existing.getAllValues().get(1)).isEqualTo(FIRST_SUMMARY);
         assertThat(materials.get(1)).hasSize(4).first().isSameAs(carried);
@@ -185,9 +187,9 @@ class AgentContextCompactorTest {
                 message(MsgRole.USER, "商品未拆封，先咨询退货条件"),
                 message(MsgRole.ASSISTANT, "退货政策".repeat(keep)),
                 turnStart, call, result, current));
-        when(summarizer.summarize(anyList(), isNull())).thenReturn("用户仅咨询退货，申请尚未提交");
+        when(summarizer.summarize(anyList(), isNull(), any())).thenReturn("用户仅咨询退货，申请尚未提交");
 
-        assertThat(compactor.compactInPlace(messages, "u-1", "c-1")).isTrue();
+        assertThat(compactor.compactInPlace(messages, RUN)).isTrue();
         assertThat(messages.subList(1, messages.size()))
                 .containsExactly(turnStart, call, result, current);
         assertThat(capturedMaterial(1).get(0)).hasSize(2);
@@ -199,7 +201,7 @@ class AgentContextCompactorTest {
                 message(MsgRole.USER, "问"),
                 message(MsgRole.ASSISTANT, "答".repeat(keep * 3))));
 
-        assertThat(compactor.compactInPlace(context, "u-1", "c-1")).isFalse();
+        assertThat(compactor.compactInPlace(context, RUN)).isFalse();
         verifyNoInteractions(summarizer);
     }
 
@@ -210,13 +212,13 @@ class AgentContextCompactorTest {
                 message(MsgRole.ASSISTANT, "答"),
                 message(MsgRole.USER, "继续")));
 
-        assertThat(compactor.compactInPlace(context, "u-1", "c-1")).isFalse();
+        assertThat(compactor.compactInPlace(context, RUN)).isFalse();
         verifyNoInteractions(summarizer);
     }
 
     @Test
     void shouldSkipWhenOnlyPreviousSummaryPrecedesCutoff() {
-        when(summarizer.summarize(anyList(), isNull())).thenReturn(FIRST_SUMMARY);
+        when(summarizer.summarize(anyList(), isNull(), any())).thenReturn(FIRST_SUMMARY);
         List<Msg> context = compactedOnce();
         List<Msg> before = List.copyOf(context);
         AgentMemoryProperties memoryProperties = new AgentMemoryProperties();
@@ -230,7 +232,7 @@ class AgentContextCompactorTest {
                 new AgentContextCompactor(realSummarizer, memoryProperties, compactionMapper);
 
         assertThat(context.get(1).getRole()).isEqualTo(MsgRole.USER);
-        assertThat(realCompactor.compactInPlace(context, "u-1", "c-1")).isFalse();
+        assertThat(realCompactor.compactInPlace(context, RUN)).isFalse();
         assertThat(context).containsExactlyElementsOf(before);
         verifyNoInteractions(model, promptResolver, compactionMapper);
     }
@@ -245,7 +247,7 @@ class AgentContextCompactorTest {
                 message(MsgRole.USER, "问"),
                 message(MsgRole.ASSISTANT, "答".repeat(keep)),
                 message(MsgRole.USER, "继续")));
-        assertThat(compactor.compactInPlace(context, "u-1", "c-1")).isTrue();
+        assertThat(compactor.compactInPlace(context, RUN)).isTrue();
         assertThat(context).hasSize(4);
         return context;
     }
@@ -257,7 +259,7 @@ class AgentContextCompactorTest {
     @SuppressWarnings("unchecked")
     private List<List<Msg>> capturedMaterial(int calls, ArgumentCaptor<String> existing) {
         ArgumentCaptor<List<Msg>> material = ArgumentCaptor.forClass(List.class);
-        verify(summarizer, times(calls)).summarize(material.capture(), existing.capture());
+        verify(summarizer, times(calls)).summarize(material.capture(), existing.capture(), any());
         return material.getAllValues();
     }
 

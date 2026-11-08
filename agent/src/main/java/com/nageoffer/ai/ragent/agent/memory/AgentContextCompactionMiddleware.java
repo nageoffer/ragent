@@ -87,7 +87,7 @@ public class AgentContextCompactionMiddleware implements MiddlewareBase {
             log.warn("上行列表与上下文对不上, 本轮不压缩, 上行: {}, 上下文: {}", input.messages().size(), messages.size());
             return Mono.just(trimToolResults(messages, input, context));
         }
-        return Mono.fromCallable(() -> compactor.compactInPlace(messages, context.getUserId(), context.getSessionId())
+        return Mono.fromCallable(() -> compactor.compactInPlace(messages, context)
                         ? rebuild(input, messages, prefix)
                         : trimToolResults(messages, input, context))
                 .subscribeOn(Schedulers.boundedElastic())

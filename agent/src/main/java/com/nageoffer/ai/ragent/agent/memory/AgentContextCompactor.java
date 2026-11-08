@@ -22,6 +22,7 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.nageoffer.ai.ragent.agent.config.ConditionalOnAgentEngine;
 import com.nageoffer.ai.ragent.agent.dao.entity.AgentContextCompactionDO;
 import com.nageoffer.ai.ragent.agent.dao.mapper.AgentContextCompactionMapper;
+import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.MsgRole;
 import lombok.RequiredArgsConstructor;
@@ -59,7 +60,7 @@ public class AgentContextCompactor {
     /**
      * 用摘要替换早期消息，返回是否完成替换
      */
-    public boolean compactInPlace(List<Msg> messages, String userId, String sessionId) {
+    public boolean compactInPlace(List<Msg> messages, RuntimeContext context) {
         int sizeBefore = messages.size();
         int totalChars = AgentContextChars.total(messages);
         int cutoff = findSafeCutoff(messages, memoryProperties.resolveKeepRecentChars());
@@ -77,7 +78,7 @@ public class AgentContextCompactor {
 
         List<Msg> tail = new ArrayList<>(messages.subList(cutoff, messages.size()));
 
-        String summaryText = summarizer.summarize(material, existingSummary);
+        String summaryText = summarizer.summarize(material, existingSummary, context);
         if (StrUtil.isBlank(summaryText)) {
             return false;
         }
@@ -91,7 +92,8 @@ public class AgentContextCompactor {
         int totalCharsAfter = AgentContextChars.total(messages);
         log.info("上下文压缩完成, 切点: {}, 消息数: {} -> {}, 总字符: {} -> {}",
                 cutoff, sizeBefore, messages.size(), totalChars, totalCharsAfter);
-        audit(userId, sessionId, summaryText, material.size(), materialChars, totalChars, totalCharsAfter);
+        audit(context.getUserId(), context.getSessionId(), summaryText,
+                material.size(), materialChars, totalChars, totalCharsAfter);
         return true;
     }
 

@@ -24,6 +24,7 @@ import com.nageoffer.ai.ragent.agent.dao.mapper.AgentContextCompactionMapper;
 import com.nageoffer.ai.ragent.infra.config.AIModelProperties;
 import com.nageoffer.ai.ragent.rag.core.prompt.AgentPromptResolver;
 import com.nageoffer.ai.ragent.rag.core.prompt.AgentPromptSlot;
+import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.MsgRole;
 import io.agentscope.core.model.Model;
@@ -190,7 +191,8 @@ class AgentCompactionReplayLiveTest {
                 int failures = 0;
                 while (compacted == null && failures < MAX_ATTEMPTS) {
                     List<Msg> working = new ArrayList<>(messages);
-                    if (compactor.compactInPlace(working, "replay", session.getFileName().toString())) {
+                    if (compactor.compactInPlace(working, RuntimeContext.builder()
+                            .userId("replay").sessionId(session.getFileName().toString()).build())) {
                         compacted = working;
                     } else {
                         failures++;
@@ -241,9 +243,9 @@ class AgentCompactionReplayLiveTest {
         }
 
         @Override
-        public String summarize(List<Msg> material, String existingSummary) {
+        public String summarize(List<Msg> material, String existingSummary, RuntimeContext context) {
             materialChars = AgentContextChars.total(material);
-            summary = super.summarize(material, existingSummary);
+            summary = super.summarize(material, existingSummary, context);
             return summary;
         }
     }

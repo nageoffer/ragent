@@ -64,7 +64,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
- * 复现 AgentScope 原生 Skill 的激活周期：工具组状态属于会话状态，不随模型可见上下文一起压缩。
+ * 复现 AgentScope 原生 Skill 的激活周期：工具组状态属于会话状态，不随模型可见上下文一起压缩
  */
 class AgentScopeSkillActivationLifecycleTest {
 
@@ -120,7 +120,7 @@ class AgentScopeSkillActivationLifecycleTest {
         when(memoryProperties.resolveKeepRecentChars()).thenReturn(1);
         when(memoryProperties.resolveTrimTriggerChars()).thenReturn(Integer.MAX_VALUE);
         AgentConversationSummarizer summarizer = mock(AgentConversationSummarizer.class);
-        when(summarizer.summarize(anyList(), nullable(String.class)))
+        when(summarizer.summarize(anyList(), nullable(String.class), any()))
                 .thenReturn("已压缩的早期对话，不保留退货手册正文。");
         AgentContextCompactionMapper compactionMapper = mock(AgentContextCompactionMapper.class);
         when(compactionMapper.selectCount(any())).thenReturn(0L);

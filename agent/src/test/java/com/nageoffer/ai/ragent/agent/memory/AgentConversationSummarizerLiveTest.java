@@ -22,6 +22,7 @@ import com.nageoffer.ai.ragent.agent.config.AgentProperties;
 import com.nageoffer.ai.ragent.infra.config.AIModelProperties;
 import com.nageoffer.ai.ragent.rag.core.prompt.AgentPromptResolver;
 import com.nageoffer.ai.ragent.rag.core.prompt.AgentPromptSlot;
+import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.MsgRole;
 import io.agentscope.core.message.TextBlock;
@@ -54,9 +55,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * 显式开启的真实模型回归；不使用业务工具，不写数据库，也不在普通单测中产生网络请求。
- * 开启方式：RAGENT_LIVE_SUMMARY_TEST=true，并提供 DEEPSEEK_API_KEY。
- * 直接调用生产摘要器与模型工厂，只有提示词读取替换为当前仓库文件。
+ * 显式开启的真实模型回归；不使用业务工具，不写数据库，也不在普通单测中产生网络请求
+ * 开启方式：RAGENT_LIVE_SUMMARY_TEST=true，并提供 DEEPSEEK_API_KEY
+ * 直接调用生产摘要器与模型工厂，只有提示词读取替换为当前仓库文件
  */
 @EnabledIfEnvironmentVariable(named = "RAGENT_LIVE_SUMMARY_TEST", matches = "true")
 class AgentConversationSummarizerLiveTest {
@@ -169,7 +170,8 @@ class AgentConversationSummarizerLiveTest {
 
     @SuppressWarnings("unchecked")
     private String summarizeAndRecord(String caseId, List<Msg> material) throws Exception {
-        String summary = summarizer.summarize(material, null);
+        String summary = summarizer.summarize(material, null,
+                RuntimeContext.builder().userId("live").sessionId(caseId).build());
         ArgumentCaptor<List<Msg>> messages = ArgumentCaptor.forClass(List.class);
         verify(model).stream(messages.capture(), any(), any());
         StringBuilder evidence = new StringBuilder();

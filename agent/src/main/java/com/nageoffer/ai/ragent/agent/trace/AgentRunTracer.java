@@ -53,9 +53,7 @@ public final class AgentRunTracer {
     private static final String ABORTED_MESSAGE = "用户中止本轮，等不到框架收尾，链路被强制断开";
 
     /**
-     * 结局按严重度排序，越靠后越有资格覆盖先写的
-     * <p>
-     * 不按「先写者胜」：强制断流一定发生在优雅中断之后，先写者胜会把被掐链的运行永久掩盖成正常中断
+     * 结局按严重度排序，强制断流可覆盖先发生的 interrupted
      */
     private static final List<String> SEVERITY = List.of(
             RagentAttributes.RUN_OUTCOME_COMPLETED,
@@ -151,9 +149,7 @@ public final class AgentRunTracer {
     }
 
     /**
-     * 优雅中断：框架自己收了尾也存了盘，这是一次正常终止，故不写 error.type 也不动 span 状态
-     * <p>
-     * 官方那层随后按 onComplete 写 OK，OK 配着一个错误类型是自相矛盾的数据
+     * 框架正常完成中断时会写入 OK，此处只记录 interrupted，不设置 error.type
      */
     public static void markInterrupted(RuntimeContext ctx) {
         writeOutcome(ctx, RagentAttributes.RUN_OUTCOME_INTERRUPTED, span -> {
@@ -163,9 +159,7 @@ public final class AgentRunTracer {
     }
 
     /**
-     * 强制断流：这轮多半没存盘，是真正的异常终止
-     * <p>
-     * 不写 StatusCode：官方 onAgent 的取消回调已经写过 ERROR + cancelled，这里再写只是重复一遍
+     * 强制断流的 ERROR 状态由官方 onAgent 取消回调写入，此处只补充终止原因
      */
     public static void markAborted(RuntimeContext ctx) {
         writeOutcome(ctx, RagentAttributes.RUN_OUTCOME_ABORTED, span -> {
@@ -198,6 +192,14 @@ public final class AgentRunTracer {
         if (ref != null) {
             writer.accept(ref.span);
         }
+    }
+
+    /**
+     * 摘要调用挂在根下，与工具体 span 一样靠 round_index 归轮，不必把 OTel 上下文传进记忆层
+     */
+    static Span rootSpan(RuntimeContext ctx) {
+        RootSpanRef ref = rootRef(ctx);
+        return ref == null ? null : ref.span;
     }
 
     /**

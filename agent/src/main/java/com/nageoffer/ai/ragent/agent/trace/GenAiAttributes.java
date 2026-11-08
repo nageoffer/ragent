@@ -53,6 +53,11 @@ public final class GenAiAttributes {
     public static final AttributeKey<String> PROVIDER_NAME = AttributeKey.stringKey("gen_ai.provider.name");
 
     /**
+     * 模型名，官方 chat span 写的也是这把键；摘要节点不经官方那层，只能自己写
+     */
+    public static final AttributeKey<String> REQUEST_MODEL = AttributeKey.stringKey("gen_ai.request.model");
+
+    /**
      * 是否流式，规范脚注写明「未设即视为非流式」，我方全程流式，漏写就是把语义说反
      */
     public static final AttributeKey<Boolean> REQUEST_STREAM = AttributeKey.booleanKey("gen_ai.request.stream");
