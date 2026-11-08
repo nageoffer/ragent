@@ -92,6 +92,42 @@ class ChatRequestThinkingParamTest {
     }
 
     /**
+     * 混元 Hy4 与 DeepSeek 同方言，思考默认开启，关闭时同样必须显式发 disabled
+     */
+    @Test
+    void hunyuanShouldCarryThinkingObjectOnly() {
+        assertEquals("enabled", thinkingType(buildBody(new HunyuanChatClient(), Boolean.TRUE)));
+        assertEquals("disabled", thinkingType(buildBody(new HunyuanChatClient(), Boolean.FALSE)));
+        assertEquals("disabled", thinkingType(buildBody(new HunyuanChatClient(), null)));
+        assertFalse(buildBody(new HunyuanChatClient(), Boolean.TRUE).has(FIELD));
+    }
+
+    /**
+     * Kimi K3 系思考关不掉：不发任何思考开关，不要思考时只把强度降到 low
+     */
+    @Test
+    void kimiShouldOnlyLowerReasoningEffortWhenThinkingOff() {
+        JsonObject off = buildBody(new KimiChatClient(), Boolean.FALSE);
+        assertEquals("low", off.get("reasoning_effort").getAsString());
+        assertEquals("low", buildBody(new KimiChatClient(), null).get("reasoning_effort").getAsString());
+        assertFalse(buildBody(new KimiChatClient(), Boolean.TRUE).has("reasoning_effort"));
+        assertFalse(off.has(FIELD));
+        assertFalse(off.has(THINKING_OBJECT));
+    }
+
+    /**
+     * K3 系采样参数固定，传其他值报错
+     */
+    @Test
+    void kimiShouldDropFixedSamplingParams() {
+        ChatRequest request = request(Boolean.FALSE);
+        request.setTopP(0.8D);
+        JsonObject body = new KimiChatClient().buildRequestBody(request, target(), false);
+        assertFalse(body.has("temperature"));
+        assertFalse(body.has("top_p"));
+    }
+
+    /**
      * 聚合网关走 OpenAI 原生协议，带上该字段会被判为未知参数
      */
     @Test
@@ -108,7 +144,7 @@ class ChatRequestThinkingParamTest {
     }
 
     /**
-     * thinking 对象同样是私有扩展，只许发给 DeepSeek
+     * thinking 对象同样是私有扩展，只许发给 DeepSeek 和混元
      */
     @Test
     void otherProvidersShouldNeverCarryThinkingObject() {

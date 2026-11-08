@@ -226,6 +226,16 @@ ai:
       api-key: ${DEEPSEEK_API_KEY:}
       endpoints:
         chat: /v1/chat/completions
+    hunyuan:
+      url: https://tokenhub.tencentmaas.com
+      api-key: ${HUNYUAN_API_KEY:}
+      endpoints:
+        chat: /v1/chat/completions
+    kimi:
+      url: https://api.moonshot.cn
+      api-key: ${MOONSHOT_API_KEY:}
+      endpoints:
+        chat: /v1/chat/completions
 
   selection:
     failure-threshold: 2
@@ -254,6 +264,14 @@ ai:
       - id: deepseek-flash
         provider: deepseek
         model: deepseek-flash
+        supports-thinking: true
+      - id: hy4
+        provider: hunyuan
+        model: hy4
+        supports-thinking: true
+      - id: kimi-k3.1-pro
+        provider: kimi
+        model: kimi-k3.1-pro
         supports-thinking: true
 
     default-tier: standard
