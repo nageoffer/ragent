@@ -40,8 +40,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Component;
 
-import java.time.Duration;
-import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
@@ -77,10 +76,6 @@ public class BitAfterSaleApplyMcpExecutor {
      * 与 t_after_sale.reason 的列宽一致，超长就截断而不是让数据库抛异常
      */
     private static final int MAX_REASON_LENGTH = 256;
-
-    private static final int RETURN_WINDOW_DAYS = 7;
-
-    private static final int QUALITY_WINDOW_DAYS = 15;
 
     private final OrderMapper orderMapper;
     private final OrderItemMapper orderItemMapper;
@@ -202,7 +197,7 @@ public class BitAfterSaleApplyMcpExecutor {
     /**
      * 窗口按 receive_time 现算，不采信模型算出来的天数
      * <p>
-     * 三档：七天内任何理由都收，第 8 到 15 天只收质量问题，超 15 天走保修。
+     * 三档：七天内任何理由都收，第 8 到 15 天只收质量问题，超 15 天走保修
      * 服务端只重算窗口与类型，判不了「是不是质量问题」——那正是要检测的原因
      */
     private CallToolResult checkEligible(String orderNo, OrderDO order, String type) {
@@ -220,15 +215,15 @@ public class BitAfterSaleApplyMcpExecutor {
             return BitToolSupport.rejected(
                     String.format("订单 %s 没有签收时间，无法判定七天无理由窗口，请转人工处理", orderNo));
         }
-        Instant receivedAt = order.getReceiveTime().toInstant();
+        LocalDate today = LocalDate.now();
         long days = BitToolSupport.daysSince(order.getReceiveTime());
-        if (Instant.now().isAfter(receivedAt.plus(Duration.ofDays(QUALITY_WINDOW_DAYS)))) {
+        if (today.isAfter(BitToolSupport.windowDeadline(order.getReceiveTime(), BitToolSupport.QUALITY_WINDOW_DAYS))) {
             return BitToolSupport.rejected(String.format(
                     "订单 %s 已签收 %d 天，七天无理由与十五天质量问题两个窗口都已过，未提交售后申请。"
                             + "商品还在保修期内的话可以走保修，需要的话可以帮用户转人工",
                     orderNo, days));
         }
-        if (Instant.now().isAfter(receivedAt.plus(Duration.ofDays(RETURN_WINDOW_DAYS)))
+        if (today.isAfter(BitToolSupport.windowDeadline(order.getReceiveTime(), BitToolSupport.RETURN_WINDOW_DAYS))
                 && !QUALITY_TYPES.contains(type)) {
             return BitToolSupport.rejected(String.format(
                     "订单 %s 已签收 %d 天，七天无理由窗口已过，这一档只受理质量问题，未提交售后申请。"
@@ -242,8 +237,8 @@ public class BitAfterSaleApplyMcpExecutor {
      * 走到这里已经保证已签收且有签收时间，超 15 天的在 checkEligible 就被挡掉了
      */
     private Window windowOf(OrderDO order) {
-        Instant noReasonDeadline = order.getReceiveTime().toInstant().plus(Duration.ofDays(RETURN_WINDOW_DAYS));
-        return Instant.now().isAfter(noReasonDeadline) ? Window.QUALITY : Window.NO_REASON;
+        LocalDate noReasonDeadline = BitToolSupport.windowDeadline(order.getReceiveTime(), BitToolSupport.RETURN_WINDOW_DAYS);
+        return LocalDate.now().isAfter(noReasonDeadline) ? Window.QUALITY : Window.NO_REASON;
     }
 
     /**

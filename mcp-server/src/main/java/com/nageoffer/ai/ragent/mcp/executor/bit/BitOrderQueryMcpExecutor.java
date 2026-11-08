@@ -38,8 +38,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.stereotype.Component;
 
 import java.sql.Timestamp;
-import java.time.Duration;
-import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -63,13 +62,6 @@ public class BitOrderQueryMcpExecutor {
     private static final int DEFAULT_LIMIT = 5;
     private static final int MAX_LIMIT = 20;
 
-    /**
-     * 七天无理由的窗口长度，按签收时间现算，不采信模型算出来的天数
-     */
-    private static final int RETURN_WINDOW_DAYS = 7;
-
-    private static final int QUALITY_WINDOW_DAYS = 15;
-
     private final OrderMapper orderMapper;
     private final OrderItemMapper orderItemMapper;
 
@@ -91,7 +83,7 @@ public class BitOrderQueryMcpExecutor {
         return Tool.builder()
                 .name(TOOL_ID)
                 .description("查询当前登录用户的订单。传订单号返回单笔详情，含状态、下单支付发货签收四个时间、"
-                        + "商品明细、金额与优惠、运单号、收货信息，已签收的还会给出七天无理由窗口的剩余天数；"
+                        + "商品明细、金额与优惠、运单号、收货信息，已签收的还会给出售后窗口的截止日期与剩余天数；"
                         + "不传订单号返回最近几笔订单摘要。用户说不出订单号时先不传参数拿最近订单，"
                         + "再按用户确认的那一单继续。运单号只能从这里取，不要自行构造")
                 .inputSchema(inputSchema)
@@ -162,9 +154,8 @@ public class BitOrderQueryMcpExecutor {
                 BitToolSupport.maskPhone(head.getReceiverPhone()), BitToolSupport.maskAddress(head.getReceiverAddress())));
         sb.append(String.format("运单号: %s%n", head.getTrackingNo() == null ? "尚未发货" : head.getTrackingNo()));
 
-        String window = returnWindow(head);
-        if (window != null) {
-            sb.append("\n").append(window).append("\n");
+        if (head.getReceiveTime() != null) {
+            sb.append("\n").append(BitToolSupport.returnWindow(head.getReceiveTime(), LocalDate.now())).append("\n");
         }
         return sb.toString().trim();
     }
@@ -204,31 +195,6 @@ public class BitOrderQueryMcpExecutor {
         return orderItemMapper.selectList(Wrappers.<OrderItemDO>lambdaQuery()
                 .in(OrderItemDO::getOrderNo, orderNos)
                 .orderByAsc(OrderItemDO::getOrderNo, OrderItemDO::getId));
-    }
-
-    /**
-     * 窗口按签收时间现算，语料里的时间全是相对 now() 灌的，写死天数过几天就全错
-     */
-    /**
-     * 两个窗口一起报：只说七天无理由过了，模型会以为售后彻底没门，实际第 8 到 15 天还收质量问题
-     */
-    private String returnWindow(OrderDO head) {
-        if (head.getReceiveTime() == null) {
-            return null;
-        }
-        Instant receivedAt = head.getReceiveTime().toInstant();
-        long signedDays = BitToolSupport.daysSince(head.getReceiveTime());
-        long noReasonLeft = Duration.between(Instant.now(),
-                receivedAt.plus(Duration.ofDays(RETURN_WINDOW_DAYS))).toDays();
-        if (noReasonLeft >= 0) {
-            return String.format("售后窗口: 已签收 %d 天，七天无理由剩余 %d 天", signedDays, noReasonLeft);
-        }
-        long qualityLeft = Duration.between(Instant.now(),
-                receivedAt.plus(Duration.ofDays(QUALITY_WINDOW_DAYS))).toDays();
-        return qualityLeft >= 0
-                ? String.format("售后窗口: 已签收 %d 天，七天无理由已过，十五天质量问题窗口剩余 %d 天",
-                signedDays, qualityLeft)
-                : String.format("售后窗口: 已签收 %d 天，七天无理由与十五天质量问题窗口都已过", signedDays);
     }
 
     private void appendIfPresent(StringBuilder sb, String label, Timestamp value) {

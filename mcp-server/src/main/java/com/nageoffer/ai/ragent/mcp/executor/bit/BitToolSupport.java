@@ -26,9 +26,9 @@ import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.sql.Timestamp;
-import java.time.Duration;
-import java.time.Instant;
+import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -38,6 +38,10 @@ import java.util.List;
 final class BitToolSupport {
 
     static final String EMPTY_FIELD = "-";
+
+    static final int RETURN_WINDOW_DAYS = 7;
+
+    static final int QUALITY_WINDOW_DAYS = 15;
 
     private static final DateTimeFormatter DATE_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
@@ -66,7 +70,7 @@ final class BitToolSupport {
     /**
      * 写工具的回绝：这次写入没有发生，一律 isError
      * <p>
-     * 和只读工具的 notFound 正好相反——那边查不到是合法答案，这边「没写成」是调用方必须知道的事实。
+     * 和只读工具的 notFound 正好相反——那边查不到是合法答案，这边「没写成」是调用方必须知道的事实
      * 有了这条，写工具返回 success 就等价于库里真的变了；越权与不存在仍共用同一句文案
      */
     static CallToolResult rejected(String message) {
@@ -133,10 +137,41 @@ final class BitToolSupport {
     }
 
     /**
-     * 距今过了几天，七天窗口这类判据靠它现算
+     * 距今过了几个自然日，按日历日相减，不按 24 小时一段截断
      */
     static long daysSince(Timestamp value) {
-        return value == null ? -1 : Duration.between(value.toInstant(), Instant.now()).toDays();
+        return value == null ? -1 : ChronoUnit.DAYS.between(value.toLocalDateTime().toLocalDate(), LocalDate.now());
+    }
+
+    /**
+     * 售后窗口的截止日：签收次日起算第 N 个自然日，当天 24:00 截止，与签收钟点无关
+     */
+    static LocalDate windowDeadline(Timestamp receiveTime, int days) {
+        return receiveTime.toLocalDateTime().toLocalDate().plusDays(days);
+    }
+
+    /**
+     * 两个窗口一起报，并给出截止日期：只说七天无理由过了，模型会以为售后彻底没门；只给天数，模型会自己推日期
+     */
+    static String returnWindow(Timestamp receiveTime, LocalDate today) {
+        long signedDays = ChronoUnit.DAYS.between(receiveTime.toLocalDateTime().toLocalDate(), today);
+        LocalDate noReasonEnd = windowDeadline(receiveTime, RETURN_WINDOW_DAYS);
+        LocalDate qualityEnd = windowDeadline(receiveTime, QUALITY_WINDOW_DAYS);
+        if (!today.isAfter(noReasonEnd)) {
+            return String.format("售后窗口: 已签收 %d 天；七天无理由 %s 24:00 截止（%s）；十五天质量问题 %s 24:00 截止",
+                    signedDays, noReasonEnd, daysLeft(today, noReasonEnd), qualityEnd);
+        }
+        if (!today.isAfter(qualityEnd)) {
+            return String.format("售后窗口: 已签收 %d 天；七天无理由已于 %s 截止；十五天质量问题 %s 24:00 截止（%s）",
+                    signedDays, noReasonEnd, qualityEnd, daysLeft(today, qualityEnd));
+        }
+        return String.format("售后窗口: 已签收 %d 天；七天无理由与十五天质量问题窗口都已过（%s 截止）",
+                signedDays, qualityEnd);
+    }
+
+    private static String daysLeft(LocalDate today, LocalDate deadline) {
+        long left = ChronoUnit.DAYS.between(today, deadline);
+        return left == 0 ? "今天是最后一天" : String.format("今天之后还有 %d 天", left);
     }
 
     static List<String> csv(String value) {
