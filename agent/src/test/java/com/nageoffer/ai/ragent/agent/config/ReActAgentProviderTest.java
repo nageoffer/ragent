@@ -37,6 +37,7 @@ import com.nageoffer.ai.ragent.rag.core.skill.AgentSkillRegistry;
 import com.nageoffer.ai.ragent.rag.enums.IntentKind;
 import com.nageoffer.ai.ragent.rag.service.KnowledgeSearchFacade;
 import io.agentscope.core.model.ExecutionConfig;
+import io.agentscope.core.model.GenerateOptions;
 import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.MsgRole;
@@ -56,6 +57,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.ObjectProvider;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -87,6 +89,7 @@ class ReActAgentProviderTest {
     private ReActAgentProvider provider;
     private OpenAIChatModel model;
     private PgAgentStateStore stateStore;
+    private AgentProperties agentProperties;
 
     @BeforeEach
     void setUp() {
@@ -108,7 +111,7 @@ class ReActAgentProviderTest {
                 new AgentMemoryProperties(),
                 mock(AgentMemoryFlusher.class),
                 mock(AgentSkillRegistry.class)));
-        AgentProperties agentProperties = new AgentProperties();
+        agentProperties = new AgentProperties();
         model = mock(OpenAIChatModel.class);
         when(model.getModelName()).thenReturn("recovery-test");
         stateStore = mock(PgAgentStateStore.class, delegatesTo(new InMemoryAgentStateStore()));
@@ -301,6 +304,36 @@ class ReActAgentProviderTest {
 
         // 框架语义是「最大尝试次数、含首次」，1 即不重试，它也校验了必须大于 0
         assertThat(active.agent().getModelConfig().maxRetries()).isEqualTo(1);
+    }
+
+    @Test
+    void shouldSendConfiguredReasoningEffortWithoutReopeningRetries() {
+        agentProperties.getChat().setReasoningEffort(" high ");
+
+        GenerateOptions options = captureReasoningOptions();
+
+        assertThat(options.getReasoningEffort()).isEqualTo("high");
+        assertThat(options.getExecutionConfig().getMaxAttempts()).isEqualTo(1);
+    }
+
+    @Test
+    void shouldNotSendReasoningEffortWhenBlank() {
+        agentProperties.getChat().setReasoningEffort(" ");
+
+        assertThat(captureReasoningOptions().getReasoningEffort()).isNull();
+    }
+
+    private GenerateOptions captureReasoningOptions() {
+        when(model.stream(any(), any(), any())).thenReturn(Flux.just(ChatResponse.builder()
+                .content(List.of(TextBlock.builder().text("好的").build()))
+                .finishReason("stop").build()));
+        try (var agent = provider.getAgent().agent()) {
+            RuntimeContext context = RuntimeContext.builder().userId("user").sessionId("effort").build();
+            agent.streamEvents("你好", context).collectList().block(Duration.ofSeconds(5));
+        }
+        ArgumentCaptor<GenerateOptions> options = ArgumentCaptor.forClass(GenerateOptions.class);
+        verify(model).stream(any(), any(), options.capture());
+        return options.getValue();
     }
 
     private IntentNode mcpNode(String id, String name, String toolId) {

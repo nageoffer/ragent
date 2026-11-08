@@ -43,7 +43,7 @@ public class SystemSettingsVO {
                                 Integer maxConcurrentRunsPerUser, AgentMemory memory, boolean traceEnabled) {
     }
 
-    public record AgentChat(String provider, String model) {
+    public record AgentChat(String provider, String model, String reasoningEffort) {
     }
 
     public record AgentMemory(int contextWindowChars, boolean summaryEnabled, boolean longTermEnabled,

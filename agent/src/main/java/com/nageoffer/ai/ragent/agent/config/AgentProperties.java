@@ -79,5 +79,11 @@ public class AgentProperties {
          * 直接传给 OpenAI 兼容端点的模型名
          */
         private String model;
+
+        /**
+         * 主 Agent 的 reasoning_effort，原样透传；留空不发，跟随供应商默认
+         * 取值以供应商文档为准，如 hunyuan 的 hy4 只认 high / no_think
+         */
+        private String reasoningEffort;
     }
 }

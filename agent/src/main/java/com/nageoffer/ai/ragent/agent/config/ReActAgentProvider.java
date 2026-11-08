@@ -30,6 +30,7 @@ import com.nageoffer.ai.ragent.agent.trace.AgentTraceEnrichmentMiddleware;
 import com.nageoffer.ai.ragent.rag.core.prompt.AgentPromptResolver;
 import com.nageoffer.ai.ragent.rag.core.prompt.AgentPromptSlot;
 import io.agentscope.core.ReActAgent;
+import io.agentscope.core.model.GenerateOptions;
 import io.agentscope.core.tracing.OtelTracingMiddleware;
 import io.agentscope.extensions.model.openai.OpenAIChatModel;
 import lombok.RequiredArgsConstructor;
@@ -108,6 +109,11 @@ public class ReActAgentProvider {
                 // 强制停止可能留下无结果的工具调用，下一问先补错误结果再继续
                 .enablePendingToolRecovery(true)
                 .stateStore(agentStateStore);
+        String reasoningEffort = agentProperties.getChat().getReasoningEffort();
+        if (StrUtil.isNotBlank(reasoningEffort)) {
+            // 挂在 Agent 上而不是模型上：模型级默认值会按字段合并进摘要与长期记忆的调用
+            builder.generateOptions(GenerateOptions.builder().reasoningEffort(reasoningEffort.trim()).build());
+        }
         // 追踪包在最外层：span 要盖住记忆与压缩才量得到耗时
         otelTracingMiddleware.ifAvailable(builder::middleware);
         traceEnrichmentMiddleware.ifAvailable(builder::middleware);

@@ -46,8 +46,9 @@ agent:
       - name: default
         url: http://localhost:9099
   chat:
-    provider: deepseek   # 引用 ai.providers 下的供应商，取其 url / api-key / endpoints.chat
-    model: deepseek-flash    # 直接传给 OpenAI 兼容端点的模型名
+    provider: deepseek
+    model: deepseek-flash
+    reasoning-effort:
   max-iters: 10
   max-retries: 1
   sse-timeout-ms: 900000

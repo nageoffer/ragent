@@ -106,7 +106,7 @@ public class SystemSettingsController {
     private SystemSettingsVO.AgentSettings toAgentSettings() {
         return new SystemSettingsVO.AgentSettings(
                 new SystemSettingsVO.AgentChat(agentProperties.getChat().getProvider(),
-                        agentProperties.getChat().getModel()),
+                        agentProperties.getChat().getModel(), agentProperties.getChat().getReasoningEffort()),
                 agentProperties.getMaxIters(), agentProperties.getMaxRetries(),
                 agentProperties.getSseTimeoutMs(), agentProperties.getMaxConcurrentRunsPerUser(),
                 new SystemSettingsVO.AgentMemory(agentMemoryProperties.getContextWindowChars(),
