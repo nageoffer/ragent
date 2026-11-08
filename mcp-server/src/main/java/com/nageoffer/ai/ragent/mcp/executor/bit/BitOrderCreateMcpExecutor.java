@@ -97,7 +97,7 @@ public class BitOrderCreateMcpExecutor {
                 .optional(string("couponCode", "要使用的优惠券编码，来自券包查询。不确定能不能用就先查券包试算，"
                         + "能不能用最终由本工具判定")
                         .title("优惠券编码"))
-                .optional(string("receiverName", "收货人姓名，不传则沿用该用户最近一笔订单的收货信息")
+                .optional(string("receiverName", "收货人姓名，不传则沿用该用户最近一笔订单的收货信息（按下单时间取，不论订单状态）")
                         .title("收货人"))
                 .optional(string("receiverPhone", "收货手机号，不传则沿用最近一笔订单的。查询返回的手机号是打码的，不要拿打码值回填")
                         .title("收货手机号"))
@@ -293,7 +293,7 @@ public class BitOrderCreateMcpExecutor {
                         "%s（%s）购物车数量不足，要买 %d 件但车里只有 %d 件，本单未创建",
                         line.getSkuName(), line.getSkuCode(), quantity, line.getQuantity()));
             }
-            // 后续库存校验、计价、订单明细与购物车扣减均使用本次购买数量。
+            // 后续库存校验、计价、订单明细与购物车扣减均使用本次购买数量
             line.setQuantity(quantity);
             if (!"在售".equals(line.getStatus())) {
                 return BitToolSupport.rejected(String.format(

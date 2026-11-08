@@ -85,6 +85,7 @@ public class BitTicketSubmitMcpExecutor {
         return Tool.builder()
                 .name(TOOL_ID)
                 .description("为当前登录用户提交人工客服工单，提交后由人工在工作时间内跟进。"
+                        + "工单提交后不能修改、也没有查询工单进度的工具，人工能否办成以人工处理结果为准。"
                         + "只在自己确实办不下去时才用：用户明确要求转人工、现有工具都不覆盖该诉求、"
                         + "或同一问题已经处理失败。问题描述取自用户原话，不要代为编造或夸大")
                 .inputSchema(inputSchema)
@@ -127,7 +128,7 @@ public class BitTicketSubmitMcpExecutor {
                     状态: 待受理
                     描述: %s
 
-                    人工客服会在工作时间内跟进，请把工单号告知用户以便后续查询""", ticketNo, category, content));
+                    人工客服会在工作时间内跟进，请把工单号告知用户。工单提交后不能修改，也查不了进度""", ticketNo, category, content));
         } catch (Exception e) {
             log.error("MCP 工具调用失败, toolId={}, elapsed={}ms",
                     TOOL_ID, System.currentTimeMillis() - startMs, e);

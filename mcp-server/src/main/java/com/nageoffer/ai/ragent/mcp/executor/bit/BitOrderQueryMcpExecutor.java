@@ -82,8 +82,9 @@ public class BitOrderQueryMcpExecutor {
 
         return Tool.builder()
                 .name(TOOL_ID)
-                .description("查询当前登录用户的订单。传订单号返回单笔详情，含状态、下单支付发货签收四个时间、"
-                        + "商品明细、金额与优惠、运单号、收货信息，已签收的还会给出售后窗口的截止日期与剩余天数；"
+                .description("查询当前登录用户的订单，只能查本账号名下的，不能按手机号、姓名或其他账号查。"
+                        + "传订单号返回单笔详情，含状态、下单支付发货签收四个时间、"
+                        + "商品明细、金额与是否用券、运单号、收货信息，已签收的还会给出售后窗口的截止日期与剩余天数；"
                         + "不传订单号返回最近几笔订单摘要。用户说不出订单号时先不传参数拿最近订单，"
                         + "再按用户确认的那一单继续。运单号只能从这里取，不要自行构造")
                 .inputSchema(inputSchema)
@@ -147,6 +148,10 @@ public class BitOrderQueryMcpExecutor {
         if (head.getDiscountAmount() != null && head.getDiscountAmount().signum() > 0) {
             sb.append(String.format("优惠: -%s%s%n", BitToolSupport.money(head.getDiscountAmount()),
                     head.getCouponCode() == null ? "" : "（券 " + head.getCouponCode() + "）"));
+        }
+        // 没用券也要明说：这一行不出现，模型会照手册的通用话术告诉用户「券会退回」
+        if (StrUtil.isBlank(head.getCouponCode())) {
+            sb.append("优惠券: 本单未使用\n");
         }
         sb.append(String.format("实付: %s%n", BitToolSupport.money(head.getPayAmount())));
 
