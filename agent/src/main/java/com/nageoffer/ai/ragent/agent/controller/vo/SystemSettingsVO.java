@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.rag.controller.vo;
+package com.nageoffer.ai.ragent.agent.controller.vo;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Builder;
@@ -26,17 +26,30 @@ import java.util.Map;
 
 /**
  * 系统设置视图对象，只读汇总运行中配置
- * 分组：引擎档位 / 后端选型 / RAG 检索管线 / AI 模型，密钥一律脱敏或省略
+ * 按引擎、Agent、检索、模型与基础设施分组，密钥脱敏或省略
  */
 @Data
 @Builder
 public class SystemSettingsVO {
 
     private EngineSettings engine;
+    private AgentSettings agent;
     private BackendSettings backends;
     private RagSettings rag;
     private AISettings ai;
     private UploadSettings upload;
+
+    public record AgentSettings(AgentChat chat, Integer maxIters, Integer maxRetries, Long sseTimeoutMs,
+                                Integer maxConcurrentRunsPerUser, AgentMemory memory, boolean traceEnabled) {
+    }
+
+    public record AgentChat(String provider, String model) {
+    }
+
+    public record AgentMemory(int contextWindowChars, boolean summaryEnabled, boolean longTermEnabled,
+                              List<String> evictableTools, int trimTriggerChars, int compactTriggerChars,
+                              int keepRecentChars, int summaryTargetChars) {
+    }
 
     @Data
     @Builder

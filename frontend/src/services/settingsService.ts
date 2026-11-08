@@ -4,6 +4,7 @@ export interface SystemSettings {
   engine: {
     type: string;
   };
+  agent: AgentSettings | null;
   backends: {
     storage: {
       type: string;
@@ -113,6 +114,25 @@ export interface SystemSettings {
   };
 }
 
+export interface AgentSettings {
+  chat: { provider: string; model: string };
+  maxIters: number;
+  maxRetries: number;
+  sseTimeoutMs: number;
+  maxConcurrentRunsPerUser: number;
+  memory: {
+    contextWindowChars: number;
+    summaryEnabled: boolean;
+    longTermEnabled: boolean;
+    evictableTools: string[];
+    trimTriggerChars: number;
+    compactTriggerChars: number;
+    keepRecentChars: number;
+    summaryTargetChars: number;
+  };
+  traceEnabled: boolean;
+}
+
 export interface RetrievalChannel {
   enabled: boolean;
   weight: number;
@@ -144,5 +164,5 @@ export interface ModelCandidate {
 }
 
 export async function getSystemSettings(): Promise<SystemSettings> {
-  return api.get<SystemSettings, SystemSettings>("/rag/settings");
+  return api.get<SystemSettings, SystemSettings>("/system/settings");
 }

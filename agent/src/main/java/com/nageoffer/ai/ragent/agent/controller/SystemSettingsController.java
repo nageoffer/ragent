@@ -15,14 +15,22 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.rag.controller;
+package com.nageoffer.ai.ragent.agent.controller;
 
+import com.nageoffer.ai.ragent.agent.config.AgentProperties;
+import com.nageoffer.ai.ragent.agent.controller.vo.SystemSettingsVO;
+import com.nageoffer.ai.ragent.agent.controller.vo.SystemSettingsVO.AISettings;
+import com.nageoffer.ai.ragent.agent.controller.vo.SystemSettingsVO.BackendSettings;
+import com.nageoffer.ai.ragent.agent.controller.vo.SystemSettingsVO.SearchSettings;
+import com.nageoffer.ai.ragent.agent.memory.AgentMemoryProperties;
+import com.nageoffer.ai.ragent.agent.trace.AgentTraceProperties;
 import com.nageoffer.ai.ragent.framework.convention.Result;
 import com.nageoffer.ai.ragent.framework.web.Results;
 import com.nageoffer.ai.ragent.infra.config.AIModelProperties;
 import com.nageoffer.ai.ragent.rag.config.GraphProperties;
 import com.nageoffer.ai.ragent.rag.config.KeywordProperties;
 import com.nageoffer.ai.ragent.rag.config.MemoryProperties;
+import com.nageoffer.ai.ragent.rag.config.OrchestrationMode;
 import com.nageoffer.ai.ragent.rag.config.OrchestrationProperties;
 import com.nageoffer.ai.ragent.rag.config.RAGConfigProperties;
 import com.nageoffer.ai.ragent.rag.config.RAGDefaultProperties;
@@ -30,10 +38,6 @@ import com.nageoffer.ai.ragent.rag.config.RAGRateLimitProperties;
 import com.nageoffer.ai.ragent.rag.config.RagStorageProperties;
 import com.nageoffer.ai.ragent.rag.config.RagTraceProperties;
 import com.nageoffer.ai.ragent.rag.config.SearchChannelProperties;
-import com.nageoffer.ai.ragent.rag.controller.vo.SystemSettingsVO;
-import com.nageoffer.ai.ragent.rag.controller.vo.SystemSettingsVO.AISettings;
-import com.nageoffer.ai.ragent.rag.controller.vo.SystemSettingsVO.BackendSettings;
-import com.nageoffer.ai.ragent.rag.controller.vo.SystemSettingsVO.SearchSettings;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.util.StringUtils;
@@ -42,17 +46,21 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * RAG 设置控制器，负责系统引擎、后端选型、检索管线与 AI 模型配置的只读查询
+ * 系统配置只读入口，两种引擎模式下均可查询
  */
 @RestController
 @RequiredArgsConstructor
-public class RAGSettingsController {
+public class SystemSettingsController {
 
+    private final AgentProperties agentProperties;
+    private final AgentMemoryProperties agentMemoryProperties;
+    private final AgentTraceProperties agentTraceProperties;
     private final OrchestrationProperties orchestrationProperties;
     private final RagStorageProperties ragStorageProperties;
     private final KeywordProperties keywordProperties;
@@ -75,14 +83,15 @@ public class RAGSettingsController {
     private DataSize maxRequestSize;
 
     /**
-     * 获取系统引擎、后端选型、检索管线与 AI 模型等配置信息
+     * 汇总已绑定配置，Agent 专属参数仅在该引擎启用时返回
      */
-    @GetMapping("/rag/settings")
+    @GetMapping("/system/settings")
     public Result<SystemSettingsVO> settings() {
         SystemSettingsVO response = SystemSettingsVO.builder()
                 .engine(SystemSettingsVO.EngineSettings.builder()
                         .type(orchestrationProperties.getMode().name().toLowerCase(Locale.ROOT))
                         .build())
+                .agent(orchestrationProperties.getMode() == OrchestrationMode.AGENT ? toAgentSettings() : null)
                 .backends(toBackendSettings())
                 .rag(toRagSettings())
                 .ai(toAISettings(aiModelProperties))
@@ -92,6 +101,20 @@ public class RAGSettingsController {
                         .build())
                 .build();
         return Results.success(response);
+    }
+
+    private SystemSettingsVO.AgentSettings toAgentSettings() {
+        return new SystemSettingsVO.AgentSettings(
+                new SystemSettingsVO.AgentChat(agentProperties.getChat().getProvider(),
+                        agentProperties.getChat().getModel()),
+                agentProperties.getMaxIters(), agentProperties.getMaxRetries(),
+                agentProperties.getSseTimeoutMs(), agentProperties.getMaxConcurrentRunsPerUser(),
+                new SystemSettingsVO.AgentMemory(agentMemoryProperties.getContextWindowChars(),
+                        agentMemoryProperties.isSummaryEnabled(), agentMemoryProperties.isLongTermEnabled(),
+                        List.copyOf(agentMemoryProperties.getEvictableTools()),
+                        agentMemoryProperties.resolveTrimTriggerChars(), agentMemoryProperties.resolveCompactTriggerChars(),
+                        agentMemoryProperties.resolveKeepRecentChars(), agentMemoryProperties.resolveSummaryTargetChars()),
+                agentTraceProperties.isEnabled());
     }
 
     private BackendSettings toBackendSettings() {
