@@ -146,7 +146,7 @@ public class AgentMemoryJudge {
 
     /**
      * 与摘要相同：非流式取完整响应，超时与尝试次数显式指定，字符预算只写入提示词
-     * DeepSeek 一律开思考，其他供应商不发送思考参数；DeepSeek 思考模式下 temperature 不生效
+     * DeepSeek 一律开思考、Kimi 思考常开，两家强度都取 low，其他供应商不发送思考参数；思考模式下 temperature 不生效
      */
     private GenerateOptions buildOptions() {
         GenerateOptions.Builder options = GenerateOptions.builder()
@@ -159,6 +159,9 @@ public class AgentMemoryJudge {
         if (ModelProvider.DEEP_SEEK.matches(agentProperties.getChat().getProvider())) {
             options.additionalBodyParam("thinking", Map.of("type", "enabled"));
             // 经实际测试，默认思考深度和 low 均能较好处理，为减少耗时做此处理，单次调用耗时平均减少约 15%
+            options.reasoningEffort("low");
+        } else if (ModelProvider.KIMI.matches(agentProperties.getChat().getProvider())) {
+            // Kimi 思考常开，与 DeepSeek 同取 low；temperature 由 KimiFormatter 摘掉
             options.reasoningEffort("low");
         }
         return options.build();

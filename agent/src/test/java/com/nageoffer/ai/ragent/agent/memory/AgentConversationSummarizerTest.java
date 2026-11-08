@@ -279,6 +279,28 @@ class AgentConversationSummarizerTest {
     }
 
     @Test
+    void shouldDisableThinkingForHunyuan() {
+        agentProperties.getChat().setProvider("hunyuan");
+        answer("邮件已起草，尚未发出");
+
+        summarizer.summarize(MATERIAL, null, RUN);
+
+        assertThat(captureOptions().getAdditionalBodyParams()).containsEntry("thinking", Map.of("type", "disabled"));
+    }
+
+    @Test
+    void shouldLowerReasoningEffortForKimiInsteadOfDisablingThinking() {
+        agentProperties.getChat().setProvider("kimi");
+        answer("邮件已起草，尚未发出");
+
+        summarizer.summarize(MATERIAL, null, RUN);
+
+        GenerateOptions options = captureOptions();
+        assertThat(options.getReasoningEffort()).isEqualTo("low");
+        assertThat(options.getAdditionalBodyParams()).doesNotContainKey("thinking");
+    }
+
+    @Test
     void shouldNotSendThinkingParamToOtherProviders() {
         agentProperties.getChat().setProvider("bailian");
         answer("邮件已起草，尚未发出");

@@ -24,6 +24,7 @@ import com.nageoffer.ai.ragent.infra.config.AIModelProperties;
 import com.nageoffer.ai.ragent.infra.enums.ModelProvider;
 import io.agentscope.extensions.model.openai.OpenAIChatModel;
 import io.agentscope.extensions.model.openai.compat.deepseek.DeepSeekFormatter;
+import io.agentscope.extensions.model.openai.compat.kimi.KimiFormatter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -81,10 +82,15 @@ public class AgentEngineConfiguration {
      * 兼容性注意：文档要求带 tools 时完整回传历史思考
      * 上述筛选当前实测未报错，但不属于协议保证
      * 若服务端收紧校验，因缺失 reasoning_content 返回 400，可回退通用 formatter，恢复全量回传
+     *
+     * Kimi 的 formatter 在通用实现上摘掉固定的采样参数（temperature 等传了就报错），
+     * reasoning_content 照通用实现全量回传，正是 K3 系要求的
      */
     private void applyProviderFormatter(OpenAIChatModel.Builder builder, String providerId) {
         if (ModelProvider.DEEP_SEEK.matches(providerId)) {
             builder.formatter(new DeepSeekFormatter());
+        } else if (ModelProvider.KIMI.matches(providerId)) {
+            builder.formatter(new KimiFormatter());
         }
     }
 

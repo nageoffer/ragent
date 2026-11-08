@@ -140,9 +140,13 @@ public class AgentConversationSummarizer {
                         .timeout(SUMMARY_TIMEOUT)
                         .maxAttempts(agentProperties.getMaxRetries())
                         .build());
-        // DeepSeek V4 默认开思考，不显式关会白等一段推理；别家不认这个字段，发了会 400
-        if (ModelProvider.DEEP_SEEK.matches(agentProperties.getChat().getProvider())) {
+        // DeepSeek V4 与混元 Hy4 默认开思考，不显式关会白等一段推理；别家不认这个字段，发了会 400
+        String provider = agentProperties.getChat().getProvider();
+        if (ModelProvider.DEEP_SEEK.matches(provider) || ModelProvider.HUNYUAN.matches(provider)) {
             options.additionalBodyParam("thinking", Map.of("type", "disabled"));
+        } else if (ModelProvider.KIMI.matches(provider)) {
+            // Kimi K3 系思考关不掉，默认强度是 max，只能降到 low
+            options.reasoningEffort("low");
         }
         return options.build();
     }

@@ -282,6 +282,18 @@ class AgentMemoryJudgeTest {
     }
 
     @Test
+    void shouldUseLowReasoningEffortWithoutThinkingParamForKimi() {
+        agentProperties.getChat().setProvider("kimi");
+        answer(EMPTY);
+
+        judge.judgeFlush(List.of(), REQUEST, List.of(), List.of());
+
+        GenerateOptions options = captureOptions();
+        assertThat(options.getReasoningEffort()).isEqualTo("low");
+        assertThat(options.getAdditionalBodyParams()).doesNotContainKey("thinking");
+    }
+
+    @Test
     void shouldNotSendThinkingParamToOtherProviders() {
         agentProperties.getChat().setProvider("bailian");
         answer(EMPTY);
