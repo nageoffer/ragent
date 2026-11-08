@@ -38,7 +38,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.stereotype.Component;
 
 import java.sql.Timestamp;
-import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -160,7 +159,7 @@ public class BitOrderQueryMcpExecutor {
         sb.append(String.format("运单号: %s%n", head.getTrackingNo() == null ? "尚未发货" : head.getTrackingNo()));
 
         if (head.getReceiveTime() != null) {
-            sb.append("\n").append(BitToolSupport.returnWindow(head.getReceiveTime(), LocalDate.now())).append("\n");
+            sb.append("\n").append(BitToolSupport.returnWindow(head.getReceiveTime(), BitToolSupport.today())).append("\n");
         }
         return sb.toString().trim();
     }

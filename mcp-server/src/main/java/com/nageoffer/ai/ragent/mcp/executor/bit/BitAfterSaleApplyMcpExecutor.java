@@ -215,7 +215,7 @@ public class BitAfterSaleApplyMcpExecutor {
             return BitToolSupport.rejected(
                     String.format("订单 %s 没有签收时间，无法判定七天无理由窗口，请转人工处理", orderNo));
         }
-        LocalDate today = LocalDate.now();
+        LocalDate today = BitToolSupport.today();
         long days = BitToolSupport.daysSince(order.getReceiveTime());
         if (today.isAfter(BitToolSupport.windowDeadline(order.getReceiveTime(), BitToolSupport.QUALITY_WINDOW_DAYS))) {
             return BitToolSupport.rejected(String.format(
@@ -238,7 +238,7 @@ public class BitAfterSaleApplyMcpExecutor {
      */
     private Window windowOf(OrderDO order) {
         LocalDate noReasonDeadline = BitToolSupport.windowDeadline(order.getReceiveTime(), BitToolSupport.RETURN_WINDOW_DAYS);
-        return LocalDate.now().isAfter(noReasonDeadline) ? Window.QUALITY : Window.NO_REASON;
+        return BitToolSupport.today().isAfter(noReasonDeadline) ? Window.QUALITY : Window.NO_REASON;
     }
 
     /**

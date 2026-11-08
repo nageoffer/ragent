@@ -22,6 +22,7 @@ import org.junit.jupiter.api.Test;
 import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.TimeZone;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -30,8 +31,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  */
 class BitToolSupportTest {
 
+    /**
+     * 入参是北京时间，与库里 TIMESTAMPTZ 读出来的时间点一致
+     */
     private static Timestamp at(String dateTime) {
-        return Timestamp.valueOf(LocalDateTime.parse(dateTime));
+        return Timestamp.from(LocalDateTime.parse(dateTime).atZone(BitToolSupport.ZONE).toInstant());
     }
 
     @Test
@@ -39,6 +43,22 @@ class BitToolSupportTest {
         assertEquals(LocalDate.parse("2026-10-30"), BitToolSupport.windowDeadline(at("2026-10-23T00:01"), 7));
         assertEquals(LocalDate.parse("2026-10-30"), BitToolSupport.windowDeadline(at("2026-10-23T23:59"), 7));
         assertEquals(LocalDate.parse("2026-11-07"), BitToolSupport.windowDeadline(at("2026-10-23T09:37"), 15));
+    }
+
+    /**
+     * 北京时间 10-23 00:01 在 UTC 下还是 10-22，机器默认时区不能改变签收日与展示时间
+     */
+    @Test
+    void ignoresJvmDefaultTimeZone() {
+        TimeZone original = TimeZone.getDefault();
+        TimeZone.setDefault(TimeZone.getTimeZone("UTC"));
+        try {
+            assertEquals(LocalDate.parse("2026-10-30"), BitToolSupport.windowDeadline(at("2026-10-23T00:01"), 7));
+            assertEquals("2026-10-23 00:01", BitToolSupport.dateTime(at("2026-10-23T00:01")));
+            assertEquals("2026-10-23", BitToolSupport.date(at("2026-10-23T00:01")));
+        } finally {
+            TimeZone.setDefault(original);
+        }
     }
 
     @Test

@@ -27,6 +27,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.sql.Timestamp;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -42,6 +43,11 @@ final class BitToolSupport {
     static final int RETURN_WINDOW_DAYS = 7;
 
     static final int QUALITY_WINDOW_DAYS = 15;
+
+    /**
+     * 展示时间与售后窗口统一按北京时间，政策里的自然日以它为准，不随部署机器的默认时区变
+     */
+    static final ZoneId ZONE = ZoneId.of("Asia/Shanghai");
 
     private static final DateTimeFormatter DATE_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
@@ -129,32 +135,40 @@ final class BitToolSupport {
     }
 
     static String dateTime(Timestamp value) {
-        return value == null ? EMPTY_FIELD : DATE_TIME.format(value.toLocalDateTime());
+        return value == null ? EMPTY_FIELD : DATE_TIME.format(value.toInstant().atZone(ZONE));
     }
 
     static String date(Timestamp value) {
-        return value == null ? EMPTY_FIELD : value.toLocalDateTime().toLocalDate().toString();
+        return value == null ? EMPTY_FIELD : dateOf(value).toString();
+    }
+
+    static LocalDate today() {
+        return LocalDate.now(ZONE);
+    }
+
+    private static LocalDate dateOf(Timestamp value) {
+        return value.toInstant().atZone(ZONE).toLocalDate();
     }
 
     /**
      * 距今过了几个自然日，按日历日相减，不按 24 小时一段截断
      */
     static long daysSince(Timestamp value) {
-        return value == null ? -1 : ChronoUnit.DAYS.between(value.toLocalDateTime().toLocalDate(), LocalDate.now());
+        return value == null ? -1 : ChronoUnit.DAYS.between(dateOf(value), today());
     }
 
     /**
      * 售后窗口的截止日：签收次日起算第 N 个自然日，当天 24:00 截止，与签收钟点无关
      */
     static LocalDate windowDeadline(Timestamp receiveTime, int days) {
-        return receiveTime.toLocalDateTime().toLocalDate().plusDays(days);
+        return dateOf(receiveTime).plusDays(days);
     }
 
     /**
      * 两个窗口一起报，并给出截止日期：只说七天无理由过了，模型会以为售后彻底没门；只给天数，模型会自己推日期
      */
     static String returnWindow(Timestamp receiveTime, LocalDate today) {
-        long signedDays = ChronoUnit.DAYS.between(receiveTime.toLocalDateTime().toLocalDate(), today);
+        long signedDays = ChronoUnit.DAYS.between(dateOf(receiveTime), today);
         LocalDate noReasonEnd = windowDeadline(receiveTime, RETURN_WINDOW_DAYS);
         LocalDate qualityEnd = windowDeadline(receiveTime, QUALITY_WINDOW_DAYS);
         if (!today.isAfter(noReasonEnd)) {
