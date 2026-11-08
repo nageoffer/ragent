@@ -57,7 +57,7 @@ import static org.mockito.Mockito.when;
 /**
  * 显式开启的真实模型回归；不使用业务工具，不写数据库，也不在普通单测中产生网络请求
  * 开启方式：RAGENT_LIVE_SUMMARY_TEST=true，并提供 DEEPSEEK_API_KEY
- * 直接调用生产摘要器与模型工厂，只有提示词读取替换为当前仓库文件
+ * 提示词通过 -Dragent.summary.live.prompt-file 指向评测仓库中的文件
  */
 @EnabledIfEnvironmentVariable(named = "RAGENT_LIVE_SUMMARY_TEST", matches = "true")
 class AgentConversationSummarizerLiveTest {
@@ -86,8 +86,10 @@ class AgentConversationSummarizerLiveTest {
         models.setProviders(Map.of("deepseek", provider));
         model = spy(new AgentEngineConfiguration(properties, models).agentChatModel());
 
-        String prompt = Files.readString(repositoryRoot().resolve(
-                "resources/initializer/bit-selection/prompts/context-compaction.txt"));
+        String promptFile = System.getProperty("ragent.summary.live.prompt-file");
+        assertThat(promptFile).as("请用 -Dragent.summary.live.prompt-file 指向 ragenteval 的 "
+                + "agent/agent_eval/initializer/datasets/bit-selection/prompts/context-compaction.txt").isNotBlank();
+        String prompt = Files.readString(Path.of(promptFile));
         AgentPromptResolver resolver = mock(AgentPromptResolver.class);
         when(resolver.render(eq(AgentPromptSlot.AGENT_CONTEXT_COMPACTION), anyMap()))
                 .thenAnswer(invocation -> {
@@ -198,14 +200,4 @@ class AgentConversationSummarizerLiveTest {
         return Msg.builder().name("user").role(MsgRole.USER).timestamp(timestamp).textContent(text).build();
     }
 
-    private Path repositoryRoot() {
-        Path directory = Path.of("").toAbsolutePath();
-        while (directory != null && !Files.isDirectory(directory.resolve("resources/initializer/bit-selection"))) {
-            directory = directory.getParent();
-        }
-        if (directory == null) {
-            throw new IllegalStateException("找不到比特严选提示词文件");
-        }
-        return directory;
-    }
 }

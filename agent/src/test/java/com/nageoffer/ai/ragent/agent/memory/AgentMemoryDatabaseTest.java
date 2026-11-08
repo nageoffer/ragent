@@ -72,7 +72,7 @@ import static org.mockito.Mockito.when;
 
 /**
  * 真实 PostgreSQL 上的批次机制：门槛按用户跨会话累计，A→B→A 的积压是一批、一次仲裁
- * 模型与锁是桩，只验取数、排序、会话编号与游标；语义交给同级仓 ragenteval 的 eval/functional/long_term_memory 在线回归
+ * 模型与锁是桩，只验取数、排序、会话编号与游标；语义交给同级仓 ragenteval 的 agent/agent_eval/functional/long_term_memory 在线回归
  * RAGENT_LIVE_MEMORY_TEST=true 时运行，数据库取当前 application.yaml，测试用户收尾删除
  */
 @EnabledIfEnvironmentVariable(named = "RAGENT_LIVE_MEMORY_TEST", matches = "true")

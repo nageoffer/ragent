@@ -37,7 +37,7 @@ import java.util.regex.Pattern;
 /**
  * 启动期建库建表
  * <p>
- * 表结构归本模块管、每次启动都跑，所以只能是非破坏性的：数据那半归 initializer 的 BizDataInitMain，
+ * 表结构归本模块管、每次启动都跑，所以只能是非破坏性的：数据由 ragenteval 的 initializer 灌入，
  * 它靠清空重灌实现幂等，放到启动路径上就成了「重启一次清空一次订单」
  */
 @Slf4j
@@ -199,7 +199,8 @@ public class BitSchemaInitializer {
 
     static String versionMismatch(int current, String database) {
         return ("业务库结构版本 %d，代码要求 %d。本项目不做增量迁移，"
-                + "请执行 dropdb %s 后重启，再跑一次 BizDataInitMain 灌数据")
+                + "请执行 dropdb %s 后重启，再在 ragenteval/agent 执行 "
+                + "python -m agent_eval init biz-data --dataset bit-selection --confirm RESET-BIT-SELECTION 灌数据")
                 .formatted(current, SCHEMA_VERSION, database);
     }
 
