@@ -93,7 +93,7 @@ class AgentConversationServiceImplTest {
         when(runGate.acquireConversation(anyString(), anyString())).thenReturn(releaseLock);
         when(conversationMapper.delete(any())).thenReturn(1);
         when(messageMapper.delete(any())).thenReturn(1);
-        service = new AgentConversationServiceImpl(conversationMapper, messageMapper, agentStateStore, runGate);
+        service = new AgentConversationServiceImpl(conversationMapper, messageMapper, agentStateStore, runGate, mock(com.nageoffer.ai.ragent.agent.cart.CartOperationStore.class));
     }
 
     @Test

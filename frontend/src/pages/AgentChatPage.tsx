@@ -1,6 +1,7 @@
 import * as React from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
+import { AgentCartOperations } from "@/components/agent/AgentCartOperations";
 import { AgentChatInput } from "@/components/agent/AgentChatInput";
 import { AgentLayout } from "@/components/agent/AgentLayout";
 import { AgentMessageList } from "@/components/agent/AgentMessageList";
@@ -87,7 +88,10 @@ export function AgentChatPage() {
         isStreaming={isStreaming}
         sessionKey={currentSessionId}
       />
-      <AgentChatInput />
+      <div>
+        <AgentCartOperations conversationId={currentSessionId} streaming={isStreaming} />
+        <AgentChatInput />
+      </div>
     </AgentLayout>
   );
 }

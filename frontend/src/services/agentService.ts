@@ -50,3 +50,35 @@ export async function getAgentMeta() {
 export async function stopAgentTask(taskId: string) {
   return api.post<void>(`/agent/v1/stop?taskId=${encodeURIComponent(taskId)}`);
 }
+
+export interface CartOperation {
+  operationId: string;
+  conversationId: string;
+  roundId: string;
+  skuCode: string;
+  productName?: string | null;
+  quantity: number;
+  status: "PROCESSING" | "VERIFYING" | "PENDING" | "SUCCEEDED" | "REJECTED" | "CANCELLED";
+  writeAttempts: number;
+  stoppedAt?: string | null;
+  disconnectedAt?: string | null;
+  message?: string | null;
+  quantityAfter?: number | null;
+  executedAt?: string | null;
+}
+
+export function listCartOperations(conversationId: string) {
+  return api.get<CartOperation[], CartOperation[]>(`/agent/v1/conversations/${conversationId}/cart-operations`);
+}
+
+export interface CartOperationActionResult {
+  operation: CartOperation;
+  verificationStarted: boolean;
+  deferred: boolean;
+  retryAt?: string | null;
+  notice?: string | null;
+}
+
+export function actOnCartOperation(operationId: string, action: "verify" | "continue" | "stop", signal?: AbortSignal) {
+  return api.post<CartOperationActionResult, CartOperationActionResult>(`/agent/v1/cart-operations/${operationId}/${action}`, undefined, { signal });
+}

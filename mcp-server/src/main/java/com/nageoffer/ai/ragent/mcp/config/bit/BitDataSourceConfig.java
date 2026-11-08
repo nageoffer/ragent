@@ -17,6 +17,7 @@
 
 package com.nageoffer.ai.ragent.mcp.config.bit;
 
+import org.springframework.jdbc.core.JdbcTemplate;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.config.GlobalConfig;
 import com.baomidou.mybatisplus.spring.MybatisSqlSessionFactoryBean;
@@ -83,6 +84,11 @@ public class BitDataSourceConfig {
     @Bean
     public SqlSessionTemplate bitSqlSessionTemplate(SqlSessionFactory bitSqlSessionFactory) {
         return new SqlSessionTemplate(bitSqlSessionFactory);
+    }
+
+    @Bean
+    public JdbcTemplate bitJdbcTemplate(DataSource bitDataSource) {
+        return new JdbcTemplate(bitDataSource);
     }
 
     @Bean

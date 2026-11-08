@@ -2,8 +2,8 @@
 --
 -- 属主是 mcp-server，启动期自建；initializer 只负责灌数据，不持有建表脚本
 --
--- 这个库不允许存在任何需要跨版本保留的数据：结构版本一落后就 dropdb 重来，
--- 本项目不做增量迁移。改了本文件就把 BitSchemaInitializer.SCHEMA_VERSION 一起加一
+-- 购物车回执必须跨版本保留，不能通过删库升级。
+-- 改了本文件须更新 BitSchemaInitializer.SCHEMA_VERSION 并提供无损迁移。
 --
 -- 建表约定：
 --   每张表一律 id BIGINT    代理主键，业务编码走 UNIQUE 约束——业务编码当主键在改编码规则时
@@ -301,3 +301,17 @@ COMMENT ON COLUMN t_ticket.content IS '工单内容，要带上已经确认过�
 COMMENT ON COLUMN t_ticket.status IS '受理状态';
 COMMENT ON COLUMN t_ticket.create_time IS '提交时间';
 COMMENT ON COLUMN t_ticket.update_time IS '更新时间';
+
+-- 可靠加购回执：必须与 t_cart 位于同一 PostgreSQL 数据库。
+CREATE TABLE IF NOT EXISTS t_cart_operation_receipt (
+    operation_id UUID PRIMARY KEY,
+    user_id VARCHAR(64) NOT NULL,
+    sku_code VARCHAR(128) NOT NULL,
+    action VARCHAR(16) NOT NULL CHECK (action = 'add'),
+    quantity INTEGER NOT NULL,
+    result_status VARCHAR(24) NOT NULL CHECK (result_status IN ('PROCESSING','SUCCEEDED','REJECTED')),
+    quantity_after INTEGER,
+    result_message TEXT,
+    executed_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+-- 首期不清理回执；后续清理详情必须保留操作 ID、参数绑定和去重结论。
