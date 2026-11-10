@@ -88,7 +88,7 @@ class AgentConversationSummarizerLiveTest {
 
         String promptFile = System.getProperty("ragent.summary.live.prompt-file");
         assertThat(promptFile).as("请用 -Dragent.summary.live.prompt-file 指向 ragenteval 的 "
-                + "agent/agent_eval/initializer/datasets/bit-selection/prompts/context-compaction.txt").isNotBlank();
+                + "agent/agent_init/scenarios/bit-selection/prompts/context-compaction.txt").isNotBlank();
         String prompt = Files.readString(Path.of(promptFile));
         AgentPromptResolver resolver = mock(AgentPromptResolver.class);
         when(resolver.render(eq(AgentPromptSlot.AGENT_CONTEXT_COMPACTION), anyMap()))

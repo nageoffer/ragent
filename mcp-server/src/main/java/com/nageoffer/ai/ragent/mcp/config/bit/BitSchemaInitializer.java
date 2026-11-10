@@ -200,7 +200,7 @@ public class BitSchemaInitializer {
     static String versionMismatch(int current, String database) {
         return ("业务库结构版本 %d，代码要求 %d。本项目不做增量迁移，"
                 + "请执行 dropdb %s 后重启，再在 ragenteval/agent 执行 "
-                + "python -m agent_eval init biz-data --dataset bit-selection --confirm RESET-BIT-SELECTION 灌数据")
+                + "python -m agent_init biz-data --scenario bit-selection --confirm RESET-BIT-SELECTION 灌数据")
                 .formatted(current, SCHEMA_VERSION, database);
     }
 

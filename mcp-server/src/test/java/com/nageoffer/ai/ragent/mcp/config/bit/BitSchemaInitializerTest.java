@@ -97,6 +97,6 @@ class BitSchemaInitializerTest {
         String message = BitSchemaInitializer.versionMismatch(0, "ragent_bit");
 
         assertTrue(message.contains("dropdb ragent_bit"));
-        assertTrue(message.contains("python -m agent_eval init biz-data"));
+        assertTrue(message.contains("python -m agent_init biz-data"));
     }
 }
