@@ -11,6 +11,7 @@
     "format": "prettier --write ."
   },
   "dependencies": {
+    "@antv/g": "^6.3.1",
     "@antv/g6": "^5.1.1",
     "@hookform/resolvers": "^5.2.2",
     "@js-preview/excel": "^1.7.14",
