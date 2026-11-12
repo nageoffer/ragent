@@ -19,7 +19,6 @@ package com.nageoffer.ai.ragent.rag.core.intent;
 
 import cn.hutool.core.collection.CollUtil;
 import com.nageoffer.ai.ragent.rag.dto.IntentCandidate;
-import com.nageoffer.ai.ragent.rag.dto.IntentGroup;
 import com.nageoffer.ai.ragent.rag.dto.SubQuestionIntent;
 import com.nageoffer.ai.ragent.framework.trace.RagTraceNode;
 import com.nageoffer.ai.ragent.rag.core.rewrite.RewriteResult;
@@ -72,14 +71,12 @@ public class IntentResolver {
         return capTotalIntents(subIntents);
     }
 
-    public IntentGroup mergeIntentGroup(List<SubQuestionIntent> subIntents) {
-        List<NodeScore> mcpIntents = new ArrayList<>();
+    public List<NodeScore> mergeKbIntents(List<SubQuestionIntent> subIntents) {
         List<NodeScore> kbIntents = new ArrayList<>();
         for (SubQuestionIntent si : subIntents) {
-            mcpIntents.addAll(NodeScoreFilters.mcp(si.nodeScores()));
             kbIntents.addAll(NodeScoreFilters.kb(si.nodeScores()));
         }
-        return new IntentGroup(mcpIntents, kbIntents);
+        return kbIntents;
     }
 
     public boolean isSystemOnly(List<NodeScore> nodeScores) {

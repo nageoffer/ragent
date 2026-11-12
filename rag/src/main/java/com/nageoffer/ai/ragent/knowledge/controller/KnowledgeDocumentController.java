@@ -33,6 +33,7 @@ import com.nageoffer.ai.ragent.knowledge.support.IngestionSpecSchemaProvider;
 import com.nageoffer.ai.ragent.rag.service.FileStorageService;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.ContentDisposition;
 import org.springframework.http.MediaType;
 import org.springframework.util.StreamUtils;
 import org.springframework.validation.annotation.Validated;
@@ -50,7 +51,6 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.InputStream;
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
@@ -190,7 +190,10 @@ public class KnowledgeDocumentController {
         String fileType = doc.getFileType() != null ? doc.getFileType().toLowerCase() : "";
         String contentType = CONTENT_TYPE_MAP.getOrDefault(fileType, "application/octet-stream");
         response.setContentType(contentType);
-        response.setHeader("Content-Disposition", "inline; filename=\"" + URLEncoder.encode(doc.getDocName(), StandardCharsets.UTF_8) + "\"");
+        response.setHeader("Content-Disposition", ContentDisposition.inline()
+                .filename(doc.getDocName(), StandardCharsets.UTF_8)
+                .build()
+                .toString());
         try (InputStream in = fileStorageService.openStream(doc.getFileUrl())) {
             StreamUtils.copy(in, response.getOutputStream());
         }

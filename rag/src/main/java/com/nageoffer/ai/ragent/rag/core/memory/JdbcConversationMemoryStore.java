@@ -115,7 +115,8 @@ public class JdbcConversationMemoryStore implements ConversationMemoryStore {
                 : record.getContent();
         return new ChatMessage(
                 role,
-                content
+                content,
+                ChatMessage.MessageStatus.valueOf(record.getMessageStatus())
         );
     }
 

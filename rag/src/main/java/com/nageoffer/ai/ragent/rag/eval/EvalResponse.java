@@ -51,16 +51,6 @@ public class EvalResponse {
     private List<String> retrievedContextDocIds;
 
     /**
-     * MCP 工具调用结果（无 MCP 分支时为空字符串）
-     */
-    private String mcpContext;
-
-    /**
-     * 是否走了 MCP 分支
-     */
-    private boolean hasMcp;
-
-    /**
      * 是否走了 KB 检索
      */
     private boolean hasKb;

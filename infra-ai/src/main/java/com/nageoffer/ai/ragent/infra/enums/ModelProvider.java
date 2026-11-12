@@ -54,6 +54,16 @@ public enum ModelProvider {
     DEEP_SEEK("deepseek"),
 
     /**
+     * 腾讯云 TokenHub（混元 Hy 系列）
+     */
+    HUNYUAN("hunyuan"),
+
+    /**
+     * 月之暗面 Kimi 开放平台
+     */
+    KIMI("kimi"),
+
+    /**
      * Atlas Cloud OpenAI-compatible model service
      */
     ATLAS_CLOUD("atlascloud"),

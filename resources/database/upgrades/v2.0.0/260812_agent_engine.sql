@@ -13,10 +13,9 @@ CREATE TABLE IF NOT EXISTS t_agent_conversation (
     update_time     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     deleted         SMALLINT    DEFAULT 0
 );
--- 部分唯一索引：逻辑删的旧行不再占用唯一键，否则删除后同 ID 重开会话必撞约束
+-- 会话身份不可复用：逻辑删除后仍保留唯一键，新会话必须使用服务端生成的新 ID
 CREATE UNIQUE INDEX IF NOT EXISTS uk_agent_conversation_user
-    ON t_agent_conversation (conversation_id, user_id)
-    WHERE deleted = 0;
+    ON t_agent_conversation (conversation_id, user_id);
 CREATE INDEX IF NOT EXISTS idx_agent_conv_user_time ON t_agent_conversation (user_id, last_time);
 COMMENT ON TABLE t_agent_conversation IS 'Agent 会话列表';
 
@@ -46,7 +45,7 @@ CREATE TABLE IF NOT EXISTS t_agent_state (
     update_time TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (user_id, session_id, state_key)
 );
-COMMENT ON TABLE t_agent_state IS 'AgentScope 工作状态存储，payload 为框架自有编码的不透明 JSON';
+COMMENT ON TABLE t_agent_state IS 'AgentScope状态存储';
 
 -- 2. 列注释
 -- t_agent_conversation
@@ -74,7 +73,7 @@ COMMENT ON COLUMN t_agent_message.update_time IS '更新时间';
 COMMENT ON COLUMN t_agent_message.deleted IS '是否删除 0：正常 1：删除';
 
 -- t_agent_state
-COMMENT ON COLUMN t_agent_state.user_id IS '用户ID，匿名会话为 __anon__';
+COMMENT ON COLUMN t_agent_state.user_id IS '用户ID';
 COMMENT ON COLUMN t_agent_state.session_id IS '会话ID，即 AgentScope 的 sessionId';
 COMMENT ON COLUMN t_agent_state.state_key IS '状态键，AgentScope 侧固定传 agent_state';
 COMMENT ON COLUMN t_agent_state.payload IS '框架自有编码的状态 JSON，业务侧不解析';

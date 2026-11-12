@@ -39,7 +39,7 @@ import org.springframework.stereotype.Component;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class KnowledgeDocumentChunkTransactionChecker implements TransactionChecker {
+public class KnowledgeDocumentChunkTransactionChecker implements TransactionChecker<KnowledgeDocumentChunkEvent> {
 
     private final KnowledgeDocumentMapper documentMapper;
     private final DelegatingTransactionListener transactionListener;
@@ -53,10 +53,15 @@ public class KnowledgeDocumentChunkTransactionChecker implements TransactionChec
     }
 
     @Override
-    public boolean check(MessageWrapper<?> message) {
+    public Class<KnowledgeDocumentChunkEvent> bodyType() {
+        return KnowledgeDocumentChunkEvent.class;
+    }
+
+    @Override
+    public boolean check(MessageWrapper<KnowledgeDocumentChunkEvent> message) {
         log.info("[事务回查] 文档分块，消息体：{}", JSONUtil.toJsonStr(message));
 
-        KnowledgeDocumentChunkEvent event = (KnowledgeDocumentChunkEvent) message.getBody();
+        KnowledgeDocumentChunkEvent event = message.getBody();
         String docId = event.getDocId();
         KnowledgeDocumentDO documentDO = documentMapper.selectById(docId);
 

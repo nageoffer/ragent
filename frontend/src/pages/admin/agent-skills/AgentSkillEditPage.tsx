@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Info, Save, ShieldAlert } from "lucide-react";
+import { ArrowLeft, Info, Save } from "lucide-react";
 import { toast } from "sonner";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -260,7 +259,7 @@ export function AgentSkillEditPage() {
 
           <div className="agent-skill-field">
             <label className="agent-skill-field__label">
-              加载后解锁的工具
+              配置为加载后解锁的工具
               {form.toolIds.length > 0 ? (
                 <span className="ml-2 text-[11px] font-normal text-slate-400">
                   已选 {form.toolIds.length} 个
@@ -269,7 +268,8 @@ export function AgentSkillEditPage() {
             </label>
             <p className="agent-skill-field__hint">
               勾选的工具要先加载本手册才对模型可见。只勾不看手册就会调错的（写操作、参数要靠手册教怎么填的查询），
-              手册会用到但自己就能调对的不要勾，正文按名字引用即可。例：leave_submit 勾，leave_query 不勾
+              手册会用到但自己就能调对的不要勾，正文按名字引用即可。例：leave_submit 勾，leave_query 不勾。
+              列表来自意图树，工具是否挂载、调用前是否需要确认以 Agent 运行时为准
             </p>
             <div className="agent-skill-tools">
               {toolOptions.length === 0 ? (
@@ -291,20 +291,7 @@ export function AgentSkillEditPage() {
                         className="mt-0.5"
                       />
                       <span className="min-w-0 flex-1">
-                        <span className="flex flex-wrap items-center gap-1.5">
-                          <span className="text-[13px] font-medium text-slate-700">{option.name}</span>
-                          {option.requireConfirm ? (
-                            <Badge variant="outline" className="gap-1 text-[10px] font-normal text-amber-600">
-                              <ShieldAlert className="h-3 w-3" />
-                              需确认
-                            </Badge>
-                          ) : null}
-                          {option.available === false ? (
-                            <Badge variant="outline" className="text-[10px] font-normal text-slate-400">
-                              未注册
-                            </Badge>
-                          ) : null}
-                        </span>
+                        <span className="text-[13px] font-medium text-slate-700">{option.name}</span>
                         <span className="mt-0.5 block font-mono text-[11px] text-slate-400">
                           {option.toolId}
                         </span>

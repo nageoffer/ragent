@@ -22,8 +22,6 @@ import com.nageoffer.ai.ragent.framework.convention.RetrievedChunkKey;
 import com.nageoffer.ai.ragent.rag.config.SearchChannelProperties;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentNode;
 import com.nageoffer.ai.ragent.rag.core.intent.NodeScore;
-import com.nageoffer.ai.ragent.rag.core.mcp.McpParameterExtractor;
-import com.nageoffer.ai.ragent.rag.core.mcp.McpToolRegistry;
 import com.nageoffer.ai.ragent.rag.core.prompt.ContextFormatter;
 import com.nageoffer.ai.ragent.rag.core.prompt.DefaultContextFormatter;
 import com.nageoffer.ai.ragent.rag.core.prompt.PromptTemplateLoader;
@@ -186,10 +184,7 @@ class RetrievalEngineTest {
                 new SearchChannelProperties(),
                 contextFormatter,
                 mock(PromptTemplateLoader.class),
-                mock(McpParameterExtractor.class),
-                mock(McpToolRegistry.class),
                 multiChannel,
-                Runnable::run,
                 Runnable::run
         );
     }

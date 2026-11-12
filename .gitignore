@@ -48,3 +48,9 @@ resources/docker/graphrag/.env
 .output/
 docs/temp
 .claude/
+
+### Frontend build outputs ###
+# tsc -b emits these next to the sources; Vite would load vite.config.js ahead of vite.config.ts
+frontend/*.tsbuildinfo
+frontend/vite.config.js
+frontend/vite.config.d.ts

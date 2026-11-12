@@ -37,7 +37,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * 流式任务跨节点取消管理器
  * <p>
- * 机制层与引擎无关：注册表 + Redis 标记 + 广播主题构成统一的取消协议，
+ * 机制层与引擎无关：系统侧取消直接处理本地注册表，用户主动停止通过 Redis 标记与广播跨节点投递，
  * 各引擎的个性化收尾动作（补发事件、中断上游流等）以回调形式注入
  */
 @Slf4j
@@ -66,6 +66,10 @@ public class StreamTaskManager {
 
     private final RedissonClient redissonClient;
     private int listenerId = -1;
+
+    public static Duration taskRetention() {
+        return CANCEL_TTL;
+    }
 
     public StreamTaskManager(RedissonClient redissonClient) {
         this.redissonClient = redissonClient;
@@ -109,7 +113,7 @@ public class StreamTaskManager {
             owner.set(ownerUserId, CANCEL_TTL);
         }
         if (isTaskCancelledInRedis(taskId, taskInfo)) {
-            onCancelFinalizer.run();
+            runFinalizerOnce(taskId, taskInfo);
         }
     }
 
@@ -137,7 +141,8 @@ public class StreamTaskManager {
      * 系统侧回收（SSE 超时、客户端断连），容器回调线程上没有登录用户可比对
      */
     public void cancel(String taskId) {
-        publishCancel(taskId, SYSTEM_REQUESTER);
+        // SSE 生命周期回调与任务在同一个 JVM，无需依赖 Redis/MQ 往返
+        cancelLocal(taskId, SYSTEM_REQUESTER);
     }
 
     /**
@@ -181,7 +186,7 @@ public class StreamTaskManager {
         if (requester == null) {
             return false;
         }
-        if (!isRequesterAllowed(taskInfo, requester)) {
+        if (isRequesterDenied(taskInfo, requester)) {
             log.warn("忽略非属主埋下的取消标记，taskId：{}，属主：{}，发起方：{}", taskId, taskInfo.ownerUserId, requester);
             return false;
         }
@@ -190,14 +195,14 @@ public class StreamTaskManager {
     }
 
     /**
-     * 系统侧回收无条件放行；用户侧只认精确属主，属主还没落地（注册未发生）时一律不认
+     * 判断是否拒绝发起方：系统侧回收不拒绝；用户侧非属主或属主还没落地（注册未发生）时拒绝
      * 这正是预埋标记要在 register 那一刻复核的窗口，本地放过去反而绕开了复核
      */
-    private boolean isRequesterAllowed(StreamTaskInfo taskInfo, String requester) {
+    private boolean isRequesterDenied(StreamTaskInfo taskInfo, String requester) {
         if (SYSTEM_REQUESTER.equals(requester)) {
-            return true;
+            return false;
         }
-        return StrUtil.isNotBlank(taskInfo.ownerUserId) && taskInfo.ownerUserId.equals(requester);
+        return StrUtil.isBlank(taskInfo.ownerUserId) || !taskInfo.ownerUserId.equals(requester);
     }
 
     private void cancelLocal(String taskId, String requester) {
@@ -208,7 +213,7 @@ public class StreamTaskManager {
 
         // 执行端复核发起方：taskId 时间有序可预测，越权取消喷得中就成
         // 不匹配时连 cancelled 都不置——置了会让 register 的复核短路，等于把标记复核那道门绕开
-        if (!isRequesterAllowed(taskInfo, requester)) {
+        if (isRequesterDenied(taskInfo, requester)) {
             log.warn("拒绝越权取消流式任务，taskId：{}，属主：{}，发起方：{}", taskId, taskInfo.ownerUserId, requester);
             return;
         }
@@ -218,13 +223,29 @@ public class StreamTaskManager {
             return;
         }
 
-        if (taskInfo.cancelAction != null) {
-            taskInfo.cancelAction.run();
+        // 避免cancelAction执行抛出的异常被finally逻辑中抛出的异常覆盖掉
+        // 将finalizer收尾操作抛出的异常挂到 suppressed 上 (目前异常不会被处理）
+        Throwable failure = null;
+        try {
+            if (taskInfo.cancelAction != null) {
+                taskInfo.cancelAction.run();
+            }
+        } catch (Throwable t) {
+            failure = t;
         }
-
-        // 在取消时执行收尾回调，保存已累积的内容
-        if (taskInfo.finalizer != null) {
-            taskInfo.finalizer.run();
+        try {
+            if (taskInfo.finalizer != null) {
+                runFinalizerOnce(taskId, taskInfo);
+            }
+        } catch (Throwable t) {
+            if (failure == null) {
+                failure = t;
+            } else if (failure != t) {
+                failure.addSuppressed(t);
+            }
+        }
+        if (failure != null) {
+            log.error("取消流式任务失败，taskId：{}，发起方：{}", taskId, requester, failure);
         }
     }
 
@@ -235,6 +256,18 @@ public class StreamTaskManager {
         // 清理Redis
         redissonClient.getBucket(cancelKey(taskId)).deleteAsync();
         redissonClient.getBucket(ownerKey(taskId)).deleteAsync();
+    }
+
+    /**
+     * 收尾回调最多尝试一次
+     * register 侧 和 cancel 侧 因时序问题会重复执行收尾操作 -> 两次重复的 SSE 事件推送与落库
+     */
+    private void runFinalizerOnce(String taskId, StreamTaskInfo taskInfo) {
+        if (!taskInfo.finalizerClaimed.compareAndSet(false, true)) {
+            log.info("流式任务收尾已执行过，忽略重复触发，taskId：{}", taskId);
+            return;
+        }
+        taskInfo.finalizer.run();
     }
 
     private String cancelKey(String taskId) {
@@ -252,6 +285,7 @@ public class StreamTaskManager {
 
     private static final class StreamTaskInfo {
         private final AtomicBoolean cancelled = new AtomicBoolean(false);
+        private final AtomicBoolean finalizerClaimed = new AtomicBoolean(false);
         private volatile String ownerUserId;
         private volatile Runnable cancelAction;
         private volatile Runnable finalizer;

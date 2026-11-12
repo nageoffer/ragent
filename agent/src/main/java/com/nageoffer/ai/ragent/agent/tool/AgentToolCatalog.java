@@ -19,33 +19,32 @@ package com.nageoffer.ai.ragent.agent.tool;
 
 import cn.hutool.core.util.StrUtil;
 import com.nageoffer.ai.ragent.agent.config.ConditionalOnAgentEngine;
-import com.nageoffer.ai.ragent.agent.memory.AgentMemoryPipeline;
+import com.nageoffer.ai.ragent.agent.memory.AgentMemoryFlusher;
 import com.nageoffer.ai.ragent.agent.memory.AgentMemoryProperties;
-import com.nageoffer.ai.ragent.agent.service.AgentConversationService;
 import com.nageoffer.ai.ragent.agent.skill.SkillLoadTool;
+import com.nageoffer.ai.ragent.agent.tool.AgentMcpClients.RemoteTool;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentNode;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentNodeRegistry;
-import com.nageoffer.ai.ragent.rag.core.mcp.McpToolExecutor;
-import com.nageoffer.ai.ragent.rag.core.mcp.McpToolRegistry;
-import com.nageoffer.ai.ragent.rag.core.prompt.AgentPromptResolver;
 import com.nageoffer.ai.ragent.rag.core.prompt.AgentPromptSlot;
 import com.nageoffer.ai.ragent.rag.core.skill.AgentSkill;
 import com.nageoffer.ai.ragent.rag.core.skill.AgentSkillRegistry;
 import com.nageoffer.ai.ragent.rag.service.KnowledgeSearchFacade;
 import io.agentscope.core.tool.Toolkit;
+import io.agentscope.core.tool.mcp.McpTool;
 import io.modelcontextprotocol.spec.McpSchema.JsonSchema;
 import io.modelcontextprotocol.spec.McpSchema.Tool;
+import io.modelcontextprotocol.spec.McpSchema.ToolAnnotations;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Function;
-import java.util.stream.Collectors;
+import java.util.Set;
 
 /**
  * 主 Agent 工具目录：固定注册 search_knowledge，并按意图树配置挂载当前可用的 MCP 工具
@@ -56,23 +55,28 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class AgentToolCatalog {
 
+    /**
+     * Toolkit 按名注册会覆盖，这几个名字不许 MCP 工具占用
+     */
+    private static final Set<String> RESERVED_TOOL_NAMES = Set.of(
+            KnowledgeSearchTool.TOOL_NAME, MemoryFlushTool.TOOL_NAME, SkillLoadTool.TOOL_NAME);
+
     private final KnowledgeSearchFacade knowledgeSearchFacade;
-    private final AgentConversationService conversationService;
     private final IntentNodeRegistry intentNodeRegistry;
-    private final McpToolRegistry mcpToolRegistry;
-    private final AgentPromptResolver agentPromptResolver;
+    private final AgentMcpClients mcpClients;
     private final AgentMemoryProperties memoryProperties;
-    private final AgentMemoryPipeline memoryPipeline;
+    private final AgentMemoryFlusher memoryFlusher;
     private final AgentSkillRegistry skillRegistry;
 
     /**
      * 解析当前可用工具并生成快照，同一请求内指纹与 Toolkit 都从此快照派生
+     *
+     * @param prompts 本轮提示词快照，由调用方一次读出
      */
-    public ResolvedCatalog resolve() {
-        List<String> unavailableToolIds = new ArrayList<>();
-        List<McpToolBinding> bindings = resolveMcpToolBindings(unavailableToolIds);
-        return new ResolvedCatalog(resolveKnowledgeToolDescription(), resolveMemoryToolDescription(),
-                bindings, unavailableToolIds, skillRegistry.listEnabled());
+    public ResolvedCatalog resolve(Map<String, String> prompts) {
+        McpResolution mcp = resolveMcpTools();
+        return new ResolvedCatalog(resolveKnowledgeToolDescription(prompts), resolveMemoryToolDescription(prompts),
+                mcp.bindings, mcp.unavailableToolIds, skillRegistry.listEnabled());
     }
 
     /**
@@ -82,19 +86,19 @@ public class AgentToolCatalog {
     public Toolkit buildToolkit(ResolvedCatalog catalog) {
         Toolkit toolkit = new Toolkit();
         toolkit.registerAgentTool(new KnowledgeSearchTool(
-                catalog.knowledgeToolDescription, knowledgeSearchFacade, conversationService));
+                catalog.knowledgeToolDescription, knowledgeSearchFacade));
         if (catalog.memoryToolDescription != null) {
-            toolkit.registerAgentTool(new MemoryFlushTool(catalog.memoryToolDescription, memoryPipeline));
+            toolkit.registerAgentTool(new MemoryFlushTool(catalog.memoryToolDescription, memoryFlusher));
         } else if (memoryProperties.isLongTermEnabled()) {
             log.warn("AGENT_MEMORY_TOOL_DESCRIPTION 提示词为空, 本次不挂载 {}", MemoryFlushTool.TOOL_NAME);
         }
         if (catalog.hasSkills) {
-            toolkit.registerAgentTool(new SkillLoadTool(skillRegistry, catalog.displayNames));
+            toolkit.registerAgentTool(new SkillLoadTool(skillRegistry));
         }
-        catalog.bindings.forEach(binding -> toolkit.registerAgentTool(new McpToolBridge(binding)));
-        // 不可用工具只在构建 Toolkit 时报一次，避免每次解析都刷日志
+        catalog.bindings.forEach(binding -> toolkit.registerAgentTool(new McpToolProxy(binding)));
+        // 只在构建实例时记，不随每次 resolve 刷日志
         catalog.unavailableToolIds.forEach(toolId ->
-                log.warn("意图树配置的 MCP 工具当前不可用, toolId: {}", toolId));
+                log.warn("意图树配置的 MCP 工具未挂载: 服务端未发现或与内置工具重名, toolId: {}", toolId));
         return toolkit;
     }
 
@@ -102,11 +106,11 @@ public class AgentToolCatalog {
      * 当前可用的 MCP 工具数量，用于 meta 探活接口
      */
     public int mcpToolCount() {
-        return resolveMcpToolBindings(new ArrayList<>()).size();
+        return resolveMcpTools().bindings.size();
     }
 
-    private String resolveKnowledgeToolDescription() {
-        String description = agentPromptResolver.resolve(AgentPromptSlot.KNOWLEDGE_TOOL_DESCRIPTION);
+    private String resolveKnowledgeToolDescription(Map<String, String> prompts) {
+        String description = prompts.get(AgentPromptSlot.KNOWLEDGE_TOOL_DESCRIPTION.name());
         if (StrUtil.isBlank(description)) {
             throw new IllegalStateException("KNOWLEDGE_TOOL_DESCRIPTION 提示词不允许为空");
         }
@@ -116,64 +120,73 @@ public class AgentToolCatalog {
     /**
      * 长期记忆关闭或提示词为空时返回 null
      */
-    private String resolveMemoryToolDescription() {
+    private String resolveMemoryToolDescription(Map<String, String> prompts) {
         if (!memoryProperties.isLongTermEnabled()) {
             return null;
         }
-        String description = agentPromptResolver.resolve(AgentPromptSlot.AGENT_MEMORY_TOOL_DESCRIPTION);
+        String description = prompts.get(AgentPromptSlot.AGENT_MEMORY_TOOL_DESCRIPTION.name());
         return StrUtil.isBlank(description) ? null : description;
     }
 
     /**
-     * 意图树配置与 MCP 注册表取交集，有配置但无执行器的记入 unavailableToolIds
+     * 意图树配置与 AgentScope 发现的工具取交集，无工具或与内置工具重名的记入 unavailableToolIds
+     * 一个工具只有一个节点（管理端与唯一索引共同保证），两处排序都为了指纹稳定
      */
-    private List<McpToolBinding> resolveMcpToolBindings(List<String> unavailableToolIds) {
-        Map<String, List<IntentNode>> nodesByToolId = intentNodeRegistry.listMcpToolNodes().stream()
-                .collect(Collectors.groupingBy(
-                        node -> node.getMcpToolId().trim(),
-                        LinkedHashMap::new,
-                        Collectors.toList()));
-
-        Map<String, McpToolExecutor> executors = mcpToolRegistry.listAllExecutors().stream()
-                .collect(Collectors.toMap(
-                        McpToolExecutor::getToolId,
-                        Function.identity(),
-                        (left, right) -> right));
-
+    private McpResolution resolveMcpTools() {
         List<McpToolBinding> bindings = new ArrayList<>();
-        nodesByToolId.forEach((toolId, nodes) -> {
-            McpToolExecutor executor = executors.get(toolId);
-            if (executor == null) {
+        List<String> unavailableToolIds = new ArrayList<>();
+        for (IntentNode node : intentNodeRegistry.listMcpToolNodes()) {
+            String toolId = node.getMcpToolId().trim();
+            RemoteTool remote = mcpClients.get(toolId);
+            if (remote == null || RESERVED_TOOL_NAMES.contains(toolId)) {
                 unavailableToolIds.add(toolId);
-                return;
+                continue;
             }
-            bindings.add(toBinding(toolId, nodes, executor));
-        });
-        return bindings;
+            String displayName = StrUtil.isNotBlank(node.getName()) ? node.getName() : toolId;
+            bindings.add(McpToolBinding.of(toolId, displayName, node.getDescription(), node.isRequireConfirm(), remote));
+        }
+        bindings.sort(Comparator.comparing(McpToolBinding::toolId));
+        unavailableToolIds.sort(Comparator.naturalOrder());
+        return new McpResolution(bindings, unavailableToolIds);
     }
 
-    private McpToolBinding toBinding(String toolId, List<IntentNode> nodes, McpToolExecutor executor) {
-        String displayName = nodes.stream()
-                .map(IntentNode::getName)
-                .filter(StrUtil::isNotBlank)
-                .findFirst()
-                .orElse(toolId);
-        String description = nodes.stream()
-                .map(IntentNode::getDescription)
-                .filter(StrUtil::isNotBlank)
-                .distinct()
-                .collect(Collectors.joining("\n"));
-        // 同一工具挂在多个意图下，任一节点勾选即需确认
-        boolean requireConfirm = nodes.stream().anyMatch(IntentNode::isRequireConfirm);
-        return new McpToolBinding(toolId, displayName, description, requireConfirm, executor);
+    private record McpResolution(List<McpToolBinding> bindings, List<String> unavailableToolIds) {
     }
 
+    /**
+     * MCP 工具的生效值，AgentScope 工具与指纹都读这里
+     *
+     * @param description  意图树描述为空时回落服务端描述
+     * @param needsConfirm 意图树勾选，或服务端未明确声明 readOnlyHint=true
+     */
     public record McpToolBinding(
             String toolId,
             String displayName,
             String description,
-            boolean requireConfirm,
-            McpToolExecutor executor) {
+            Map<String, Object> inputSchema,
+            boolean readOnly,
+            boolean needsConfirm,
+            RemoteTool remote) {
+
+        public static McpToolBinding of(String toolId, String displayName, String description,
+                                        boolean confirmConfigured, RemoteTool remote) {
+            Tool definition = remote.definition();
+            ToolAnnotations annotations = definition.annotations();
+            Boolean readOnlyHint = annotations == null ? null : annotations.readOnlyHint();
+            String effectiveDescription = StrUtil.isNotBlank(description)
+                    ? description
+                    : StrUtil.emptyIfNull(definition.description());
+            return new McpToolBinding(toolId, displayName, effectiveDescription,
+                    McpTool.convertMcpSchemaToParameters(definition.inputSchema(), Set.of()),
+                    Boolean.TRUE.equals(readOnlyHint),
+                    confirmConfigured || !Boolean.TRUE.equals(readOnlyHint),
+                    remote);
+        }
+
+        public McpToolFingerprint fingerprint() {
+            return new McpToolFingerprint(toolId, displayName, description, inputSchema, readOnly, needsConfirm);
+        }
+
     }
 
     /**
@@ -223,23 +236,13 @@ public class AgentToolCatalog {
             Map<String, Map<String, String>> labels = new LinkedHashMap<>();
             this.bindings.forEach(binding -> {
                 names.put(binding.toolId(), binding.displayName());
-                labels.put(binding.toolId(), fieldLabels(binding.executor().getToolDefinition()));
+                labels.put(binding.toolId(), fieldLabels(binding.remote().definition().inputSchema()));
             });
             this.displayNames = Map.copyOf(names);
             this.fieldLabels = Collections.unmodifiableMap(labels);
             this.fingerprint = new ToolCatalogFingerprint(knowledgeToolDescription, memoryToolDescription,
-                    this.bindings.stream()
-                            .map(binding -> new McpToolFingerprint(
-                                    binding.toolId(),
-                                    binding.displayName(),
-                                    binding.description(),
-                                    binding.requireConfirm(),
-                                    binding.executor().getToolDefinition()))
-                            .toList(),
-                    skills.stream()
-                            .map(skill -> new SkillFingerprint(
-                                    skill.skillCode(), skill.name(), skill.description(), skill.toolIds()))
-                            .toList());
+                    this.bindings.stream().map(McpToolBinding::fingerprint).toList(),
+                    this.unavailableToolIds, hasSkills);
         }
 
         public ToolCatalogFingerprint fingerprint() {
@@ -261,15 +264,15 @@ public class AgentToolCatalog {
         }
 
         /**
-         * 从 schema 提取字段标签，用 LinkedHashMap 保持声明序
+         * 从服务端 schema 提取字段标签，用 LinkedHashMap 保持声明序
          */
-        private static Map<String, String> fieldLabels(Tool tool) {
-            JsonSchema schema = tool == null ? null : tool.inputSchema();
-            if (schema == null || schema.properties() == null) {
+        private static Map<String, String> fieldLabels(JsonSchema inputSchema) {
+            if (inputSchema == null || inputSchema.properties() == null) {
                 return Map.of();
             }
             Map<String, String> labels = new LinkedHashMap<>();
-            schema.properties().forEach((field, spec) -> labels.put(field, titleOf(spec, field)));
+            inputSchema.properties().forEach((field, spec) ->
+                    labels.put(field, titleOf(spec, field)));
             return Collections.unmodifiableMap(labels);
         }
 
@@ -279,29 +282,20 @@ public class AgentToolCatalog {
         }
     }
 
+    /**
+     * 指纹只收生效值
+     * 技能只记有无，清单逐轮现读注册表，改名改描述不必重建
+     */
     public record ToolCatalogFingerprint(
             String knowledgeToolDescription,
             String memoryToolDescription,
             List<McpToolFingerprint> mcpTools,
-            List<SkillFingerprint> skills) {
+            List<String> unavailableToolIds,
+            boolean hasSkills) {
 
         public ToolCatalogFingerprint {
             mcpTools = List.copyOf(mcpTools);
-            skills = List.copyOf(skills);
-        }
-    }
-
-    /**
-     * 技能指纹不含正文：正文由 load_skill 现取，改手册不必重建 Agent
-     */
-    public record SkillFingerprint(
-            String skillCode,
-            String name,
-            String description,
-            List<String> toolIds) {
-
-        public SkillFingerprint {
-            toolIds = List.copyOf(toolIds);
+            unavailableToolIds = List.copyOf(unavailableToolIds);
         }
     }
 
@@ -309,7 +303,8 @@ public class AgentToolCatalog {
             String toolId,
             String displayName,
             String description,
-            boolean requireConfirm,
-            Tool definition) {
+            Map<String, Object> inputSchema,
+            boolean readOnly,
+            boolean needsConfirm) {
     }
 }

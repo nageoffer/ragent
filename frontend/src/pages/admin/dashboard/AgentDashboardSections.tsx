@@ -77,7 +77,7 @@ export function AgentRunHealth({ data, windowLabel, className }: CardProps) {
       <Card
         /*
          * 与左侧流量卡同高：卡内容拉成 flex 列，多出来的高度由下面那层摊掉，两卡下沿才对得上。
-         * 下限跟着流量图从 300 收到 268——它比这张卡自己的内容还高时，第二层就由这个下限说了算，
+         * 下限与流量卡同为 268——它比这张卡自己的内容还高时，第二层就由这个下限说了算，
          * 左边把图压矮也白压
          */
         className={cn("flex min-h-[268px] flex-col", className)}
@@ -91,8 +91,7 @@ export function AgentRunHealth({ data, windowLabel, className }: CardProps) {
         }
       >
         {/*
-          四段自上而下按 gap-4 排，不再靠 justify-between 摊高：
-          原来那道摊分是为「左侧 208px 图的流量卡把这张卡拉高」写的，图收到 140 之后
+          四段自上而下按 gap-4 排，不靠 justify-between 摊高：
           两卡自然高已经拉平，各档实测要摊的高都是 0——真正会摊的只剩屏幕比内容高时的那几百像素，
           那种量摊出来是段间三个几十像素的洞，比留在卡底更像卡没画完
         */}
@@ -237,7 +236,7 @@ export function AgentToolAnalysis({ data, windowLabel, className }: CardProps) {
         */}
         {/*
           窄于门槛时按「量纲」折行，不按格子数折：四个计数一行、两个百分比一行。
-          原来折成三列两行时，第二行是「工具调用成功率 + 双层占比块 + 一个空格」——
+          若折成三列两行，第二行是「工具调用成功率 + 双层占比块 + 一个空格」——
           一个单读数挨着一个双层块，两者基线对不上，右边还空着三分之一，
           读起来像上面那行没排完掉下来的。四加二两行各自成一件事，行内高度也齐。
           并成一行的门槛按「六个标签都写得全」定，不按断点表定，量的是这张卡自己的宽度：
@@ -539,7 +538,7 @@ export function AgentMemoryContext({ data, windowLabel, className }: CardProps) 
                       <Meter value={bar.width} color={bar.color} />
                     </span>
                     {/*
-                      定宽 80 且不许换行：读数最长是「999.9M 字符」＝71px，原来的 64 会让它折成两行，
+                      定宽 80 且不许换行：读数最长是「999.9M 字符」＝71px，64 会让它折成两行，
                       两条条各多一行、整卡多 32px，而这张卡的高度直接进第三层。
                       宽出来的 16px 从中间那条比例条身上出，比例条只读长短，短一档不影响
                     */}

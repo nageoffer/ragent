@@ -34,7 +34,6 @@ import com.nageoffer.ai.ragent.rag.controller.vo.AgentSkillToolOptionVO;
 import com.nageoffer.ai.ragent.rag.controller.vo.AgentSkillVO;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentNode;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentNodeRegistry;
-import com.nageoffer.ai.ragent.rag.core.mcp.McpToolRegistry;
 import com.nageoffer.ai.ragent.rag.core.skill.AgentSkillCacheManager;
 import com.nageoffer.ai.ragent.rag.dao.entity.AgentSkillDO;
 import com.nageoffer.ai.ragent.rag.dao.mapper.AgentSkillMapper;
@@ -67,7 +66,6 @@ public class AgentSkillAdminServiceImpl implements AgentSkillAdminService {
     private final AgentSkillMapper agentSkillMapper;
     private final AgentSkillCacheManager cacheManager;
     private final IntentNodeRegistry intentNodeRegistry;
-    private final McpToolRegistry mcpToolRegistry;
     private final BizChangeLogContext bizChangeLogContext;
 
     @Override
@@ -160,7 +158,7 @@ public class AgentSkillAdminServiceImpl implements AgentSkillAdminService {
             record.setSortOrder(requestParam.getSortOrder());
         }
         if (requestParam.getEnabled() != null) {
-            record.setEnabled(Boolean.TRUE.equals(requestParam.getEnabled()) ? 1 : 0);
+            record.setEnabled(requestParam.getEnabled() ? 1 : 0);
         }
 
         agentSkillMapper.updateById(record);
@@ -208,19 +206,15 @@ public class AgentSkillAdminServiceImpl implements AgentSkillAdminService {
     public List<AgentSkillToolOptionVO> listToolOptions() {
         Map<String, String> ownerBySkill = referencedToolOwners();
         List<AgentSkillToolOptionVO> options = new ArrayList<>();
-        LinkedHashSet<String> seen = new LinkedHashSet<>();
         for (IntentNode node : intentNodeRegistry.listMcpToolNodes()) {
             String toolId = StrUtil.trimToNull(node.getMcpToolId());
-            // 同一工具挂多个意图时只出一个选项，展示名取先遇到的那个节点
-            if (toolId == null || !seen.add(toolId)) {
+            if (toolId == null) {
                 continue;
             }
             options.add(AgentSkillToolOptionVO.builder()
                     .toolId(toolId)
                     .name(StrUtil.isBlank(node.getName()) ? toolId : node.getName())
                     .description(node.getDescription())
-                    .requireConfirm(node.isRequireConfirm())
-                    .available(mcpToolRegistry.contains(toolId))
                     .referencedBySkillName(ownerBySkill.get(toolId))
                     .build());
         }

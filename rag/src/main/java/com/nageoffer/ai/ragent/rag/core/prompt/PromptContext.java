@@ -33,24 +33,9 @@ import java.util.Set;
 public class PromptContext {
 
     /**
-     * 用户原始问题
-     */
-    private String question;
-
-    /**
-     * MCP 工具调用返回的上下文文本（已格式化）
-     */
-    private String mcpContext;
-
-    /**
      * 知识库检索返回的上下文文本（已格式化）
      */
     private String kbContext;
-
-    /**
-     * MCP 通道命中的意图及其得分列表
-     */
-    private List<NodeScore> mcpIntents;
 
     /**
      * 知识库通道命中的意图及其得分列表
@@ -62,13 +47,6 @@ public class PromptContext {
      */
     @Builder.Default
     private Set<String> eligibleIntentIds = Set.of();
-
-    /**
-     * 是否包含 MCP 上下文
-     */
-    public boolean hasMcp() {
-        return StrUtil.isNotBlank(mcpContext);
-    }
 
     /**
      * 是否包含知识库上下文

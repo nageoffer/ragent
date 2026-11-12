@@ -22,7 +22,6 @@ import com.nageoffer.ai.ragent.agent.controller.vo.AgentMessageVO;
 import com.nageoffer.ai.ragent.agent.dto.AgentBlock;
 import com.nageoffer.ai.ragent.agent.dto.AgentConfirmSettlement;
 import com.nageoffer.ai.ragent.agent.enums.AgentMessageStatus;
-import com.nageoffer.ai.ragent.framework.convention.ChatMessage;
 
 import java.util.List;
 
@@ -32,7 +31,7 @@ import java.util.List;
 public interface AgentConversationService {
 
     /**
-     * 首问建会话（截断问题作标题），已存在则刷新最后活动时间，返回会话标题
+     * 首问使用服务端生成的新 ID 建会话，已有会话刷新最后活动时间，返回标题
      */
     String touchConversation(String conversationId, String userId, String question);
 
@@ -54,12 +53,18 @@ public interface AgentConversationService {
     AgentConfirmSettlement settlePendingConfirm(String conversationId, String userId, String messageId, boolean approved);
 
     /**
+     * 续跑前的检查：卡片还挂在待确认状态才放行，这里只读不落库
+     * 把卡片改成终态是 settlePendingConfirm 的事，要等流真的启动那一刻才做
+     */
+    AgentConfirmSettlement getPendingConfirm(String conversationId, String userId, String messageId);
+
+    /**
      * Agent 状态里已无待确认工具，但卡片还是 pending，标记为 expired 以解除会话阻塞
      */
     void expirePendingConfirm(String conversationId, String userId, String messageId);
 
     /**
-     * 该会话是否有待确认的操作
+     * 校验当前用户的会话存在，并查询是否有待确认的操作；不存在或已删除时抛出异常
      */
     boolean hasPendingConfirm(String conversationId, String userId);
 
@@ -72,11 +77,6 @@ public interface AgentConversationService {
      * 查询会话消息列表
      */
     List<AgentMessageVO> listMessages(String conversationId, String userId);
-
-    /**
-     * 取最近 N 轮已配对的 user/assistant 正文（时间正序），供检索工具做指代消解
-     */
-    List<ChatMessage> loadRecentTurns(String conversationId, String userId, int turns);
 
     /**
      * 手动改标题，空白标题拒绝

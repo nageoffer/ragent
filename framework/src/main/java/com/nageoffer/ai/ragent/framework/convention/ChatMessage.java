@@ -131,6 +131,12 @@ public class ChatMessage {
         this.content = content;
     }
 
+    public ChatMessage(Role role, String content, MessageStatus messageStatus) {
+        this.role = role;
+        this.content = content;
+        this.messageStatus = messageStatus;
+    }
+
     /**
      * 创建一条系统消息
      *

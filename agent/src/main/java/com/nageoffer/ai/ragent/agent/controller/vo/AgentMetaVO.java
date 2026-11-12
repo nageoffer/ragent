@@ -26,8 +26,8 @@ import java.util.List;
  * @param model         当前 Chat 模型名
  * @param maxIters      单轮 ReAct 迭代上限
  * @param capabilities  引擎能力清单
- * @param toolProvider  工具提供方（原生 + MCP 桥）
- * @param mcpConfigured MCP 注册表是否有可用工具
+ * @param toolProvider  工具提供方
+ * @param mcpConfigured AgentScope 客户端是否发现可用工具
  */
 public record AgentMetaVO(
         String framework,

@@ -30,7 +30,7 @@ import lombok.NoArgsConstructor;
 import java.util.Date;
 
 /**
- * 长期记忆条目，纯追加表：失效走 invalidAt 不删行，审计链完整
+ * 长期记忆条目：修改在原行上改正文与依据，删除与容量淘汰只写 invalidAt，行不物理删除；不保留逐版本历史
  */
 @Data
 @NoArgsConstructor
@@ -60,10 +60,24 @@ public class AgentMemoryDO {
     private Date invalidAt;
 
     /**
-     * 取代者ID；撤回的行留空
+     * 当前正文依据的那条用户消息，即用户最近一次明确表达或确认它的发言；早期数据为空
      */
-    private String supersededBy;
+    private String sourceMessageId;
 
+    /**
+     * 那条用户消息的入库时间，即用户表达时间，不是本行写入时间；早期数据为空
+     */
+    private Date expressedAt;
+
+    /**
+     * 本行写入时间
+     */
     @TableField(fill = FieldFill.INSERT)
     private Date createTime;
+
+    /**
+     * 本行最近一次被修改（改写、失效）的时间
+     */
+    @TableField(fill = FieldFill.INSERT_UPDATE)
+    private Date updateTime;
 }

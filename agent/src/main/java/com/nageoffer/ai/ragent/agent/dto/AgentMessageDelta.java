@@ -18,7 +18,7 @@
 package com.nageoffer.ai.ragent.agent.dto;
 
 /**
- * message 事件载荷：type 取 response / think / error，error 是中断提示不是模型输出
+ * message 事件载荷：type 与文本块 kind 一致，取 answer / reasoning / error，error 是中断提示不是模型输出
  */
 public record AgentMessageDelta(String type, String delta) {
 }

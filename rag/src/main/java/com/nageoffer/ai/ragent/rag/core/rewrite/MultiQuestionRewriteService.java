@@ -35,8 +35,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Deque;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -50,6 +52,11 @@ import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.QUERY_REWRITE_AND
 @RequiredArgsConstructor
 public class MultiQuestionRewriteService implements QueryRewriteService {
 
+    /**
+     * 喂给改写的助手回复条数上限
+     */
+    private static final int MAX_ASSISTANT_MESSAGES = 2;
+
     private final LLMService llmService;
     private final RAGConfigProperties ragConfigProperties;
     private final QueryTermMappingService queryTermMappingService;
@@ -58,12 +65,12 @@ public class MultiQuestionRewriteService implements QueryRewriteService {
     @Override
     @RagTraceNode(name = "query-rewrite", type = "REWRITE")
     public String rewrite(String userQuestion) {
-        return rewriteAndSplit(userQuestion).rewrittenQuestion();
+        return rewriteWithSplit(userQuestion).rewrittenQuestion();
     }
 
     @Override
     public RewriteResult rewriteWithSplit(String userQuestion) {
-        return rewriteAndSplit(userQuestion);
+        return rewriteWithSplit(userQuestion, List.of());
     }
 
     @Override
@@ -80,29 +87,12 @@ public class MultiQuestionRewriteService implements QueryRewriteService {
         return callLLMRewriteAndSplit(normalizedQuestion, userQuestion, history);
     }
 
-    /**
-     * 先用默认改写做归一化，再进行多问句拆分。
-     */
-    private RewriteResult rewriteAndSplit(String userQuestion) {
-        // 开关关闭：直接做规则归一化 + 规则拆分
-        if (!ragConfigProperties.getQueryRewriteEnabled()) {
-            String normalized = queryTermMappingService.normalize(userQuestion);
-            List<String> subs = ruleBasedSplit(normalized);
-            return new RewriteResult(normalized, subs);
-        }
-
-        String normalizedQuestion = queryTermMappingService.normalize(userQuestion);
-
-        return callLLMRewriteAndSplit(normalizedQuestion, userQuestion, List.of());
-
-        // 兜底：使用归一化结果 + 规则拆分
-    }
-
     private RewriteResult callLLMRewriteAndSplit(String normalizedQuestion,
                                                  String originalQuestion,
                                                  List<ChatMessage> history) {
         String systemPrompt = promptTemplateLoader.load(QUERY_REWRITE_AND_SPLIT_PROMPT_PATH);
-        ChatRequest req = buildRewriteRequest(systemPrompt, normalizedQuestion, history);
+        List<ChatMessage> rewriteHistory = selectRewriteHistory(history);
+        ChatRequest req = buildRewriteRequest(systemPrompt, normalizedQuestion, rewriteHistory);
 
         // 快速档调用；解析失败或调用失败均用归一化问题兜底（档位内多候选已提供传输容错，不再跨档升级）
         RewriteResult fallback = new RewriteResult(normalizedQuestion, List.of(normalizedQuestion));
@@ -125,25 +115,52 @@ public class MultiQuestionRewriteService implements QueryRewriteService {
         return result;
     }
 
+    /**
+     * 挑出喂给改写的历史：摘要与全部历史提问原样带上，助手回答只留最近 {@link #MAX_ASSISTANT_MESSAGES} 条
+     * <p>
+     * 指代的落点绝大多数是用户自己提过的主体，历史提问全留才接得住跨多轮的回指；
+     * 助手回答只在紧邻轮次里被借实体，留满两条之外的都是纯开销，还会把无关话题摊给改写模型招来实体串台
+     * <p>
+     * 只丢不排，上游「以 USER 打头、按时间升序」的保证继续成立
+     */
+    private List<ChatMessage> selectRewriteHistory(List<ChatMessage> history) {
+        if (CollUtil.isEmpty(history)) {
+            return List.of();
+        }
+        Deque<ChatMessage> selected = new ArrayDeque<>(history.size());
+        int remainingAssistantMessages = MAX_ASSISTANT_MESSAGES;
+        for (int i = history.size() - 1; i >= 0; i--) {
+            ChatMessage message = history.get(i);
+            if (message.getRole() == ChatMessage.Role.ASSISTANT) {
+                if (remainingAssistantMessages == 0 || !isUsableAssistant(message)) {
+                    continue;
+                }
+                remainingAssistantMessages--;
+            }
+            selected.addFirst(message);
+        }
+        return new ArrayList<>(selected);
+    }
+
+    /**
+     * 中断与限流落库的助手消息不占名额：前者是半截答案，后者是「排队人数过多」这类模板话
+     * 拿它们消解指代只会把残缺或无关的实体带进 rewrite，让名额留给再往前那条真回答更划算
+     * 状态缺失按正常对待，宁可多带一条也别把真答案误判掉
+     */
+    private boolean isUsableAssistant(ChatMessage message) {
+        ChatMessage.MessageStatus status = message.getMessageStatus();
+        return status == null || status == ChatMessage.MessageStatus.NORMAL;
+    }
+
     private ChatRequest buildRewriteRequest(String systemPrompt,
                                             String question,
-                                            List<ChatMessage> history) {
+                                            List<ChatMessage> rewriteHistory) {
         List<ChatMessage> messages = new ArrayList<>();
         if (StrUtil.isNotBlank(systemPrompt)) {
             messages.add(ChatMessage.system(systemPrompt));
         }
-
-        // 只保留最近 1-2 轮的 User 和 Assistant 消息
-        // 过滤掉 System 摘要，避免 Token 浪费
-        if (CollUtil.isNotEmpty(history)) {
-            List<ChatMessage> recentHistory = history.stream()
-                    .filter(msg -> msg.getRole() == ChatMessage.Role.USER
-                            || msg.getRole() == ChatMessage.Role.ASSISTANT)
-                    .skip(Math.max(0, history.size() - 4))  // 最多保留最近 4 条消息（2 轮对话）
-                    .toList();
-            messages.addAll(recentHistory);
-        }
-
+        messages.addAll(rewriteHistory);
+        // 末条恒为当前问题，提示词「消息结构」一节据此定位，别在这后面再追加任何消息
         messages.add(ChatMessage.user(question));
 
         return ChatRequest.builder()

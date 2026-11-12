@@ -100,7 +100,7 @@ public class AgentUserMemoryMiddleware implements MiddlewareBase {
             }
         }
         if (snapshot.hasItems()) {
-            rebuilt.add(personaBoundary(rebuilt), buildMemoryMsg(AgentMemoryBlock.render(snapshot.items())));
+            rebuilt.add(personaBoundary(rebuilt), buildMemoryMsg(AgentMemoryBlock.render(snapshot.contents())));
         }
         return new ReasoningInput(rebuilt, input.tools(), input.options());
     }

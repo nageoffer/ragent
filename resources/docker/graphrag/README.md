@@ -63,20 +63,18 @@ rag:
       base-url: http://127.0.0.1:9621     # 本机默认；后端与本栈不同机时改为对应地址
       query-mode: hybrid                  # 只回图结构证据，与向量 / 关键词通道正交（可选 naive / local / global / hybrid / mix）
     embedding-model: qwen-emb-8b          # 与 Compose 的百炼 text-embedding-v4 配置一致
-    ingestion:
-      async: true
-      global-workspace: false
   search:
     channels:
       graph:
         enabled: true                     # 检索时并入图谱通道
-        mode: both                        # intent 命中 KB 才走 / global 全量走 / both 都走
-        top-k-multiplier: 2
+    fusion:
+      channel-weights:
+        graph: 0.8                        # 图谱证据在加权 RRF 里的权重
 ```
 
-后端一侧无需 api-key：本地不启用鉴权，`rag.graph.lightrag` 无 `api-key` 字段，客户端不发送鉴权头。
+本地不启用鉴权，`rag.graph.lightrag.api-key` 留空即可；填了值，客户端会以 `X-API-Key` 请求头发送。
 
-开启后，向量写入经装饰器 `GraphSyncingVectorStoreService` 自动同步图谱（摄取 / 重建 / 删除全路径覆盖），删除知识库时 MQ 消费者按 `{collectionName}_` 前缀清理对应图谱数据，均为 best-effort，失败不阻断主链路。
+`rag.graph.type=lightrag` 时，向量写入经装饰器 `GraphSyncingVectorStoreService` 自动同步图谱（摄取 / 重建 / 删除全路径覆盖），删除知识库时 MQ 消费者按 `{collectionName}_` 前缀清理对应图谱数据，均为 best-effort，失败不阻断主链路。
 
 ## 注意事项
 

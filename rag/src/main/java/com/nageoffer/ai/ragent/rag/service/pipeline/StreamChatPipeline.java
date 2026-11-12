@@ -28,6 +28,7 @@ import com.nageoffer.ai.ragent.infra.chat.StreamCancellationHandle;
 import com.nageoffer.ai.ragent.rag.core.guidance.GuidanceDecision;
 import com.nageoffer.ai.ragent.rag.core.guidance.IntentGuidanceService;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentResolver;
+import com.nageoffer.ai.ragent.rag.core.intent.NodeScore;
 import com.nageoffer.ai.ragent.rag.core.memory.ConversationMemoryService;
 import com.nageoffer.ai.ragent.rag.core.prompt.AgentPromptResolver;
 import com.nageoffer.ai.ragent.rag.core.prompt.AgentPromptSlot;
@@ -39,7 +40,6 @@ import com.nageoffer.ai.ragent.rag.core.rewrite.RewriteResult;
 import com.nageoffer.ai.ragent.rag.core.source.CitationContextEnricher;
 import com.nageoffer.ai.ragent.rag.core.source.GroundingChunksAssembler;
 import com.nageoffer.ai.ragent.rag.core.source.SourcesAssembler;
-import com.nageoffer.ai.ragent.rag.dto.IntentGroup;
 import com.nageoffer.ai.ragent.rag.dto.RetrievalContext;
 import com.nageoffer.ai.ragent.rag.dto.SubQuestionIntent;
 import com.nageoffer.ai.ragent.framework.web.StreamTaskManager;
@@ -171,9 +171,6 @@ public class StreamChatPipeline {
     }
 
     private void streamRagResponse(StreamChatContext ctx, RetrievalContext retrievalCtx) {
-        // 聚合所有意图用于 prompt 规划
-        IntentGroup mergedGroup = intentResolver.mergeIntentGroup(ctx.getSubIntents());
-
         // 检索完成后建立唯一来源编号：同一列表用于完成事件、来源面板与消息落库，开启引用时还作为行内角标编号
         List<SourceRef> sources = sourcesAssembler.assemble(retrievalCtx.getIntentChunks());
         ctx.getCallback().onSources(sources);
@@ -186,7 +183,7 @@ public class StreamChatPipeline {
         StreamCancellationHandle handle = streamLLMResponse(
                 ctx.getRewriteResult(),
                 retrievalCtx,
-                mergedGroup,
+                intentResolver.mergeKbIntents(ctx.getSubIntents()),
                 ctx.getHistory(),
                 ctx.isDeepThinking(),
                 ctx.getCallback()
@@ -218,14 +215,12 @@ public class StreamChatPipeline {
     }
 
     private StreamCancellationHandle streamLLMResponse(RewriteResult rewriteResult, RetrievalContext ctx,
-                                                       IntentGroup intentGroup, List<ChatMessage> history,
+                                                       List<NodeScore> kbIntents,
+                                                       List<ChatMessage> history,
                                                        boolean deepThinking, StreamCallback callback) {
         PromptContext promptContext = PromptContext.builder()
-                .question(rewriteResult.rewrittenQuestion())
-                .mcpContext(ctx.getMcpContext())
                 .kbContext(ctx.getKbContext())
-                .mcpIntents(intentGroup.mcpIntents())
-                .kbIntents(intentGroup.kbIntents())
+                .kbIntents(kbIntents)
                 .eligibleIntentIds(ctx.getEligibleIntentIds())
                 .build();
 
@@ -238,8 +233,8 @@ public class StreamChatPipeline {
         ChatRequest chatRequest = ChatRequest.builder()
                 .messages(messages)
                 .thinking(deepThinking)
-                .temperature(ctx.hasMcp() ? 0.3D : 0D)  // MCP 场景稍微放宽温度
-                .topP(ctx.hasMcp() ? 0.8D : 1D)
+                .temperature(0D)
+                .topP(1D)
                 .build();
 
         return llmService.streamChat(chatRequest, callback);

@@ -23,7 +23,7 @@ export interface SampleQuestionPayload {
   question?: string | null;
 }
 
-/** 随机取若干条示例问题，两套前端的欢迎页共用（后端 2026-08-13 由 rag 迁到 system） */
+/** 随机取若干条示例问题，两套前端的欢迎页共用 */
 export async function listSampleQuestions(limit = 3): Promise<SampleQuestion[]> {
   return api.get<SampleQuestion[], SampleQuestion[]>("/sample-questions/random", {
     params: { limit }

@@ -37,19 +37,4 @@ public interface IntentClassifier {
      * @return 按 score 从高到低排序的节点打分列表
      */
     List<NodeScore> classifyTargets(String question);
-
-    /**
-     * 取前 topN 个且 score >= minScore 的分类
-     *
-     * @param question 用户问题
-     * @param topN     最多返回 N 个结果
-     * @param minScore 最低分数阈值
-     * @return 过滤后的节点打分列表
-     */
-    default List<NodeScore> topKAboveThreshold(String question, int topN, double minScore) {
-        return classifyTargets(question).stream()
-                .filter(ns -> ns.getScore() >= minScore)
-                .limit(topN)
-                .toList();
-    }
 }

@@ -166,12 +166,17 @@ public final class AgentToolBodyTracer {
      */
     private static void settleFinished(Span span, AgentToolExecutionFacts facts, String toolCallId,
                                        ToolResultBlock result, Throwable error) {
-        long endedAt = facts.markEnded(toolCallId);
+        // 协作式取消会返回 INTERRUPTED 而不是发出 Reactor cancel 信号，终点仍要对齐用户中断时刻
+        AgentToolStatus status = AgentToolStatus.of(result == null ? null : result.getState());
+        long endedAt = status == AgentToolStatus.INTERRUPTED
+                ? facts.markTerminated(toolCallId)
+                : facts.markEnded(toolCallId);
+        // 落库读它，必须在没有 span 的早退之前
+        facts.markReturned(toolCallId, result);
         if (span == null) {
             return;
         }
         // 空完成是工具违约，交给同一处状态映射判成失败，不在这里另立一种状态
-        AgentToolStatus status = AgentToolStatus.of(result == null ? null : result.getState());
         span.setAttribute(RagentAttributes.TOOL_STATUS, status.value());
         if (error != null) {
             span.setStatus(StatusCode.ERROR);
@@ -185,6 +190,9 @@ public final class AgentToolBodyTracer {
                 // 没结果就没观测到来源，宁可空着也不猜一个
                 span.setAttribute(RagentAttributes.TOOL_ERROR_SOURCE, RagentAttributes.ERROR_SOURCE_TOOL_RESULT);
             }
+        } else if (status == AgentToolStatus.INTERRUPTED) {
+            span.setStatus(StatusCode.ERROR);
+            span.setAttribute(AgentErrorTypes.KEY, AgentErrorTypes.ofCancelledSpan(facts.terminationAt()));
         }
         writeOutcome(span, status, result, error);
         span.end(Instant.ofEpochMilli(endedAt));

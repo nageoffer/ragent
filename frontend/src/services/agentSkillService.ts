@@ -20,10 +20,6 @@ export interface AgentSkillToolOption {
   toolId: string;
   name: string;
   description?: string | null;
-  /** 执行前需要用户确认，用来标出写操作 */
-  requireConfirm?: boolean | null;
-  /** MCP 注册表里有没有对应执行器，false 说明服务没起或工具已下线 */
-  available?: boolean | null;
   /** 已被哪个技能收为解锁项，未被收走时为空 */
   referencedBySkillName?: string | null;
 }

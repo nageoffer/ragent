@@ -45,5 +45,4 @@ public class IntentNodeUpdateRequest {
     private Integer enabled;
     private String promptSnippet;
     private String promptTemplate;
-    private String paramPromptTemplate;
 }

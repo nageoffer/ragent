@@ -18,6 +18,7 @@
 package com.nageoffer.ai.ragent.infra.model;
 
 import com.nageoffer.ai.ragent.framework.errorcode.BaseErrorCode;
+import com.nageoffer.ai.ragent.framework.cancellation.TaskCancellation;
 import com.nageoffer.ai.ragent.framework.exception.RemoteException;
 import com.nageoffer.ai.ragent.infra.enums.ModelCapability;
 import lombok.RequiredArgsConstructor;
@@ -55,7 +56,8 @@ public class ModelRoutingExecutor {
                 log.warn("{} provider client missing: provider={}, modelId={}", label, target.candidate().getProvider(), target.id());
                 continue;
             }
-            if (healthStore.allowCall(target.id()) == null) {
+            ModelHealthStore.CallPermit permit = healthStore.allowCall(target.id());
+            if (permit == null) {
                 continue;
             }
 
@@ -64,6 +66,11 @@ public class ModelRoutingExecutor {
                 healthStore.markSuccess(target.id());
                 return response;
             } catch (Exception e) {
+                if (TaskCancellation.isCancellation(e)) {
+                    // 任务取消不是模型故障：不降级、不累计失败，半开探测只归还占用的名额
+                    healthStore.releaseHalfOpenPermit(permit);
+                    throw TaskCancellation.asCancellation(e);
+                }
                 last = e;
                 healthStore.markFailure(target.id());
                 log.warn("{} model failed, fallback to next. modelId={}, provider={}", label, target.id(), target.candidate().getProvider(), e);

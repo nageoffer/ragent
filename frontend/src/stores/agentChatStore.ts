@@ -1,8 +1,10 @@
+import axios from "axios";
 import { create } from "zustand";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
 import type {
+  AgentBlockUpdate,
   AgentBlockUI,
   AgentCompletionPayload,
   AgentConfirmPayload,
@@ -11,9 +13,7 @@ import type {
   AgentMessageDelta,
   AgentMetaPayload,
   AgentRawFrame,
-  AgentSession,
-  AgentTextBlockSeal,
-  AgentToolProgress
+  AgentSession
 } from "@/types/agent";
 import {
   batchDeleteAgentSessions,
@@ -26,6 +26,7 @@ import {
 import { buildQuery } from "@/utils/helpers";
 import { createAgentStreamResponse } from "@/hooks/useAgentStream";
 import {
+  applyConfirmStatus,
   applyTextBlockSeal,
   applyToolFrame,
   replayBlock,
@@ -36,6 +37,9 @@ import { storage } from "@/utils/storage";
 
 interface AgentChatState {
   sessions: AgentSession[];
+  currentViewKey: string;
+  conversationStates: Record<string, AgentConversationState>;
+  isLoadingSessions: boolean;
   currentSessionId: string | null;
   messages: AgentMessage[];
   isLoading: boolean;
@@ -55,7 +59,7 @@ interface AgentChatState {
   frames: AgentRawFrame[];
   loadSessions: () => Promise<void>;
   // force 用于回查：绕开「已在本会话且有消息就不拉」的早退，拿服务端的说法覆盖本地
-  loadMessages: (sessionId: string, force?: boolean) => Promise<void>;
+  loadMessages: (sessionId: string, force?: boolean, activate?: boolean) => Promise<void>;
   renameSession: (sessionId: string, title: string) => Promise<void>;
   deleteSession: (sessionId: string) => Promise<void>;
   batchDeleteSessions: (sessionIds: string[]) => Promise<void>;
@@ -66,6 +70,28 @@ interface AgentChatState {
   sendMessage: (question: string) => Promise<void>;
   confirmPendingTool: (messageId: string, blockId: number, approved: boolean) => Promise<void>;
   cancelGeneration: () => void;
+  reset: () => void;
+}
+
+const VIEW_FIELDS = [
+  "currentSessionId", "messages", "isLoading", "isCreatingNew", "isStreaming",
+  "streamTaskId", "streamAbort", "streamingMessageId", "streamOpenBlockId",
+  "cancelRequested", "frames"
+] as const;
+type AgentConversationState = Pick<AgentChatState, (typeof VIEW_FIELDS)[number]>;
+let viewSeq = 0;
+const newViewKey = () => `draft:${++viewSeq}`;
+
+function pickView(state: AgentChatState): AgentConversationState {
+  return Object.fromEntries(VIEW_FIELDS.map((field) => [field, state[field]])) as AgentConversationState;
+}
+
+function emptyView(currentSessionId: string | null = null): AgentConversationState {
+  return {
+    currentSessionId, messages: [], isLoading: false, isCreatingNew: !currentSessionId,
+    isStreaming: false, streamTaskId: null, streamAbort: null, streamingMessageId: null,
+    streamOpenBlockId: null, cancelRequested: false, frames: []
+  };
 }
 
 // 挂起中的会话只有确认与取消两条出路 新提问会被后端挡下 前端先自查免得白跑一趟
@@ -151,8 +177,56 @@ function streamStartPatch(assistantId: string) {
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 
 export const useAgentChatStore = create<AgentChatState>((set, get) => {
+  let accountEpoch = 0;
+  // 顶层字段是当前页面的视图，后台连接始终更新其所属会话
+  const getView = (key: string): AgentConversationState => {
+    const state = get();
+    return state.currentViewKey === key ? pickView(state) : state.conversationStates[key] ?? emptyView(key);
+  };
+  const bindView = (keyOf: () => string) => ({
+    get: (): AgentChatState => ({ ...get(), ...getView(keyOf()) }),
+    set: (update: Partial<AgentChatState> | ((state: AgentChatState) => Partial<AgentChatState>)) => {
+      set((state) => {
+        const key = keyOf();
+        const view = state.currentViewKey === key ? pickView(state) : state.conversationStates[key] ?? emptyView(key);
+        const patch = typeof update === "function" ? update({ ...state, ...view }) : update;
+        const globalPatch = { ...patch };
+        const viewPatch: Partial<AgentConversationState> = {};
+        for (const field of VIEW_FIELDS) {
+          if (field in patch) {
+            Object.assign(viewPatch, { [field]: patch[field] });
+            delete globalPatch[field];
+          }
+        }
+        const nextView = { ...view, ...viewPatch };
+        return {
+          ...globalPatch,
+          conversationStates: { ...state.conversationStates, [key]: nextView },
+          ...(state.currentViewKey === key ? nextView : {})
+        };
+      });
+    }
+  });
+  const selectView = (key: string, view = getView(key)) => {
+    set((state) => ({
+      conversationStates: { ...state.conversationStates, [state.currentViewKey]: pickView(state), [key]: view },
+      currentViewKey: key, ...view, draft: null, inputFocusKey: Date.now()
+    }));
+  };
+  const moveView = (from: string, to: string) => {
+    set((state) => {
+      const view = from === state.currentViewKey ? pickView(state) : state.conversationStates[from];
+      if (!view) return {};
+      const next = { ...view, currentSessionId: to, isCreatingNew: false };
+      const conversationStates = { ...state.conversationStates, [to]: next };
+      delete conversationStates[from];
+      return { conversationStates, ...(state.currentViewKey === from ? { currentViewKey: to, ...next } : {}) };
+    });
+  };
+
   // 文本增量按块规则落位：敞开块同类则追加 否则封口旧块并新开
-  const appendText = (kind: "reasoning" | "answer" | "error", delta: string) => {
+  const appendText = (viewKey: string, kind: AgentMessageDelta["type"], delta: string) => {
+    const { set } = bindView(() => viewKey);
     if (!delta) return;
     set((state) => {
       let nextOpenId = state.streamOpenBlockId;
@@ -188,33 +262,51 @@ export const useAgentChatStore = create<AgentChatState>((set, get) => {
     });
   };
 
-  // 改写确认卡状态；带上 messageStatus 时一并落定挂起态，卡片有了裁决这条消息就不该再拦住新提问
+  // 结算确认卡及其关联的拒绝调用；带上 messageStatus 时一并解除消息挂起态
   const setConfirmStatus = (
     messageId: string,
     blockId: number,
     status: "submitting" | "approved" | "denied",
-    messageStatus?: "NORMAL"
+    messageStatus?: "NORMAL",
+    viewKey = get().currentViewKey
   ) => {
+    const { set } = bindView(() => viewKey);
     set((state) => ({
       messages: state.messages.map((message) =>
         message.id === messageId && message.blocks
           ? {
               ...message,
               ...(messageStatus ? { messageStatus } : {}),
-              blocks: message.blocks.map((block) =>
-                block.id === blockId ? { ...block, status } : block
-              )
+              blocks: applyConfirmStatus(message.blocks, blockId, status)
             }
           : message
       )
     }));
   };
 
+  // 停止失败时恢复按钮；流若已收尾则保持安静，避免迟到的网络错误覆盖成功状态
+  const requestStop = (taskId: string, viewKey: string) => {
+    const { get, set } = bindView(() => viewKey);
+    void stopAgentTask(taskId).catch((error: unknown) => {
+      const state = get();
+      if (!state.isStreaming || !state.cancelRequested || state.streamTaskId !== taskId) {
+        return;
+      }
+      set({ cancelRequested: false });
+      // HTTP / 网络错误已由全局拦截器提示；业务 code 异常是普通 Error，由这里补提示
+      if (!axios.isAxiosError(error)) {
+        toast.error("停止请求未确认，请重试");
+      }
+    });
+  };
+
   /**
    * 首问与确认续跑共用，返回是否收到过 meta（后端是否受理）
    */
-  const runStream = async (params: { url: string; body?: unknown; assistantId: string }) => {
+  const runStream = async (params: { url: string; body?: unknown; assistantId: string; viewKey: string }) => {
     const { url, body, assistantId } = params;
+    let viewKey = params.viewKey;
+    const { get, set } = bindView(() => viewKey);
     const token = storage.getToken();
     // meta 是后端受理这一轮的第一帧：收到它才算请求确实送达，没收到就不知道断在哪一侧
     let delivered = false;
@@ -222,6 +314,7 @@ export const useAgentChatStore = create<AgentChatState>((set, get) => {
     const handlers = {
       // 每一条 SSE 帧原样进抽屉 供深度核对
       onEvent: (event: string, payload: unknown) => {
+        if (get().streamingMessageId !== assistantId) return;
         set((state) => ({
           frames: [
             ...(state.frames.length >= MAX_FRAMES ? state.frames.slice(1) : state.frames),
@@ -234,6 +327,10 @@ export const useAgentChatStore = create<AgentChatState>((set, get) => {
         if (get().streamingMessageId !== assistantId) return;
         const nextId = payload.conversationId || get().currentSessionId;
         if (!nextId) return;
+        if (nextId !== viewKey) {
+          moveView(viewKey, nextId);
+          viewKey = nextId;
+        }
         const lastTime = new Date().toISOString();
         const existing = get().sessions.find((session) => session.id === nextId);
         set((state) => ({
@@ -248,44 +345,40 @@ export const useAgentChatStore = create<AgentChatState>((set, get) => {
         }));
         // meta 前用户已点停止：此刻才拿到 taskId 补发停止指令
         if (get().cancelRequested) {
-          stopAgentTask(payload.taskId).catch(() => null);
+          requestStop(payload.taskId, viewKey);
         }
       },
       onMessage: (payload: AgentMessageDelta) => {
         if (!payload || typeof payload !== "object") return;
         // 中断提示单开 error 块，跟模型说的话不是一个身份，样式与刷新后回放都按块走
-        if (payload.type !== "response" && payload.type !== "error") return;
+        if (payload.type !== "answer" && payload.type !== "error") return;
         if (get().streamingMessageId !== assistantId) return;
-        appendText(payload.type === "error" ? "error" : "answer", payload.delta);
+        appendText(viewKey, payload.type, payload.delta);
       },
       onThinking: (payload: AgentMessageDelta) => {
         if (!payload || typeof payload !== "object") return;
-        if (payload.type !== "think") return;
+        if (payload.type !== "reasoning") return;
         if (get().streamingMessageId !== assistantId) return;
-        appendText("reasoning", payload.delta);
+        appendText(viewKey, payload.type, payload.delta);
       },
-      // 文本封口帧 服务端下发起止
-      onBlock: (payload: AgentTextBlockSeal) => {
+      // 块更新：工具更新状态和结果，文本只补齐时间
+      onBlock: (payload: AgentBlockUpdate) => {
         if (!payload || typeof payload !== "object" || !payload.kind) return;
         if (get().streamingMessageId !== assistantId) return;
+        if (payload.kind === "tool") {
+          if (!payload.name || !payload.status) return;
+        } else if (payload.kind !== "answer" && payload.kind !== "reasoning" && payload.kind !== "error") {
+          return;
+        }
         set((state) => ({
+          // 只有工具更新会结束当前文本块；文本计时可能晚于下一段文字到达
+          streamOpenBlockId: payload.kind === "tool" ? null : state.streamOpenBlockId,
           messages: state.messages.map((message) => {
             if (message.id !== state.streamingMessageId) return message;
             if (message.status === "cancelled" || message.status === "error") return message;
-            return { ...message, blocks: applyTextBlockSeal(message.blocks ?? [], payload) };
-          })
-        }));
-      },
-      // 工具帧 按帧照抄状态与耗时
-      onTool: (payload: AgentToolProgress) => {
-        if (!payload || typeof payload !== "object" || !payload.name || !payload.status) return;
-        if (get().streamingMessageId !== assistantId) return;
-        set((state) => ({
-          // 任何工具事件都封口当前文本块 与后端分段规则保持一致
-          streamOpenBlockId: null,
-          messages: state.messages.map((message) => {
-            if (message.id !== state.streamingMessageId) return message;
-            if (message.status === "cancelled" || message.status === "error") return message;
+            if (payload.kind !== "tool") {
+              return { ...message, blocks: applyTextBlockSeal(message.blocks ?? [], payload) };
+            }
             const sealed = sealOpenBlock([...(message.blocks ?? [])], state.streamOpenBlockId);
             return {
               ...message,
@@ -472,6 +565,9 @@ export const useAgentChatStore = create<AgentChatState>((set, get) => {
 
   return {
     sessions: [],
+    currentViewKey: "draft:initial",
+    conversationStates: {},
+    isLoadingSessions: false,
     currentSessionId: null,
     messages: [],
     isLoading: false,
@@ -487,9 +583,11 @@ export const useAgentChatStore = create<AgentChatState>((set, get) => {
     cancelRequested: false,
     frames: [],
     loadSessions: async () => {
-      set({ isLoading: true });
+      const epoch = accountEpoch;
+      set({ isLoadingSessions: true });
       try {
         const data = await listAgentSessions();
+        if (epoch !== accountEpoch) return;
         const sessions = data
           .map((item) => ({
             id: item.conversationId,
@@ -502,31 +600,28 @@ export const useAgentChatStore = create<AgentChatState>((set, get) => {
             const timeB = b.lastTime ? new Date(b.lastTime).getTime() : 0;
             return timeB - timeA;
           });
-        set({ sessions });
+        set((state) => ({ sessions: state.sessions
+          .filter((session) => state.conversationStates[session.id]?.isStreaming)
+          .reduce<AgentSession[]>((result, session) => upsertSession(result, session), sessions) }));
       } catch (error) {
-        toast.error((error as Error).message || "加载会话失败");
+        if (epoch === accountEpoch) toast.error((error as Error).message || "加载会话失败");
       } finally {
-        set({ isLoading: false, sessionsLoaded: true });
+        if (epoch === accountEpoch) set({ isLoadingSessions: false, sessionsLoaded: true });
       }
     },
-    loadMessages: async (sessionId, force) => {
+    loadMessages: async (sessionId, force = false, activate = true) => {
       if (!sessionId) return;
-      if (!force && get().currentSessionId === sessionId && get().messages.length > 0) return;
-      if (get().isStreaming) {
-        get().cancelGeneration();
-      }
-      set({
-        isLoading: true,
-        currentSessionId: sessionId,
-        isCreatingNew: false,
-        // 回查是接着上一次连接排障，帧留着；换会话才清
-        frames: force ? get().frames : []
-      });
+      const epoch = accountEpoch;
+      const wasCurrent = get().currentSessionId === sessionId;
+      const cached = wasCurrent ? pickView(get()) : get().conversationStates[sessionId];
+      if (activate) selectView(sessionId, cached ?? emptyView(sessionId));
+      // 活跃连接以本地增量为准；切回来不会重拉历史覆盖它
+      if (cached?.isStreaming || (!force && wasCurrent && cached && cached.messages.length > 0)) return;
+      const { set: setConversation, get: getConversation } = bindView(() => sessionId);
+      setConversation({ isLoading: true });
       try {
         const data = await listAgentMessages(sessionId);
-        if (get().currentSessionId !== sessionId) {
-          return;
-        }
+        if (epoch !== accountEpoch || getConversation().isStreaming) return;
         const mapped: AgentMessage[] = data.map((item) => {
           const isAssistant = item.role === "assistant";
           let blocks: AgentBlockUI[] | undefined;
@@ -565,27 +660,16 @@ export const useAgentChatStore = create<AgentChatState>((set, get) => {
             messageStatus: item.messageStatus ?? "NORMAL"
           };
         });
-        set({ messages: mapped });
+        setConversation({ messages: mapped });
       } catch (error) {
+        if (epoch !== accountEpoch) return;
         // 回查失败要让调用方接住：那边正等着服务端表态，吞掉就只能一直「提交中」
         if (force) {
           throw error;
         }
         toast.error((error as Error).message || "加载消息失败");
       } finally {
-        if (get().currentSessionId !== sessionId) {
-          set({ isLoading: false });
-        } else {
-          set({
-            isLoading: false,
-            isStreaming: false,
-            streamTaskId: null,
-            streamAbort: null,
-            streamingMessageId: null,
-            streamOpenBlockId: null,
-            cancelRequested: false
-          });
-        }
+        if (epoch === accountEpoch) setConversation({ isLoading: false });
       }
     },
     renameSession: async (sessionId, title) => {
@@ -603,12 +687,13 @@ export const useAgentChatStore = create<AgentChatState>((set, get) => {
         await deleteAgentSession(sessionId);
         set((state) => ({
           sessions: state.sessions.filter((session) => session.id !== sessionId),
-          messages: state.currentSessionId === sessionId ? [] : state.messages,
-          currentSessionId: state.currentSessionId === sessionId ? null : state.currentSessionId
+          conversationStates: Object.fromEntries(Object.entries(state.conversationStates).filter(([key]) => key !== sessionId)),
+          ...(state.currentSessionId === sessionId ? { currentViewKey: newViewKey(), ...emptyView(), draft: null } : {})
         }));
         toast.success("删除成功");
       } catch (error) {
         toast.error((error as Error).message || "删除会话失败");
+        throw error;
       }
     },
     batchDeleteSessions: async (sessionIds) => {
@@ -618,13 +703,14 @@ export const useAgentChatStore = create<AgentChatState>((set, get) => {
         const removed = new Set(sessionIds);
         set((state) => ({
           sessions: state.sessions.filter((session) => !removed.has(session.id)),
-          messages: state.currentSessionId && removed.has(state.currentSessionId) ? [] : state.messages,
-          currentSessionId:
-            state.currentSessionId && removed.has(state.currentSessionId) ? null : state.currentSessionId
+          conversationStates: Object.fromEntries(Object.entries(state.conversationStates).filter(([key]) => !removed.has(key))),
+          ...(state.currentSessionId && removed.has(state.currentSessionId)
+            ? { currentViewKey: newViewKey(), ...emptyView(), draft: null } : {})
         }));
         toast.success(`已删除 ${sessionIds.length} 条会话`);
       } catch (error) {
         toast.error((error as Error).message || "批量删除失败");
+        throw error;
       }
     },
     startNewChat: () => {
@@ -633,22 +719,7 @@ export const useAgentChatStore = create<AgentChatState>((set, get) => {
         set({ isCreatingNew: true, isLoading: false });
         return;
       }
-      if (state.isStreaming) {
-        get().cancelGeneration();
-      }
-      set({
-        currentSessionId: null,
-        messages: [],
-        isStreaming: false,
-        isLoading: false,
-        isCreatingNew: true,
-        streamTaskId: null,
-        streamAbort: null,
-        streamingMessageId: null,
-        streamOpenBlockId: null,
-        cancelRequested: false,
-        frames: []
-      });
+      selectView(newViewKey(), emptyView());
     },
     updateSessionTitle: (sessionId, title) => {
       set((state) => ({
@@ -683,15 +754,18 @@ export const useAgentChatStore = create<AgentChatState>((set, get) => {
         return;
       }
       const inputFocusKey = Date.now();
+      const existingId = get().currentSessionId;
+      if (existingId && existingId !== get().currentViewKey) moveView(get().currentViewKey, existingId);
 
+      const viewKey = get().currentViewKey;
       const userMessage: AgentMessage = {
-        id: `user-${Date.now()}`,
+        id: `user-${++viewSeq}`,
         role: "user",
         content: trimmed,
         status: "done",
         createdAt: new Date().toISOString()
       };
-      const assistantId = `assistant-${Date.now()}`;
+      const assistantId = `assistant-${++viewSeq}`;
 
       set((state) => ({
         messages: [...state.messages, userMessage, newAssistantMessage(assistantId)],
@@ -706,16 +780,19 @@ export const useAgentChatStore = create<AgentChatState>((set, get) => {
       });
       const url = `${API_BASE_URL}/agent/v1/chat${query}`;
 
-      await runStream({ url, assistantId });
+      await runStream({ url, assistantId, viewKey });
     },
     confirmPendingTool: async (messageId, blockId, approved) => {
+      const epoch = accountEpoch;
       const conversationId = get().currentSessionId;
+      if (conversationId && conversationId !== get().currentViewKey) moveView(get().currentViewKey, conversationId);
+      const viewKey = get().currentViewKey;
       if (!conversationId || get().isStreaming) return;
       // 先只标「提交中」：这一刻我们只知道自己点了，还不知道后端收没收到
       // 直接落成已同意，断网时页面会替后端说一句它没说过的话，而工具到底跑没跑用户无从得知
       setConfirmStatus(messageId, blockId, "submitting");
 
-      const assistantId = `assistant-${Date.now()}`;
+      const assistantId = `assistant-${++viewSeq}`;
       set((state) => ({
         messages: [...state.messages, newAssistantMessage(assistantId)],
         ...streamStartPatch(assistantId)
@@ -724,36 +801,47 @@ export const useAgentChatStore = create<AgentChatState>((set, get) => {
       const delivered = await runStream({
         url: `${API_BASE_URL}/agent/v1/chat/confirm`,
         body: { conversationId, messageId, approved },
-        assistantId
+        assistantId,
+        viewKey
       });
 
+      if (epoch !== accountEpoch) return;
       if (delivered) {
         // 后端已受理，卡片这才落定；此后即使流中途断了，裁决在库里也是实的
-        setConfirmStatus(messageId, blockId, approved ? "approved" : "denied", "NORMAL");
+        setConfirmStatus(messageId, blockId, approved ? "approved" : "denied", "NORMAL", conversationId);
         return;
       }
       // 没收到 meta：可能压根没发出去，也可能发出去了只是回程断了，猜不得——回查一次以服务端为准
       try {
-        await get().loadMessages(conversationId, true);
+        await get().loadMessages(conversationId, true, false);
       } catch {
         toast.error("网络不通，这一步是否已提交无法确认，恢复后请刷新页面");
         return;
       }
       // 回查回来仍是待批，说明这一次点击后端没收到；按钮已随之复原，明说一句免得用户干等
-      const refreshed = get().messages.find((message) => message.id === messageId);
+      const refreshed = getView(conversationId).messages.find((message) => message.id === messageId);
       const confirmBlock = refreshed?.blocks?.find((block) => block.kind === "confirm");
       if (confirmBlock?.status === "pending") {
         toast.error("网络不稳，这一步没提交成功，请重新确认");
       }
     },
     cancelGeneration: () => {
-      const { isStreaming, streamTaskId } = get();
-      if (!isStreaming) return;
+      const { isStreaming, streamTaskId, cancelRequested } = get();
+      if (!isStreaming || cancelRequested) return;
       // 不中断 fetch：后端落库部分内容后回发 cancel + done 完成收尾
       set({ cancelRequested: true });
       if (streamTaskId) {
-        stopAgentTask(streamTaskId).catch(() => null);
+        requestStop(streamTaskId, get().currentViewKey);
       }
+    },
+    reset: () => {
+      accountEpoch++;
+      const state = get();
+      const views = { ...state.conversationStates, [state.currentViewKey]: pickView(state) };
+      // 账号切换时关闭全部连接；迟到回调以 streamingMessageId 校验，不会写回新账号
+      set({ sessions: [], sessionsLoaded: false, currentViewKey: newViewKey(), conversationStates: {},
+        isLoadingSessions: false, draft: null, ...emptyView() });
+      Object.values(views).forEach((view) => view.streamAbort?.());
     }
   };
 });

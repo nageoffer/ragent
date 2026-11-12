@@ -25,7 +25,7 @@ import java.util.List;
  * 关键词检索服务 SPI
  * <p>
  * 与向量检索的 {@link com.nageoffer.ai.ragent.rag.core.vector.VectorRetrieverService} 对称，
- * 负责基于分词的关键词（全文）检索，本期实现为 Elasticsearch（BM25）
+ * 负责基于分词的关键词（全文）检索，现有实现为 Elasticsearch（BM25）
  * <p>
  * 通过 rag.keyword.type 选择实现，none（默认）时无任何实现被注册，
  * 关键词检索通道也随之不注册，系统自动退化为纯向量检索

@@ -128,6 +128,21 @@ class BaiLianRerankClientTest {
     }
 
     @Test
+    @DisplayName("响应重复 index 只保留一次，并用未命中的候选补足 topN")
+    void duplicateIndexesDoNotDuplicateChunks() throws IOException {
+        serve("{\"output\":{\"results\":["
+                + "{\"index\":0,\"relevance_score\":0.90},"
+                + "{\"index\":0,\"relevance_score\":0.80}]}}");
+
+        List<RetrievedChunk> result = client.rerank(
+                "问题", List.of(chunk("a"), chunk("b"), chunk("c")), 2, target());
+
+        assertEquals(List.of("a", "b"), result.stream().map(RetrievedChunk::getId).toList());
+        assertEquals(0.90F, result.get(0).getRerankScore(), 1e-6F);
+        assertNull(result.get(1).getRerankScore());
+    }
+
+    @Test
     @DisplayName("topN <= 0 视为不限条数，原样返回且不调用远端")
     void skipsRemoteCallWhenTopNIsNotPositive() throws IOException {
         serve("{\"output\":{\"results\":[]}}");

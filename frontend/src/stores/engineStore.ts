@@ -10,7 +10,7 @@ interface EngineState {
   initialize: () => Promise<void>;
 }
 
-// 只允许在鉴权后的 EngineGate 内触发：未登录调 /rag/settings 会被拦截器重定向登录页
+// 只允许在鉴权后的 EngineGate 内触发：未登录查询配置会被拦截器重定向登录页
 export const useEngineStore = create<EngineState>((set, get) => ({
   engineType: null,
   loading: false,

@@ -20,6 +20,10 @@ package com.nageoffer.ai.ragent.framework.web;
 import com.nageoffer.ai.ragent.framework.context.LoginUser;
 import com.nageoffer.ai.ragent.framework.context.UserContext;
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.classic.spi.IThrowableProxy;
+import ch.qos.logback.core.read.ListAppender;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -28,11 +32,18 @@ import org.redisson.api.RBucket;
 import org.redisson.api.RTopic;
 import org.redisson.api.RedissonClient;
 import org.redisson.api.listener.MessageListener;
+import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -141,11 +152,17 @@ class StreamTaskManagerTest {
     }
 
     @Test
-    void shouldMarkSystemCancelAsSystem() {
+    void shouldCancelSystemTaskLocallyWithoutRedisRoundTrip() {
+        AtomicInteger interrupted = new AtomicInteger();
+        AtomicInteger finalized = new AtomicInteger();
+        taskManager.register(TASK_ID, OWNER_ID, finalized::incrementAndGet);
+        taskManager.bindHandle(TASK_ID, interrupted::incrementAndGet);
         taskManager.cancel(TASK_ID);
-
-        verify(cancelBucket).set("__system__", Duration.ofMinutes(30));
-        verify(topic).publish(TASK_ID + "|__system__");
+        taskManager.cancel(TASK_ID);
+        assertThat(interrupted.get()).isOne();
+        assertThat(finalized.get()).isOne();
+        verify(cancelBucket, never()).set(anyString(), any(Duration.class));
+        verify(topic, never()).publish(any());
     }
 
     @Test
@@ -196,6 +213,111 @@ class StreamTaskManagerTest {
 
         assertThat(taskManager.isCancelled(TASK_ID)).isFalse();
         assertThat(cancelled.get()).isZero();
+    }
+
+    /**
+     * 重复执行finalizer收尾逻辑问题复现
+     * 会话注册register | 本地取消cancelLocal 可能会导致收尾逻辑重复执行
+     */
+    @Test
+    void shouldRunFinalizerOnlyOnceWhenRegisterRacesWithBroadcastCancel() throws Exception {
+        AtomicInteger finalized = new AtomicInteger();
+
+        // register 窗口里唯一耗时的是这次 Redis 读，挂住它就能稳定地把广播插进窗口
+        CountDownLatch reviewStarted = new CountDownLatch(1);
+        CountDownLatch releaseReview = new CountDownLatch(1);
+        when(cancelBucket.get()).thenAnswer(invocation -> {
+            reviewStarted.countDown();
+            assertThat(releaseReview.await(5, TimeUnit.SECONDS)).isTrue();
+            return OWNER_ID;
+        });
+
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        Future<?> registering = executor.submit(
+                () -> taskManager.register(TASK_ID, OWNER_ID, finalized::incrementAndGet));
+        try {
+            assertThat(reviewStarted.await(5, TimeUnit.SECONDS)).isTrue();
+            // 此刻 register 还没落地，广播已经跑完一轮收尾
+            captureListener().onMessage(CANCEL_TOPIC, TASK_ID + "|" + OWNER_ID);
+            assertThat(finalized.get()).isOne();
+            releaseReview.countDown();
+            // 必须等注册线程正常结束：子线程异常或超时会在这里显式失败，而不是靠最终计数假绿
+            registering.get(5, TimeUnit.SECONDS);
+        } finally {
+            releaseReview.countDown();
+            executor.shutdownNow();
+        }
+
+        assertThat(finalized.get()).isOne();
+    }
+
+    /**
+     * 处理cancelAction抛出异常导致finalizer无法被执行
+     * 当前通过捕获异常并且打印错误日志来处理
+     */
+    @Test
+    void shouldRunFinalizerEvenWhenCancelActionThrows() {
+        AtomicInteger finalized = new AtomicInteger();
+        taskManager.register(TASK_ID, OWNER_ID, finalized::incrementAndGet);
+        taskManager.bindHandle(TASK_ID, () -> {
+            throw new IllegalStateException("打断上游失败");
+        });
+
+        // 两个调用点都是 fire-and-forget，异常只记录不外抛，但收尾不能跟着一起丢
+        assertThatCode(() -> taskManager.cancel(TASK_ID)).doesNotThrowAnyException();
+
+        assertThat(finalized.get()).isOne();
+    }
+
+    @Test
+    void shouldNotThrowWhenFinalizerFails() {
+        AtomicInteger interrupted = new AtomicInteger();
+        // 1.finalizer执行逻辑抛出异常
+        taskManager.register(TASK_ID, OWNER_ID, () -> {
+            throw new IllegalStateException("收尾失败");
+        });
+        // 2.取消逻辑正常执行
+        taskManager.bindHandle(TASK_ID, interrupted::incrementAndGet);
+
+        // 3.断言异常是否抛出 -> 被捕获且打印错误日志
+        assertThatCode(() -> taskManager.cancel(TASK_ID)).doesNotThrowAnyException();
+
+        // 4.判断取消逻辑是否正确执行
+        assertThat(interrupted.get()).isOne();
+    }
+
+    @Test
+    void shouldLogBothFailuresWhenCancelActionAndFinalizerBothThrow() {
+        taskManager.register(TASK_ID, OWNER_ID, () -> {
+            throw new IllegalStateException("收尾失败");
+        });
+        taskManager.bindHandle(TASK_ID, () -> {
+            throw new IllegalArgumentException("打断上游失败");
+        });
+
+        Logger logger = (Logger) LoggerFactory.getLogger(StreamTaskManager.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            // cancelAction抛出的异常保留，收尾逻辑异常挂在 suppressed 上，一起进日志
+            assertThatCode(() -> taskManager.cancel(TASK_ID)).doesNotThrowAnyException();
+        } finally {
+            logger.detachAppender(appender);
+            appender.stop();
+        }
+
+        IThrowableProxy failure = appender.list.stream()
+                .filter(event -> event.getThrowableProxy() != null)
+                .findFirst()
+                .orElseThrow()
+                .getThrowableProxy();
+        assertThat(failure.getClassName()).isEqualTo(IllegalArgumentException.class.getName());
+        assertThat(failure.getMessage()).isEqualTo("打断上游失败");
+        assertThat(failure.getSuppressed()).singleElement().satisfies(suppressed -> {
+            assertThat(suppressed.getClassName()).isEqualTo(IllegalStateException.class.getName());
+            assertThat(suppressed.getMessage()).isEqualTo("收尾失败");
+        });
     }
 
     /**

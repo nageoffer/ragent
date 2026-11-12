@@ -18,7 +18,6 @@ export interface IntentNodeTree {
   enabled?: number | null;
   promptSnippet?: string | null;
   promptTemplate?: string | null;
-  paramPromptTemplate?: string | null;
   children?: IntentNodeTree[];
 }
 
@@ -39,7 +38,6 @@ export interface IntentNodeCreatePayload {
   enabled?: number | null;
   promptSnippet?: string | null;
   promptTemplate?: string | null;
-  paramPromptTemplate?: string | null;
 }
 
 export interface IntentNodeUpdatePayload {
@@ -58,7 +56,6 @@ export interface IntentNodeUpdatePayload {
   enabled?: number | null;
   promptSnippet?: string | null;
   promptTemplate?: string | null;
-  paramPromptTemplate?: string | null;
 }
 
 export async function getIntentTree() {

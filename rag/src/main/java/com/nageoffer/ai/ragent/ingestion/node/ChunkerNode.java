@@ -40,8 +40,8 @@ import java.util.List;
 /**
  * 分块节点：把 Block 列表按预算切块并向量化
  * <p>
- * 两处随内核化收窄的适配：分块参数从"策略枚举 + 一堆自由键"收敛成 {@link ChunkBudget}；
- * 向量化从 {@code embed(chunks, null)} 改为按上下文里的向量落点，因此不再与上传路径用不同的模型
+ * 分块参数只认 {@link ChunkBudget}；向量化按上下文里的向量落点，不用 {@code embed(chunks, null)} 回落默认模型，
+ * 才与上传路径用同一个模型
  */
 @Component
 @RequiredArgsConstructor

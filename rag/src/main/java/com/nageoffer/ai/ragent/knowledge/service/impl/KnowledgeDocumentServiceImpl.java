@@ -197,6 +197,12 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
     public void startChunk(String docId) {
         KnowledgeDocumentDO beforeDO = documentMapper.selectById(docId);
         Assert.notNull(beforeDO, () -> new ClientException("文档不存在"));
+
+        //文档被禁用，无法执行分块操作，否则会检索到不允许的向量
+        if (!Integer.valueOf(1).equals(beforeDO.getEnabled())) {
+            throw new ClientException("文档未启用，暂不支持分块操作");
+        }
+
         bizChangeLogContext.putName(beforeDO.getDocName());
         KnowledgeDocumentDO before = BeanUtil.copyProperties(beforeDO, KnowledgeDocumentDO.class);
         KnowledgeDocumentChunkEvent event = KnowledgeDocumentChunkEvent.builder()

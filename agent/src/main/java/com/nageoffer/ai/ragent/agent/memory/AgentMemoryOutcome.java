@@ -17,10 +17,13 @@
 
 package com.nageoffer.ai.ragent.agent.memory;
 
+import java.util.List;
+
 /**
- * 一次抽取的结局；mutated 表示记忆集整体有没有变（含合并/淘汰），与 applied 独立
+ * 一次整理的结局：状态说明有没有提交，changes 是已提交的实际变更，explanation 是 Judge 的判定说明
+ * 没提交时两者都为空，不把 Judge 的计划当成已完成的操作
  */
-public record AgentMemoryOutcome(Status status, int applied, int pending, boolean mutated) {
+public record AgentMemoryOutcome(Status status, List<String> changes, String explanation) {
 
     public enum Status {
 
@@ -30,56 +33,46 @@ public record AgentMemoryOutcome(Status status, int applied, int pending, boolea
         DISABLED,
 
         /**
-         * 水位之后没有待处理的用户消息
-         */
-        NOTHING_PENDING,
-
-        /**
-         * 后台门槛没到，攒够再说；flush 不受它挡
-         */
-        BELOW_THRESHOLD,
-
-        /**
-         * 同会话已有在飞抽取
+         * 该用户的记忆正被另一次整理处理，这次没动
          */
         BUSY,
 
         /**
-         * 仲裁调用或解析失败，这次抽取留待下次机会
+         * 只有后台会出现：游标之后没有待整理的用户发言
+         */
+        NOTHING_PENDING,
+
+        /**
+         * 只有后台会出现：待整理的用户发言不足门槛，不调模型
+         */
+        BELOW_THRESHOLD,
+
+        /**
+         * 本次处理成功：可能写了记忆，也可能合法地不改；changes 只列内容变更，为空时原因看 explanation
+         */
+        COMMITTED,
+
+        /**
+         * 读取、模型调用或解析失败，决策不合执行要求被整批拒绝，或后台提交时游标已被推过，确认什么都没写
          */
         FAILED,
 
         /**
-         * 快照失配，本批作废
+         * 本批新内容自身超出容量上限，什么都没写
          */
-        CONFLICT,
+        CAPACITY_EXCEEDED,
 
         /**
-         * 容量拒收，只拒新增不删旧
+         * 提交调用抛出异常，库里是否已写入无法确认
          */
-        CAPACITY_REJECTED,
-
-        /**
-         * 判完没落东西，水位照推
-         */
-        SETTLED_EMPTY,
-
-        /**
-         * 判完有落库
-         */
-        WRITTEN
+        UNKNOWN
     }
 
-    static AgentMemoryOutcome of(Status status, int pending) {
-        return new AgentMemoryOutcome(status, 0, pending, false);
+    public static AgentMemoryOutcome of(Status status) {
+        return new AgentMemoryOutcome(status, List.of(), "");
     }
 
-    /**
-     * 压根没起跑，一次模型都没叫；后台每轮都会撞上这三种，不值得留 INFO
-     */
-    public boolean idle() {
-        return status == Status.DISABLED
-                || status == Status.NOTHING_PENDING
-                || status == Status.BELOW_THRESHOLD;
+    static AgentMemoryOutcome committed(AgentMemoryEdit edit, AgentMemoryJudgement judgement) {
+        return new AgentMemoryOutcome(Status.COMMITTED, edit.changes(), judgement.explanation());
     }
 }

@@ -50,9 +50,11 @@ import io.agentscope.core.event.ToolResultEndEvent;
 import io.agentscope.core.event.ToolResultStartEvent;
 import io.agentscope.core.event.ToolResultTextDeltaEvent;
 import io.agentscope.core.message.Msg;
+import io.agentscope.core.message.TextBlock;
+import io.agentscope.core.message.ToolResultBlock;
 import io.agentscope.core.message.ToolUseBlock;
+import lombok.AllArgsConstructor;
 import lombok.Builder;
-import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
 import java.time.Clock;
@@ -64,6 +66,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * AgentScope 事件流 → SSE 协议转换，负责增量转发、轨迹落库与取消收尾
@@ -71,13 +74,6 @@ import java.util.Set;
 @Slf4j
 public class AgentStreamEventBridge {
 
-    private static final String DELTA_TYPE_RESPONSE = "response";
-    private static final String DELTA_TYPE_THINK = "think";
-    /**
-     * 中断提示的增量类型，前端据此单开 error 块，与模型说的话区分开
-     */
-    private static final String DELTA_TYPE_ERROR = "error";
-    private static final String KIND_TOOL = "tool";
     private static final String HINT_AGENT = "AGENT_HINT";
     private static final String HINT_MAX_ITERATIONS = "MAX_ITERATIONS";
     /**
@@ -114,9 +110,10 @@ public class AgentStreamEventBridge {
 
     private final Object stateLock = new Object();
 
-    private final StringBuilder responseBuffer = new StringBuilder();
-    private final StringBuilder thinkingBuffer = new StringBuilder();
-    private Msg resultMsg;
+    /**
+     * 非流式终答，流式增量为空时拿它兜底
+     */
+    private String fallbackText = "";
 
     private final List<AgentBlock> blocks = new ArrayList<>();
     private final Map<String, AgentBlock> openToolBlocks = new HashMap<>();
@@ -138,23 +135,26 @@ public class AgentStreamEventBridge {
      */
     private final List<AgentBlock> sealedTextBlocks = new ArrayList<>();
 
-    public AgentStreamEventBridge(Params params) {
-        this.runHandle = params.getRunHandle();
+    @Builder
+    public AgentStreamEventBridge(AgentRunHandle runHandle, AgentConversationService conversationService,
+                                  ResolvedCatalog catalog, String conversationId, String userId, String title,
+                                  String replyToMessageId, Clock clock, AgentToolExecutionFacts facts) {
+        this.runHandle = runHandle;
         this.sender = runHandle.getSender();
-        this.conversationService = params.getConversationService();
-        this.catalog = params.getCatalog();
-        this.conversationId = params.getConversationId();
-        this.userId = params.getUserId();
-        this.title = params.getTitle();
-        this.replyToMessageId = params.getReplyToMessageId();
-        this.clock = params.getClock();
-        this.facts = params.getFacts();
+        this.conversationService = conversationService;
+        this.catalog = catalog;
+        this.conversationId = conversationId;
+        this.userId = userId;
+        this.title = title;
+        this.replyToMessageId = replyToMessageId;
+        this.clock = clock;
+        this.facts = facts;
     }
 
     public void onEvent(AgentEvent event) {
         switch (event.getType()) {
-            case TEXT_BLOCK_DELTA -> onResponseDelta(((TextBlockDeltaEvent) event).getDelta());
-            case THINKING_BLOCK_DELTA -> onThinkingDelta(((ThinkingBlockDeltaEvent) event).getDelta());
+            case TEXT_BLOCK_DELTA -> onTextDelta(TextKind.ANSWER, ((TextBlockDeltaEvent) event).getDelta());
+            case THINKING_BLOCK_DELTA -> onTextDelta(TextKind.REASONING, ((ThinkingBlockDeltaEvent) event).getDelta());
             case TOOL_CALL_START -> onToolCallStart((ToolCallStartEvent) event);
             case TOOL_RESULT_START -> onToolExecutionStart((ToolResultStartEvent) event);
             case TOOL_RESULT_TEXT_DELTA -> onToolResultDelta((ToolResultTextDeltaEvent) event);
@@ -183,23 +183,25 @@ public class AgentStreamEventBridge {
             if (settleAwaitingConfirm()) {
                 return;
             }
-            String streamed;
+            String content;
+            boolean resend;
             synchronized (stateLock) {
-                streamed = responseBuffer.toString();
-            }
-            // 优先用流式增量，为空时回退到终答消息
-            String content = StrUtil.isNotBlank(streamed) ? streamed : fallbackContent();
-            // 非流式场景没有增量，一次性补发
-            if (streamed.isEmpty() && StrUtil.isNotBlank(content)) {
-                synchronized (stateLock) {
-                    appendTextBlock(DELTA_TYPE_RESPONSE, content, false);
+                String streamed = textOf(TextKind.ANSWER);
+                // 优先用流式增量，为空时回退到终答消息
+                content = StrUtil.isNotBlank(streamed) ? streamed : fallbackText;
+                // 非流式场景没有增量，块和增量都要一次性补发
+                resend = streamed.isEmpty() && StrUtil.isNotBlank(content);
+                if (resend) {
+                    appendTextBlock(TextKind.ANSWER, content, false);
                 }
-                sender.sendEvent(AgentSSEEventType.MESSAGE.value(), new AgentMessageDelta(DELTA_TYPE_RESPONSE, content));
             }
-            String messageId = persistAssistantMessage(content, AgentMessageStatus.NORMAL);
-            sender.sendEvent(AgentSSEEventType.FINISH.value(),
+            if (resend) {
+                sender.sendEvent(AgentSSEEventType.MESSAGE.value(),
+                        new AgentMessageDelta(TextKind.ANSWER.kind, content));
+            }
+            String messageId = settleAndPersistMessage(content, AgentMessageStatus.NORMAL);
+            sendTerminal(AgentSSEEventType.FINISH,
                     new AgentCompletionPayload(messageId, title, AgentMessageStatus.NORMAL.name(), facts.settleRun()));
-            sender.sendEvent(AgentSSEEventType.DONE.value(), "[DONE]");
         });
     }
 
@@ -214,19 +216,19 @@ public class AgentStreamEventBridge {
             // 块和当场的增量都要发，只塞进 content 的话历史回放有块就不读 content，刷新后这句就没了
             String content;
             synchronized (stateLock) {
-                appendTextBlock(DELTA_TYPE_ERROR, NOTICE_INTERRUPTED, false);
-                content = StrUtil.isBlank(responseBuffer)
+                String streamed = textOf(TextKind.ANSWER);
+                content = StrUtil.isBlank(streamed)
                         ? NOTICE_INTERRUPTED
-                        : responseBuffer + "\n\n" + NOTICE_INTERRUPTED;
+                        : streamed + "\n\n" + NOTICE_INTERRUPTED;
+                appendTextBlock(TextKind.ERROR, NOTICE_INTERRUPTED, false);
             }
             sender.sendEvent(AgentSSEEventType.MESSAGE.value(),
-                    new AgentMessageDelta(DELTA_TYPE_ERROR, NOTICE_INTERRUPTED));
+                    new AgentMessageDelta(TextKind.ERROR.kind, NOTICE_INTERRUPTED));
             // 出错也落库留痕，否则已执行的工具操作在历史里查不到
-            String messageId = persistAssistantMessage(content, AgentMessageStatus.INTERRUPTED);
+            String messageId = settleAndPersistMessage(content, AgentMessageStatus.INTERRUPTED);
             // finish 让前端把已流出的内容与工具块定型，口径与落库一致，刷新前后看到的是同一条
-            sender.sendEvent(AgentSSEEventType.FINISH.value(),
+            sendTerminal(AgentSSEEventType.FINISH,
                     new AgentCompletionPayload(messageId, title, AgentMessageStatus.INTERRUPTED.name(), facts.settleRun()));
-            sender.sendEvent(AgentSSEEventType.DONE.value(), "[DONE]");
         });
     }
 
@@ -242,44 +244,33 @@ public class AgentStreamEventBridge {
             String content;
             boolean tracked;
             synchronized (stateLock) {
-                content = responseBuffer.toString();
-                tracked = !thinkingBuffer.isEmpty() || !blocks.isEmpty();
+                content = textOf(TextKind.ANSWER);
+                // 有块就值得落库留痕
+                tracked = !blocks.isEmpty();
             }
             String messageId = null;
-            if (StrUtil.isNotBlank(content) || tracked) {
-                messageId = persistAssistantMessage(content, AgentMessageStatus.INTERRUPTED);
+            if (tracked) {
+                messageId = settleAndPersistMessage(content, AgentMessageStatus.INTERRUPTED);
             }
-            sender.sendEvent(AgentSSEEventType.CANCEL.value(),
+            sendTerminal(AgentSSEEventType.CANCEL,
                     new AgentCompletionPayload(messageId, title, AgentMessageStatus.INTERRUPTED.name(), facts.settleRun()));
-            sender.sendEvent(AgentSSEEventType.DONE.value(), "[DONE]");
         });
     }
 
-    private void onResponseDelta(String delta) {
+    private void onTextDelta(TextKind textKind, String delta) {
         if (StrUtil.isEmpty(delta)) {
             return;
         }
         synchronized (stateLock) {
-            responseBuffer.append(delta);
-            appendTextBlock(DELTA_TYPE_RESPONSE, delta);
+            appendTextBlock(textKind, delta, true);
         }
-        sender.sendEvent(AgentSSEEventType.MESSAGE.value(), new AgentMessageDelta(DELTA_TYPE_RESPONSE, delta));
-    }
-
-    private void onThinkingDelta(String delta) {
-        if (StrUtil.isEmpty(delta)) {
-            return;
-        }
-        synchronized (stateLock) {
-            thinkingBuffer.append(delta);
-            appendTextBlock(DELTA_TYPE_THINK, delta);
-        }
-        sender.sendEvent(AgentSSEEventType.MESSAGE.value(), new AgentMessageDelta(DELTA_TYPE_THINK, delta));
+        sender.sendEvent(AgentSSEEventType.MESSAGE.value(), new AgentMessageDelta(textKind.kind, delta));
     }
 
     private void onAgentResult(Msg result) {
+        String text = result == null ? "" : StrUtil.emptyIfNull(result.getTextContent());
         synchronized (stateLock) {
-            resultMsg = result;
+            fallbackText = text;
         }
     }
 
@@ -295,7 +286,7 @@ public class AgentStreamEventBridge {
             return;
         }
         AgentBlock block = AgentBlock.builder()
-                .kind("confirm")
+                .kind(AgentBlock.KIND_CONFIRM)
                 .at(LocalDateTime.now(clock).format(BLOCK_TIME))
                 .status("pending")
                 .calls(calls)
@@ -357,16 +348,14 @@ public class AgentStreamEventBridge {
                 return false;
             }
             pending = pendingConfirmCalls;
-            streamed = responseBuffer.toString();
+            streamed = textOf(TextKind.ANSWER);
         }
-        String messageId = persistAssistantMessage(streamed, AgentMessageStatus.AWAITING_CONFIRM);
+        String messageId = settleAndPersistMessage(streamed, AgentMessageStatus.AWAITING_CONFIRM);
         if (messageId == null) {
             settleUnpersistedConfirm();
             return true;
         }
-        sender.sendEvent(AgentSSEEventType.CONFIRM.value(),
-                new AgentConfirmPayload(messageId, title, pending, facts.settleRun()));
-        sender.sendEvent(AgentSSEEventType.DONE.value(), "[DONE]");
+        sendTerminal(AgentSSEEventType.CONFIRM, new AgentConfirmPayload(messageId, title, pending, facts.settleRun()));
         return true;
     }
 
@@ -377,9 +366,8 @@ public class AgentStreamEventBridge {
         log.error("待确认消息落库失败, 本轮改为中断收尾, conversationId: {}", conversationId);
         sender.sendEvent(AgentSSEEventType.HINT.value(),
                 new AgentHintPayload(HINT_AGENT, "系统繁忙，这一步没有执行；这条会话已无法继续，请新建会话重试"));
-        sender.sendEvent(AgentSSEEventType.FINISH.value(),
+        sendTerminal(AgentSSEEventType.FINISH,
                 new AgentCompletionPayload(null, title, AgentMessageStatus.INTERRUPTED.name(), facts.settleRun()));
-        sender.sendEvent(AgentSSEEventType.DONE.value(), "[DONE]");
     }
 
     /**
@@ -393,14 +381,13 @@ public class AgentStreamEventBridge {
         AgentToolProgress progress;
         synchronized (stateLock) {
             sealOpenTextBlock();
-            AgentBlock block = newToolBlock(toolName, event.getToolCallId());
+            AgentBlock block = createAndAddToolBlock(toolName, event.getToolCallId());
             block.setStatus(AgentToolStatus.PENDING.value());
             block.setCallIndex(facts.callIndexOf(event.getToolCallId()));
-            blocks.add(block);
             openToolBlocks.put(callKey(event.getToolCallId()), block);
             progress = AgentToolProgress.of(block);
         }
-        sender.sendEvent(AgentSSEEventType.TOOL.value(), progress);
+        sender.sendEvent(AgentSSEEventType.BLOCK.value(), progress);
     }
 
     /**
@@ -418,8 +405,7 @@ public class AgentStreamEventBridge {
             AgentBlock block = openToolBlocks.get(callKey);
             if (block == null) {
                 // 确认续跑那轮没有 ToolCallStart，块在这里补建
-                block = newToolBlock(toolName, event.getToolCallId());
-                blocks.add(block);
+                block = createAndAddToolBlock(toolName, event.getToolCallId());
                 openToolBlocks.put(callKey, block);
             }
             block.setCallIndex(facts.callIndexOf(event.getToolCallId()));
@@ -430,7 +416,7 @@ public class AgentStreamEventBridge {
             }
             progress = AgentToolProgress.of(block);
         }
-        sender.sendEvent(AgentSSEEventType.TOOL.value(), progress);
+        sender.sendEvent(AgentSSEEventType.BLOCK.value(), progress);
     }
 
     private void onToolResultDelta(ToolResultTextDeltaEvent event) {
@@ -438,8 +424,14 @@ public class AgentStreamEventBridge {
             return;
         }
         synchronized (stateLock) {
-            toolResultBuffers.computeIfAbsent(callKey(event.getToolCallId()), ignored -> new StringBuilder())
-                    .append(event.getDelta());
+            StringBuilder buffer = toolResultBuffers.computeIfAbsent(callKey(event.getToolCallId()),
+                    ignored -> new StringBuilder());
+            // 超出上限的部分不再缓冲，截断后缀不会落库也不展示
+            int remaining = TOOL_RESULT_MAX_CHARS - buffer.length();
+            if (remaining > 0) {
+                String delta = event.getDelta();
+                buffer.append(delta, 0, Math.min(delta.length(), remaining));
+            }
         }
     }
 
@@ -458,15 +450,14 @@ public class AgentStreamEventBridge {
                 // 没有开头事件，补建块以保留记录，但无批次也无耗时
                 log.warn("工具结束事件没有对应的开头事件, taskId: {}, tool: {}, toolCallId: {}",
                         runHandle.getTaskId(), toolName, event.getToolCallId());
-                block = newToolBlock(toolName, event.getToolCallId());
-                blocks.add(block);
+                block = createAndAddToolBlock(toolName, event.getToolCallId());
             }
             block.setStatus(AgentToolStatus.of(event.getState()).value());
-            block.setResult(buffer == null ? null : StrUtil.sub(buffer.toString(), 0, TOOL_RESULT_MAX_CHARS));
+            block.setResult(buffer == null ? null : buffer.toString());
             applyExecutionTimes(block);
             progress = AgentToolProgress.of(block);
         }
-        sender.sendEvent(AgentSSEEventType.TOOL.value(), progress);
+        sender.sendEvent(AgentSSEEventType.BLOCK.value(), progress);
     }
 
     /**
@@ -480,25 +471,30 @@ public class AgentStreamEventBridge {
                 if (isInternalTool(toolCall.getName())) {
                     continue;
                 }
-                AgentBlock block = newToolBlock(toolCall.getName(), toolCall.getId());
+                AgentBlock block = createAndAddToolBlock(toolCall.getName(), toolCall.getId());
                 // 没执行过，不给批次号与起止
                 block.setStatus(AgentToolStatus.DENIED.value());
-                blocks.add(block);
                 progresses.add(AgentToolProgress.of(block));
             }
         }
-        progresses.forEach(progress -> sender.sendEvent(AgentSSEEventType.TOOL.value(), progress));
+        progresses.forEach(progress -> sender.sendEvent(AgentSSEEventType.BLOCK.value(), progress));
     }
 
-    private AgentBlock newToolBlock(String toolName, String toolCallId) {
-        return AgentBlock.builder()
-                .kind(KIND_TOOL)
+    /**
+     * 建块并入列，登记到 openToolBlocks 由开头事件自己做
+     * 调用方需持 stateLock
+     */
+    private AgentBlock createAndAddToolBlock(String toolName, String toolCallId) {
+        AgentBlock block = AgentBlock.builder()
+                .kind(AgentBlock.KIND_TOOL)
                 .at(LocalDateTime.now(clock).format(BLOCK_TIME))
                 .name(toolName)
                 .displayName(catalog.displayNameOf(toolName))
                 // 记录真实 id，空值不落
                 .toolCallId(StrUtil.blankToDefault(toolCallId, null))
                 .build();
+        blocks.add(block);
+        return block;
     }
 
     /**
@@ -546,26 +542,33 @@ public class AgentStreamEventBridge {
     }
 
     /**
+     * 按块序拼回全文：封过口的块读正文，未封口的那块正文还没回填，读缓冲
      * 调用方需持 stateLock
      */
-    private void appendTextBlock(String deltaType, String delta) {
-        appendTextBlock(deltaType, delta, true);
+    private String textOf(TextKind textKind) {
+        StringBuilder text = new StringBuilder();
+        for (AgentBlock block : blocks) {
+            if (!textKind.kind.equals(block.getKind())) {
+                continue;
+            }
+            if (block == openTextBlock) {
+                text.append(openTextBuffer);
+            } else if (block.getText() != null) {
+                text.append(block.getText());
+            }
+        }
+        return text.toString();
     }
 
     /**
      * streamed=false 是一次性补发（非流式终答、中断提示），没有流的过程，不给起止
      * 调用方需持 stateLock
      */
-    private void appendTextBlock(String deltaType, String delta, boolean streamed) {
-        String kind = switch (deltaType) {
-            case DELTA_TYPE_THINK -> "reasoning";
-            case DELTA_TYPE_ERROR -> "error";
-            default -> "answer";
-        };
-        if (openTextBlock == null || !kind.equals(openTextBlock.getKind())) {
+    private void appendTextBlock(TextKind textKind, String delta, boolean streamed) {
+        if (openTextBlock == null || !textKind.kind.equals(openTextBlock.getKind())) {
             sealOpenTextBlock();
             openTextBlock = AgentBlock.builder()
-                    .kind(kind)
+                    .kind(textKind.kind)
                     .at(LocalDateTime.now(clock).format(BLOCK_TIME))
                     .startedAt(streamed ? facts.now() : null)
                     .build();
@@ -578,20 +581,21 @@ public class AgentStreamEventBridge {
     /**
      * 封口当前文本块并盖服务端时间戳，调用方需持 stateLock
      */
-    private AgentBlock sealOpenTextBlock() {
+    private void sealOpenTextBlock() {
         if (openTextBlock == null) {
-            return null;
+            return;
         }
         AgentBlock sealed = openTextBlock;
         sealed.setText(openTextBuffer.toString());
-        applyStreamTimes(sealed);
         openTextBlock = null;
         openTextBuffer = null;
         // 只广播有起止的，一次性补发的块发空帧会让前端认错待收口块
-        if (sealed.getEndedAt() != null) {
+        if (sealed.getStartedAt() != null) {
+            long endedAt = facts.now();
+            sealed.setEndedAt(endedAt);
+            sealed.setDurationMs(endedAt - sealed.getStartedAt());
             sealedTextBlocks.add(sealed);
         }
-        return sealed;
     }
 
     /**
@@ -612,35 +616,29 @@ public class AgentStreamEventBridge {
     }
 
     /**
-     * 文本块终点与耗时，起点缺失说明不是流式生成的，不补耗时
+     * 终态事件与 done 成对发出，四条出口一个口径
      */
-    private void applyStreamTimes(AgentBlock block) {
-        if (block.getStartedAt() == null) {
-            return;
-        }
-        long endedAt = facts.now();
-        block.setEndedAt(endedAt);
-        block.setDurationMs(endedAt - block.getStartedAt());
+    private void sendTerminal(AgentSSEEventType type, Object payload) {
+        sender.sendEvent(type.value(), payload);
+        sender.sendEvent(AgentSSEEventType.DONE.value(), "[DONE]");
     }
 
-    private String fallbackContent() {
-        Msg result;
-        synchronized (stateLock) {
-            result = resultMsg;
-        }
-        return result == null ? "" : StrUtil.emptyIfNull(result.getTextContent());
-    }
-
-    private String persistAssistantMessage(String content, AgentMessageStatus status) {
+    /**
+     * 本轮块收口后落库：封口文本块、未完工具按返回结果收口、补发封口帧与工具终态，最后写库
+     * 调用方拿到 null 表示没写进去，此时不能再发带 messageId 的收尾事件
+     */
+    private String settleAndPersistMessage(String content, AgentMessageStatus status) {
         String thinking;
         List<AgentBlock> settled;
+        List<AgentToolProgress> returned = new ArrayList<>();
         // 思考文本与块列表在同一个锁内取快照
         synchronized (stateLock) {
-            thinking = thinkingBuffer.toString();
-            settled = settledBlocks();
+            thinking = textOf(TextKind.REASONING);
+            settled = settleBlocks(returned);
         }
-        // 末段封口帧要赶在 finish/confirm/cancel 之前发出去
+        // 末段封口帧与补上的工具终态要赶在 finish/confirm/cancel 之前发出去，前端收到 cancel 后不再接块
         flushSealedTextBlocks();
+        returned.forEach(progress -> sender.sendEvent(AgentSSEEventType.BLOCK.value(), progress));
         try {
             return conversationService.addAssistantMessage(conversationId, userId, content,
                     thinking, settled, replyToMessageId, status, facts.settleRun());
@@ -651,54 +649,69 @@ public class AgentStreamEventBridge {
     }
 
     /**
-     * 调用方需持 stateLock：封口文本块、running 改 interrupted、剔除空文本块
+     * 调用方需持 stateLock：封口文本块、未完工具收口、剔除空文本块
+     * 没等到结束事件但工具体已返回的块放进 returned，由调用方出锁补发
      */
-    private List<AgentBlock> settledBlocks() {
+    private List<AgentBlock> settleBlocks(List<AgentToolProgress> returned) {
         sealOpenTextBlock();
         List<AgentBlock> settled = new ArrayList<>(blocks.size());
         for (AgentBlock block : blocks) {
-            boolean textual = !KIND_TOOL.equals(block.getKind()) && !"confirm".equals(block.getKind());
+            boolean textual = !AgentBlock.KIND_TOOL.equals(block.getKind())
+                    && !AgentBlock.KIND_CONFIRM.equals(block.getKind());
             if (textual && StrUtil.isBlank(block.getText())) {
                 continue;
             }
             // 只判工具块，confirm 的 pending 由结算流程改写
-            if (KIND_TOOL.equals(block.getKind()) && isOpen(block.getStatus())) {
-                block.setStatus(AgentToolStatus.INTERRUPTED.value());
-                // 可能已进过工具体，补上真实起点
-                applyExecutionTimes(block);
+            if (AgentBlock.KIND_TOOL.equals(block.getKind()) && isOpen(block.getStatus())
+                    && settleOpenToolBlock(block)) {
+                returned.add(AgentToolProgress.of(block));
             }
             settled.add(block);
         }
         return settled.isEmpty() ? null : settled;
     }
 
-    @Getter
-    @Builder
-    public static class Params {
+    /**
+     * 框架整批回来才发结束事件，同批有工具没回来就被停止时，已返回的那条按它自己的结果收口，没返回的判 interrupted
+     * 返回 true 表示按返回结果收口；调用方需持 stateLock
+     */
+    private boolean settleOpenToolBlock(AgentBlock block) {
+        // 可能已进过工具体，补上真实起止
+        applyExecutionTimes(block);
+        ToolResultBlock result = facts.toolFact(block.getToolCallId()).result();
+        if (result == null) {
+            block.setStatus(AgentToolStatus.INTERRUPTED.value());
+            return false;
+        }
+        block.setStatus(AgentToolStatus.of(result.getState()).value());
+        block.setResult(resultTextOf(result));
+        return true;
+    }
 
-        private final AgentRunHandle runHandle;
+    /**
+     * 拼法与截断同结果增量：框架按文本块逐个发增量，中间不加分隔
+     */
+    private static String resultTextOf(ToolResultBlock result) {
+        String text = result.getOutput().stream()
+                .filter(TextBlock.class::isInstance)
+                .map(block -> StrUtil.emptyIfNull(((TextBlock) block).getText()))
+                .collect(Collectors.joining());
+        return StrUtil.emptyToNull(StrUtil.sub(text, 0, TOOL_RESULT_MAX_CHARS));
+    }
 
-        private final AgentConversationService conversationService;
+    /**
+     * 文本类型：增量与块共用，限定为回答、思考和中断提示
+     */
+    @AllArgsConstructor
+    private enum TextKind {
 
-        private final ResolvedCatalog catalog;
-
-        private final String conversationId;
-
-        private final String userId;
-
-        private final String title;
-
-        private final String replyToMessageId;
+        ANSWER(AgentBlock.KIND_ANSWER),
+        REASONING(AgentBlock.KIND_REASONING),
+        ERROR(AgentBlock.KIND_ERROR);
 
         /**
-         * 测试传定格时钟以断言时间戳
+         * 发给前端的增量 type 与落库的块 kind 共用的值
          */
-        @Builder.Default
-        private final Clock clock = Clock.systemDefaultZone();
-
-        /**
-         * 与 RuntimeContext 共用的事实源实例
-         */
-        private final AgentToolExecutionFacts facts;
+        private final String kind;
     }
 }

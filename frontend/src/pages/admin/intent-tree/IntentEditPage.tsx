@@ -66,8 +66,7 @@ const formSchema = z.object({
   sortOrder: z.number().int().optional(),
   enabled: z.boolean(),
   promptSnippet: z.string().optional(),
-  promptTemplate: z.string().optional(),
-  paramPromptTemplate: z.string().optional()
+  promptTemplate: z.string().optional()
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -90,7 +89,6 @@ type FlatIntentNode = {
   sortOrder: number;
   promptSnippet?: string | null;
   promptTemplate?: string | null;
-  paramPromptTemplate?: string | null;
   pathText: string;
 };
 
@@ -136,7 +134,6 @@ const flattenIntentTree = (
       sortOrder: node.sortOrder ?? 0,
       promptSnippet: node.promptSnippet,
       promptTemplate: node.promptTemplate,
-      paramPromptTemplate: node.paramPromptTemplate,
       pathText: currentPath.join(" > ")
     });
     result.push(...flattenIntentTree(children, currentPath));
@@ -159,8 +156,7 @@ const emptyDefaults: FormValues = {
   sortOrder: 0,
   enabled: true,
   promptSnippet: "",
-  promptTemplate: "",
-  paramPromptTemplate: ""
+  promptTemplate: ""
 };
 
 export function IntentEditPage() {
@@ -246,8 +242,7 @@ export function IntentEditPage() {
       sortOrder: currentNode.sortOrder ?? 0,
       enabled: currentNode.enabled !== 0,
       promptSnippet: currentNode.promptSnippet || "",
-      promptTemplate: currentNode.promptTemplate || "",
-      paramPromptTemplate: currentNode.paramPromptTemplate || ""
+      promptTemplate: currentNode.promptTemplate || ""
     };
   }, [currentNode]);
 
@@ -315,9 +310,8 @@ export function IntentEditPage() {
       topK: values.topK ?? undefined,
       sortOrder: values.sortOrder ?? 0,
       enabled: values.enabled ? 1 : 0,
-      promptSnippet: values.promptSnippet?.trim() || "",
-      promptTemplate: values.promptTemplate?.trim() || "",
-      paramPromptTemplate: values.kind === 2 ? values.paramPromptTemplate?.trim() || "" : ""
+      promptSnippet: values.kind === 2 ? undefined : values.promptSnippet?.trim() || "",
+      promptTemplate: values.kind === 2 ? undefined : values.promptTemplate?.trim() || ""
     };
 
     try {
@@ -587,20 +581,21 @@ export function IntentEditPage() {
                 </div>
               </details>
 
-              <details className="rounded-lg border px-4 py-3">
-                <summary className="cursor-pointer text-sm font-medium text-foreground">Prompt 配置</summary>
-                <div className="mt-3 space-y-4">
-                  <FormField
-                    control={form.control}
-                    name="promptSnippet"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>短规则片段（可选）</FormLabel>
-                        <FormControl>
-                          <Textarea rows={3} placeholder="多意图场景下的规则补充" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
+              {kind !== 2 && (
+                <details className="rounded-lg border px-4 py-3">
+                  <summary className="cursor-pointer text-sm font-medium text-foreground">Prompt 配置</summary>
+                  <div className="mt-3 space-y-4">
+                    <FormField
+                      control={form.control}
+                      name="promptSnippet"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>短规则片段（可选）</FormLabel>
+                          <FormControl>
+                            <Textarea rows={3} placeholder="多意图场景下的规则补充" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
                     )}
                   />
 
@@ -617,24 +612,9 @@ export function IntentEditPage() {
                       </FormItem>
                     )}
                   />
-
-                  {kind === 2 ? (
-                    <FormField
-                      control={form.control}
-                      name="paramPromptTemplate"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>参数提取提示词模板（MCP专属）</FormLabel>
-                          <FormControl>
-                            <Textarea rows={4} placeholder="用于提取MCP工具参数" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  ) : null}
                 </div>
               </details>
+              )}
 
               <details className="rounded-lg border px-4 py-3">
                 <summary className="cursor-pointer text-sm font-medium text-foreground">高级设置</summary>

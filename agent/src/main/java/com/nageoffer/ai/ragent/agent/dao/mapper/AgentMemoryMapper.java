@@ -22,31 +22,37 @@ import com.nageoffer.ai.ragent.agent.dao.entity.AgentMemoryDO;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Update;
 
+import java.util.Date;
+
 /**
- * 长期记忆条目 Mapper，失效两条走条件 UPDATE 换取影响行数
+ * 长期记忆条目 Mapper，修改全走条件 UPDATE 换取影响行数：目标不存在、已失效或不属于该用户都返回 0
  */
 @SuppressWarnings({"SqlDialectInspection", "SqlNoDataSourceInspection", "SqlResolve"})
 public interface AgentMemoryMapper extends BaseMapper<AgentMemoryDO> {
 
     /**
-     * 取代旧条目：一道闸同时挡幻觉ID、已失效ID、他人ID，调用方只认返回 1
+     * 置 invalid_at；用户删除与容量淘汰共用这一条，区别只在反馈清单里
      */
     @Update("""
             UPDATE t_agent_memory
-            SET invalid_at = CURRENT_TIMESTAMP, superseded_by = #{newId}
-            WHERE id = #{oldId} AND user_id = #{userId} AND invalid_at IS NULL
+            SET invalid_at = CURRENT_TIMESTAMP, update_time = CURRENT_TIMESTAMP
+            WHERE id = #{id} AND user_id = #{userId} AND invalid_at IS NULL
             """)
-    int supersede(@Param("userId") String userId,
-                  @Param("oldId") String oldId,
-                  @Param("newId") String newId);
+    int invalidate(@Param("userId") String userId, @Param("id") String id);
 
     /**
-     * 置 invalid_at 不留后继；用户撤回与容量淘汰共用这一条，库上不区分，谁干的只看日志
+     * 原行改写：正文、写入入口与依据换成这次表达，id 与 create_time 不变；正文相同即只换依据
      */
     @Update("""
             UPDATE t_agent_memory
-            SET invalid_at = CURRENT_TIMESTAMP
-            WHERE id = #{oldId} AND user_id = #{userId} AND invalid_at IS NULL
+            SET content = #{content}, source_type = #{sourceType}, source_message_id = #{sourceMessageId},
+                expressed_at = #{expressedAt}, update_time = CURRENT_TIMESTAMP
+            WHERE id = #{id} AND user_id = #{userId} AND invalid_at IS NULL
             """)
-    int retract(@Param("userId") String userId, @Param("oldId") String oldId);
+    int updateContent(@Param("userId") String userId,
+                      @Param("id") String id,
+                      @Param("content") String content,
+                      @Param("sourceType") String sourceType,
+                      @Param("sourceMessageId") String sourceMessageId,
+                      @Param("expressedAt") Date expressedAt);
 }

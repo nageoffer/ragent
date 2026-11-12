@@ -1,6 +1,7 @@
 import type {
   AgentBlock,
   AgentBlockUI,
+  AgentConfirmStatus,
   AgentTextBlockSeal,
   AgentToolProgress,
   AgentTurn
@@ -114,9 +115,9 @@ function matchToolIndex(blocks: AgentBlockUI[], payload: AgentToolProgress): num
 }
 
 /**
- * SSE tool 帧投影成时间线块
+ * SSE block 工具载荷投影成时间线块
  * 认不到已有块就补一行：确认续跑的工具是上一条消息开的头 这一轮只收得到执行段 不补就看不见它跑过
- * 缺字段一律退回块上的旧值 —— 载荷按 NON_NULL 走 pending 帧本就不带批次与时刻
+ * 缺字段一律退回块上的旧值 —— 载荷按 NON_NULL 走 pending 帧尚无执行批次与起止时间
  */
 export function applyToolFrame(
   blocks: AgentBlockUI[],
@@ -130,7 +131,7 @@ export function applyToolFrame(
     ...prev,
     id: prev?.id ?? ctx.allocId(),
     kind: "tool",
-    // 服务端给了时刻就以它为准：pending 帧不带 至此先用到达时刻占位 后一帧再校正成落库的那个
+    // 服务端给了时刻就以它为准：旧接口缺少时刻时才使用到达时刻占位
     at: toBlockHms(payload.at) || prev?.at || ctx.fallbackAt,
     name: payload.name,
     displayName: payload.displayName || payload.name,
@@ -188,6 +189,33 @@ export function settleToolBlocks(
 ): AgentBlockUI[] | undefined {
   if (!blocks) return blocks;
   return blocks.map((block) => (isOpenTool(block) ? { ...block, status } : block));
+}
+
+/** 确认决定落到原消息：只有拒绝才同步卡片明确关联的 awaiting 工具，不推断执行结果。 */
+export function applyConfirmStatus(
+  blocks: AgentBlockUI[],
+  blockId: number,
+  status: AgentConfirmStatus
+): AgentBlockUI[] {
+  const card = blocks.find((block) => block.id === blockId && block.kind === "confirm");
+  if (!card) return blocks;
+  const deniedCallIds = new Set(
+    status === "denied"
+      ? (card.calls ?? []).map((call) => call.toolCallId).filter((id) => id?.trim())
+      : []
+  );
+  return blocks.map((block) => {
+    if (block === card) return { ...block, status };
+    if (
+      block.kind === "tool" &&
+      block.status === "awaiting" &&
+      block.toolCallId &&
+      deniedCallIds.has(block.toolCallId)
+    ) {
+      return { ...block, status: "denied" };
+    }
+    return block;
+  });
 }
 
 /**
@@ -321,11 +349,11 @@ export function buildTimelineRows(turn: AgentTurn): TraceRow[] {
   const rows: TraceRow[] = [];
   const claimed = claimByConfirm(turn);
   const superseded = supersededBlockIds(turn);
-  // 确认前那些「未执行」已并进卡里 再单独成行就是同一件事说两遍
+  // 关联的未执行记录由确认卡展示，用户拒绝后已结算为 denied 的原工具块也不再单独成行。
   const hidden = (block: AgentBlockUI) =>
     superseded.has(block.id) ||
     (block.kind === "tool" &&
-      block.status === "awaiting" &&
+      (block.status === "awaiting" || block.status === "denied") &&
       Boolean(block.toolCallId) &&
       claimed.has(block.toolCallId as string));
   // 同批只要有一条要授权 整批就一起停下 卡里没有这条 它就只是随批等着 说它「待确认」是让用户去授权一件没人问他的事

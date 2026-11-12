@@ -32,7 +32,6 @@ import com.nageoffer.ai.ragent.rag.core.rewrite.RewriteResult;
 import com.nageoffer.ai.ragent.rag.core.source.CitationContextEnricher;
 import com.nageoffer.ai.ragent.rag.core.source.GroundingChunksAssembler;
 import com.nageoffer.ai.ragent.rag.core.source.SourcesAssembler;
-import com.nageoffer.ai.ragent.rag.dto.IntentGroup;
 import com.nageoffer.ai.ragent.rag.dto.RetrievalContext;
 import com.nageoffer.ai.ragent.rag.dto.SubQuestionIntent;
 import com.nageoffer.ai.ragent.framework.web.StreamTaskManager;
@@ -103,7 +102,7 @@ class StreamChatPipelineTest {
         when(guidanceService.detectAmbiguity("改写问题", subIntents)).thenReturn(GuidanceDecision.none());
         when(intentResolver.isSystemOnly(anyList())).thenReturn(false);
         when(retrievalEngine.retrieve(subIntents)).thenReturn(retrievalContext);
-        when(intentResolver.mergeIntentGroup(subIntents)).thenReturn(new IntentGroup(List.of(), List.of()));
+        when(intentResolver.mergeKbIntents(subIntents)).thenReturn(List.of());
         when(citationContextEnricher.enrich("<content>资料</content>", List.of()))
                 .thenReturn("<content>资料</content>");
         when(promptBuilder.buildStructuredMessages(any(), anyList(), any(), anyList())).thenReturn(List.of());

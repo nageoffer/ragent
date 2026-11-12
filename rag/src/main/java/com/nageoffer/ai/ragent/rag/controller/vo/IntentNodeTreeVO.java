@@ -64,10 +64,5 @@ public class IntentNodeTreeVO {
      */
     private String promptTemplate;
 
-    /**
-     * 参数提取提示词模板（MCP模式专属）
-     */
-    private String paramPromptTemplate;
-
     private List<IntentNodeTreeVO> children;
 }

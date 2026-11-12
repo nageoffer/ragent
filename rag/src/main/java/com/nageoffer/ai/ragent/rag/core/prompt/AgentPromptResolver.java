@@ -68,7 +68,7 @@ public class AgentPromptResolver {
      */
     public Map<String, String> resolveAll() {
         Map<String, String> cached = cacheManager.getFromCache();
-        if (cached != null) {
+        if (cached != null && !cached.isEmpty()) {
             return cached;
         }
         Map<String, String> resolved = loadFromDb();

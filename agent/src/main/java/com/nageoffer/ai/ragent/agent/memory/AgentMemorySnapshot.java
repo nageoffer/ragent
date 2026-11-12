@@ -20,8 +20,7 @@ package com.nageoffer.ai.ragent.agent.memory;
 import java.util.List;
 
 /**
- * 记忆视图快照：一次 agent call 内读一次，只管注入
- * 不带版本号——提交期双校验拿的是管道自己读的那份控制行，与模型看到的这份块无关
+ * 记忆视图快照：一次 agent call 内读一次，只管注入，不参与任何写入校验
  */
 public record AgentMemorySnapshot(List<AgentMemoryItem> items) {
 
@@ -30,6 +29,10 @@ public record AgentMemorySnapshot(List<AgentMemoryItem> items) {
      */
     public static AgentMemorySnapshot empty() {
         return new AgentMemorySnapshot(List.of());
+    }
+
+    List<String> contents() {
+        return items.stream().map(AgentMemoryItem::content).toList();
     }
 
     public boolean hasItems() {

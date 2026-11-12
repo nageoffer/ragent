@@ -31,19 +31,14 @@ public enum AgentSSEEventType {
     META("meta"),
 
     /**
-     * 增量消息（response / think）
+     * 增量消息（answer / reasoning / error）
      */
     MESSAGE("message"),
 
     /**
-     * 文本块封口，携带服务端起止。封口由下一个事件触发，挂不到 message 增量上
+     * 块更新：kind 区分文本计时与工具状态、结果、执行时间
      */
     BLOCK("block"),
-
-    /**
-     * 工具进度 {name, displayName, status: start|end, result, ok}
-     */
-    TOOL("tool"),
 
     /**
      * 运行提示（如达到迭代上限的熔断预告），不落库

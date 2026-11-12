@@ -62,6 +62,9 @@ class McpServerConfigTest {
                 .inputSchema(new JsonSchema("object", Map.of(), List.of(), false, null, null))
                 .annotations(annotations)
                 .build();
-        return new McpServerFeatures.SyncToolSpecification(tool, (exchange, request) -> null);
+        return McpServerFeatures.SyncToolSpecification.builder()
+                .tool(tool)
+                .callHandler((exchange, request) -> null)
+                .build();
     }
 }

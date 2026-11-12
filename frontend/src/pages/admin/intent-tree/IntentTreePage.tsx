@@ -96,8 +96,7 @@ const formSchema = z.object({
   sortOrder: z.number().int().optional(),
   enabled: z.boolean(),
   promptSnippet: z.string().optional(),
-  promptTemplate: z.string().optional(),
-  paramPromptTemplate: z.string().optional()
+  promptTemplate: z.string().optional()
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -556,8 +555,7 @@ function IntentNodeDialog({
         sortOrder: node.sortOrder ?? 0,
         enabled: node.enabled !== 0,
         promptSnippet: node.promptSnippet || "",
-        promptTemplate: node.promptTemplate || "",
-        paramPromptTemplate: node.paramPromptTemplate || ""
+        promptTemplate: node.promptTemplate || ""
       };
     }
 
@@ -579,8 +577,7 @@ function IntentNodeDialog({
       sortOrder: 0,
       enabled: true,
       promptSnippet: "",
-      promptTemplate: "",
-      paramPromptTemplate: ""
+      promptTemplate: ""
     };
   }, [mode, node, parentNode]);
 
@@ -640,9 +637,8 @@ function IntentNodeDialog({
           enabled: values.enabled ? 1 : 0,
           mcpToolId: values.kind === 2 ? values.mcpToolId?.trim() || undefined : undefined,
           requireConfirm,
-          promptSnippet: values.promptSnippet?.trim() || undefined,
-          promptTemplate: values.promptTemplate?.trim() || undefined,
-          paramPromptTemplate: values.kind === 2 ? values.paramPromptTemplate?.trim() || undefined : undefined
+          promptSnippet: values.kind === 2 ? undefined : values.promptSnippet?.trim() || undefined,
+          promptTemplate: values.kind === 2 ? undefined : values.promptTemplate?.trim() || undefined
         };
         await onCreate(payload);
       } else if (node) {
@@ -659,9 +655,8 @@ function IntentNodeDialog({
           topK: values.topK ?? undefined,
           sortOrder: values.sortOrder ?? 0,
           enabled: values.enabled ? 1 : 0,
-          promptSnippet: values.promptSnippet?.trim() || undefined,
-          promptTemplate: values.promptTemplate?.trim() || undefined,
-          paramPromptTemplate: values.kind === 2 ? values.paramPromptTemplate?.trim() || undefined : undefined
+          promptSnippet: values.kind === 2 ? undefined : values.promptSnippet?.trim() || undefined,
+          promptTemplate: values.kind === 2 ? undefined : values.promptTemplate?.trim() || undefined
         };
         await onUpdate(node.id, payload);
       }
@@ -901,26 +896,27 @@ function IntentNodeDialog({
                 </div>
               </details>
 
-              <details className="rounded-lg border px-4 py-3">
-                <summary className="cursor-pointer text-sm font-medium text-foreground">
-                  Prompt 配置
-                </summary>
-                <div className="mt-3 space-y-4">
-                  <FormField
-                      control={form.control}
-                      name="promptSnippet"
-                      render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>短规则片段（可选）</FormLabel>
-                            <FormControl>
-                              <Textarea
-                                  rows={3}
-                                  placeholder="多意图场景下的特定规则，会添加到整体提示词中"
-                                  {...field}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
+              {kind !== 2 && (
+                <details className="rounded-lg border px-4 py-3">
+                  <summary className="cursor-pointer text-sm font-medium text-foreground">
+                    Prompt 配置
+                  </summary>
+                  <div className="mt-3 space-y-4">
+                    <FormField
+                        control={form.control}
+                        name="promptSnippet"
+                        render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>短规则片段（可选）</FormLabel>
+                              <FormControl>
+                                <Textarea
+                                    rows={3}
+                                    placeholder="多意图场景下的特定规则，会添加到整体提示词中"
+                                    {...field}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
                       )}
                   />
 
@@ -933,7 +929,7 @@ function IntentNodeDialog({
                             <FormControl>
                               <Textarea
                                   rows={4}
-                                  placeholder="场景用的完整Prompt模板，KB和MCP节点都可配置"
+                                  placeholder="场景用的完整 Prompt 模板"
                                   {...field}
                               />
                             </FormControl>
@@ -941,28 +937,9 @@ function IntentNodeDialog({
                           </FormItem>
                       )}
                   />
-
-                  {kind === 2 && (
-                      <FormField
-                          control={form.control}
-                          name="paramPromptTemplate"
-                          render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>参数提取提示词模板（MCP专属）</FormLabel>
-                                <FormControl>
-                                  <Textarea
-                                      rows={4}
-                                      placeholder="用于从用户输入中提取MCP工具参数的提示词模板"
-                                      {...field}
-                                  />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                          )}
-                      />
-                  )}
                 </div>
               </details>
+              )}
 
               <details className="rounded-lg border px-4 py-3">
                 <summary className="cursor-pointer text-sm font-medium text-foreground">

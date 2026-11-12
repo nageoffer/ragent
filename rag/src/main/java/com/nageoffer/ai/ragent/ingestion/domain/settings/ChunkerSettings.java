@@ -33,9 +33,9 @@ import lombok.NoArgsConstructor;
 public class ChunkerSettings {
 
     /**
-     * 分块策略（已废弃：保留字段只为管道编辑器 UI 不用改，后端不再读取）
+     * 分块策略（已废弃：保留字段只为管道编辑器 UI 不用改，后端不读取）
      * <p>
-     * 切法由文档结构唯一决定，用户只控预算。原先这个枚举在真实链路上不产生任何差异——
+     * 切法由文档结构唯一决定，用户只控预算。这个枚举在真实链路上不产生任何差异——
      * 所有解析器都产出结构化 Block，分块一律走 block-aware 分支，策略参数被直接丢弃
      */
     private String strategy;

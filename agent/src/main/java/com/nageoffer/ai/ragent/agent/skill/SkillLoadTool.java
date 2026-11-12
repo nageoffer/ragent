@@ -53,18 +53,14 @@ public class SkillLoadTool implements AgentTool {
     private static final String SKILL_CODE_PARAM = "skill_code";
 
     private static final String DESCRIPTION_HEADER = """
-            加载一份技能手册。技能是针对具体办事场景写好的操作步骤，用户要办下面某件事时，先加载手册再照着做。
-            不看手册就容易办错的工具（如提交、预订），只有加载对应手册后才会出现在可用工具里：直接动手会漏掉必须先问清楚的信息。
-            用户只是问规定、要解释说明时不必加载技能，直接用知识库检索回答；当前可用工具里已有的查询工具能直接回答的，也不必加载。
+            加载指定技能的流程手册，获取该类任务的处理步骤与注意事项。
+            当前任务符合下方某项技能的适用条件时，先加载对应手册，再按手册处理。
+            部分业务工具在关联手册加载后才会出现在可用工具中，不要仅凭当前工具清单判断是否支持该任务。
+            上下文里还能看到所需手册的完整正文就直接照做，不重复加载；看不到了再加载，摘要里提到已加载不算。
 
             可用技能：""";
 
     private final AgentSkillRegistry skillRegistry;
-
-    /**
-     * 工具展示名，取自当前工具目录，用于告诉模型这份手册解锁了什么
-     */
-    private final Map<String, String> toolDisplayNames;
 
     @Override
     public String getName() {
@@ -128,18 +124,9 @@ public class SkillLoadTool implements AgentTool {
     }
 
     private ToolResultBlock success(String toolCallId, AgentSkill skill) {
-        StringBuilder text = new StringBuilder()
-                .append("已加载技能「").append(skill.name()).append("」。以下是这件事的办理手册，接下来按它执行：\n\n")
-                .append(StrUtil.emptyIfNull(skill.content()));
-        if (!skill.toolIds().isEmpty()) {
-            text.append("\n\n本技能解锁的工具：").append(skill.toolIds().stream()
-                    .map(toolId -> {
-                        String display = toolDisplayNames.get(toolId);
-                        return display == null || display.equals(toolId) ? toolId : toolId + "（" + display + "）";
-                    })
-                    .collect(Collectors.joining("、")));
-        }
-        return block(toolCallId, text.toString(),
+        String text = "已加载技能「" + skill.name() + "」。以下是这类任务的处理手册，接下来按它执行：\n\n"
+                + StrUtil.emptyIfNull(skill.content());
+        return block(toolCallId, text,
                 Map.of(LOADED_SKILL_METADATA_KEY, skill.skillCode()), ToolResultState.SUCCESS);
     }
 

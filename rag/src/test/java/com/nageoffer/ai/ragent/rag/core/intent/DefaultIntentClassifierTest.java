@@ -18,9 +18,11 @@
 package com.nageoffer.ai.ragent.rag.core.intent;
 
 import com.nageoffer.ai.ragent.infra.chat.LLMService;
+import com.nageoffer.ai.ragent.rag.config.OrchestrationProperties;
 import com.nageoffer.ai.ragent.rag.core.prompt.PromptTemplateLoader;
 import com.nageoffer.ai.ragent.rag.dao.entity.IntentNodeDO;
 import com.nageoffer.ai.ragent.rag.dao.mapper.IntentNodeMapper;
+import com.nageoffer.ai.ragent.rag.enums.IntentKind;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -31,6 +33,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyMap;
@@ -55,14 +59,17 @@ class DefaultIntentClassifierTest {
     private IntentTreeCacheManager intentTreeCacheManager;
 
     private DefaultIntentClassifier classifier;
+    private OrchestrationProperties orchestrationProperties;
 
     @BeforeEach
     void setUp() {
+        orchestrationProperties = new OrchestrationProperties();
         classifier = new DefaultIntentClassifier(
                 llmService,
                 intentNodeMapper,
                 promptTemplateLoader,
-                intentTreeCacheManager
+                intentTreeCacheManager,
+                orchestrationProperties
         );
     }
 
@@ -98,5 +105,88 @@ class DefaultIntentClassifierTest {
         ArgumentCaptor<Map<String, String>> captor = ArgumentCaptor.forClass(Map.class);
         verify(promptTemplateLoader).render(anyString(), captor.capture());
         assertTrue(captor.getValue().get("intent_list").contains("examples=回答得不错 / 你答错了"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void agentModeOnlyPromptsAndAcceptsKbCandidates() {
+        orchestrationProperties.setType("agent");
+        IntentNode kb = IntentNode.builder()
+                .id("kb-leave")
+                .name("请假制度")
+                .kind(IntentKind.KB)
+                .build();
+        IntentNode mcp = IntentNode.builder()
+                .id("mcp-leave")
+                .name("提交请假")
+                .kind(IntentKind.MCP)
+                .mcpToolId("leave_submit")
+                .build();
+        IntentNode system = IntentNode.builder()
+                .id("system-welcome")
+                .name("欢迎语")
+                .kind(IntentKind.SYSTEM)
+                .build();
+        when(intentTreeCacheManager.getIntentTreeFromCache()).thenReturn(List.of(kb, mcp, system));
+        when(promptTemplateLoader.render(anyString(), anyMap())).thenReturn("system-prompt");
+        when(llmService.chat(any())).thenReturn("""
+                [
+                  {"id":"kb-leave","score":0.9},
+                  {"id":"mcp-leave","score":0.8},
+                  {"id":"system-welcome","score":0.7}
+                ]
+                """);
+
+        List<NodeScore> scores = classifier.classifyTargets("帮我请假");
+
+        ArgumentCaptor<Map<String, String>> captor = ArgumentCaptor.forClass(Map.class);
+        verify(promptTemplateLoader).render(anyString(), captor.capture());
+        String intentList = captor.getValue().get("intent_list");
+        assertTrue(intentList.contains("id=kb-leave"));
+        assertFalse(intentList.contains("id=mcp-leave"));
+        assertFalse(intentList.contains("id=system-welcome"));
+        assertEquals(List.of("kb-leave"), scores.stream().map(score -> score.getNode().getId()).toList());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void workflowModeExcludesMcpCandidatesButKeepsSystemAndKnowledge() {
+        orchestrationProperties.setType("workflow");
+        IntentNode kb = IntentNode.builder()
+                .id("kb-leave")
+                .name("请假制度")
+                .kind(IntentKind.KB)
+                .build();
+        IntentNode mcp = IntentNode.builder()
+                .id("mcp-leave")
+                .name("提交请假")
+                .kind(IntentKind.MCP)
+                .mcpToolId("leave_submit")
+                .build();
+        IntentNode system = IntentNode.builder()
+                .id("system-welcome")
+                .name("欢迎语")
+                .kind(IntentKind.SYSTEM)
+                .build();
+        when(intentTreeCacheManager.getIntentTreeFromCache()).thenReturn(List.of(kb, mcp, system));
+        when(promptTemplateLoader.render(anyString(), anyMap())).thenReturn("system-prompt");
+        when(llmService.chat(any())).thenReturn("""
+                [
+                  {"id":"kb-leave","score":0.9},
+                  {"id":"mcp-leave","score":0.8},
+                  {"id":"system-welcome","score":0.7}
+                ]
+                """);
+
+        List<NodeScore> scores = classifier.classifyTargets("帮我请假");
+
+        ArgumentCaptor<Map<String, String>> captor = ArgumentCaptor.forClass(Map.class);
+        verify(promptTemplateLoader).render(anyString(), captor.capture());
+        String intentList = captor.getValue().get("intent_list");
+        assertTrue(intentList.contains("id=kb-leave"));
+        assertTrue(intentList.contains("id=system-welcome"));
+        assertFalse(intentList.contains("id=mcp-leave"));
+        assertEquals(List.of("kb-leave", "system-welcome"),
+                scores.stream().map(score -> score.getNode().getId()).toList());
     }
 }

@@ -30,16 +30,15 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * 一次 Agent 运行的生命周期句柄，complete/cancel/fail 三条出口 CAS 互斥
+ * 一次 Agent 运行的生命周期句柄，complete/cancel/fail 三条出口只有一条能收尾
  */
 @Slf4j
 public class AgentRunHandle {
 
     /**
-     * 打断后等待框架存盘的超时时间
+     * 打断后留给框架存盘的时间
      */
     private static final long GRACEFUL_INTERRUPT_WAIT_MS = 2000L;
 
@@ -53,56 +52,52 @@ public class AgentRunHandle {
     private final SseEmitterSender sender;
 
     private final StreamTaskManager taskManager;
-    private final AtomicBoolean settled = new AtomicBoolean(false);
 
     /**
-     * 断流只执行一次，取消广播线程与补掐路径可能各调一次
+     * 启动、收尾、释放三段共用的锁，必须可重入：同步结束的流会在订阅那一刻就回调收尾
      */
-    private final AtomicBoolean interruptTriggered = new AtomicBoolean(false);
+    private final Object lifecycleLock = new Object();
 
     /**
-     * 释放钩子队列，保证每个钩子恰好执行一次
+     * -- GETTER --
+     * 是否已收尾，锁内写、锁外有人读
      */
-    private final Object releaseLock = new Object();
+    @Getter
+    private volatile boolean settled;
+
+    /**
+     * 取消广播和兜底路径都会调打断，只放行第一次
+     */
+    private boolean interruptTriggered;
+
+    /**
+     * 释放钩子，每个只跑一次
+     */
     private final List<Runnable> releaseHooks = new ArrayList<>();
     private boolean released;
 
     /**
-     * 上游流终止信号，打断时等待框架完成存盘
+     * 上游流的终止信号，打断后等它来判断是否需要强制断流；终止不代表存盘成功
      */
     private final CountDownLatch upstreamTerminated = new CountDownLatch(1);
 
-    private volatile Disposable disposable;
-    private volatile Runnable interruptAction;
+    private Disposable disposable;
+    private Runnable interruptAction;
 
     /**
      * -- GETTER --
-     * 是否走的失败出口，失败时释放钩子需要补一次存盘
+     * 出错、取消或强制断流时，释放钩子是否需要补一次存盘
      */
     @Getter
-    private volatile boolean failed;
+    private volatile boolean stateSaveRequired;
 
     /**
-     * -- GETTER --
-     * 是否走了强制断流，dispose 掐链后框架的中断存盘跑不到，释放钩子需要补一次
-     */
-    @Getter
-    private volatile boolean forcedDisposal;
-
-    /**
-     * -- GETTER --
-     * 是否走的取消出口，取消抢在句柄绑定前结算时调用方靠它补掐上游
-     */
-    @Getter
-    private volatile boolean cancelledExit;
-
-    /**
-     * 中断时刻的落点，未完 span 对齐终点用
+     * 中断时刻记在这里，没结束的 span 拿它当终点
      */
     private final AgentToolExecutionFacts facts;
 
     /**
-     * 中断跑在 HTTP 线程上够不着响应式链，从这里取根 span
+     * 打断跑在 HTTP 线程上够不着响应式链，根 span 从这里取
      */
     private final RuntimeContext runtimeContext;
 
@@ -116,21 +111,43 @@ public class AgentRunHandle {
     }
 
     /**
-     * 绑定上游订阅与打断动作，取消时先打断等存盘，超时再断流
+     * 绑定上游订阅与打断动作，两个字段只在这把锁内读写，所以不用 volatile
      */
     public void bindStream(Disposable disposable, Runnable interruptAction) {
-        this.disposable = disposable;
-        this.interruptAction = interruptAction;
+        synchronized (lifecycleLock) {
+            this.disposable = disposable;
+            this.interruptAction = interruptAction;
+        }
     }
 
     /**
-     * 登记释放钩子，三条出口都会执行；结算后登记的钩子当场补跑
+     * 整段启动放进锁里，否则取消可能先跑完收尾、这边随后才订阅，工具照样被执行一遍
+     */
+    public void start(Runnable startup) {
+        synchronized (lifecycleLock) {
+            if (isSettled() || isCancelled()) {
+                return;
+            }
+            try {
+                startup.run();
+            } catch (RuntimeException | Error e) {
+                // subscribe 之后才抛的话流已经跑起来且没人管得了，不掐掉会空转到迭代上限
+                if (disposable != null) {
+                    disposable.dispose();
+                }
+                throw e;
+            }
+        }
+    }
+
+    /**
+     * 登记释放钩子，三条出口都会执行；收尾后再登记的当场补跑
      */
     public void onRelease(Runnable hook) {
         if (hook == null) {
             return;
         }
-        synchronized (releaseLock) {
+        synchronized (lifecycleLock) {
             if (!released) {
                 releaseHooks.add(hook);
                 return;
@@ -140,49 +157,52 @@ public class AgentRunHandle {
     }
 
     /**
-     * 标记上游流已终止（完成、异常或被断流）
+     * 上游流走到终点时调用，只表示流已终止，不保证框架已保存状态
      */
     public void markUpstreamTerminated() {
         upstreamTerminated.countDown();
     }
 
     /**
-     * 先中断框架等其存盘，超时再 dispose 断流；顺序反了会丢失本轮 Agent 状态
+     * 先打断框架、留出处理和存盘的时间，超时再 dispose 断流；取消收尾仍需补存
      */
     public void interruptUpstream() {
-        if (!interruptTriggered.compareAndSet(false, true)) {
-            return;
+        Runnable interrupt;
+        Disposable current;
+        synchronized (lifecycleLock) {
+            if (interruptTriggered) {
+                return;
+            }
+            interruptTriggered = true;
+            interrupt = interruptAction;
+            current = disposable;
         }
-        Runnable interrupt = interruptAction;
         if (interrupt != null) {
             boolean graceful = false;
             try {
-                // 必须在 interrupt 前定格，否则框架收尾后根 span 已 end，写属性是空操作
+                // 得赶在 interrupt 之前写，框架收尾会 end 掉根 span，之后再写属性没用
                 facts.markInterrupted();
                 AgentRunTracer.markInterrupted(runtimeContext);
                 interrupt.run();
                 graceful = awaitUpstreamTermination();
             } catch (Exception e) {
-                // 打断动作异常不能挡住断流，否则 ReAct 循环会空跑到迭代上限
+                // 打断动作出错不能挡住断流，否则 ReAct 循环会空跑到迭代上限
                 log.error("打断动作执行异常，转为强制断流, taskId: {}", taskId, e);
             }
-            forcedDisposal = !graceful;
-            if (forcedDisposal) {
-                // dispose 后没有线程能再读 span，必须在掐链前定格
+            // 只置位不清零，优雅中断不能冲掉失败出口已标记的补存盘需求
+            if (!graceful) {
+                stateSaveRequired = true;
+                // dispose 之后没人能再读 span，只能在这之前写
                 facts.markCancelled();
                 AgentRunTracer.markAborted(runtimeContext);
             }
         }
-        // 框架已自行收尾时这里是空操作，强制断流才真正掐链
-        Disposable current = disposable;
+        // 框架已自行收尾时这里是空操作，强制断流才真的掐链
         if (current != null) {
             current.dispose();
         }
     }
 
-    /**
-     * 等待框架完成中断分支并存盘，返回上游是否在期限内正常结束
-     */
     private boolean awaitUpstreamTermination() {
         try {
             boolean terminated = upstreamTerminated.await(GRACEFUL_INTERRUPT_WAIT_MS, TimeUnit.MILLISECONDS);
@@ -200,65 +220,72 @@ public class AgentRunHandle {
         return taskManager.isCancelled(taskId);
     }
 
-    /**
-     * 是否已完成收尾
-     */
-    public boolean isSettled() {
-        return settled.get();
+    public void complete(Runnable body) {
+        settleAndClose(body);
     }
 
-    public void complete(Runnable body) {
+    /**
+     * 取消后的收尾，打断本身由 {@link #interruptUpstream()} 做
+     * 框架中断分支可能吞掉存盘异常，取得收尾权后统一标记补存
+     */
+    public void cancel(Runnable body) {
+        settleAndClose(() -> {
+            stateSaveRequired = true;
+            body.run();
+        });
+    }
+
+    /**
+     * 标志在收尾体里置，没抢到收尾权的那次不能改它
+     */
+    public void fail(Runnable body) {
+        settleAndClose(() -> {
+            stateSaveRequired = true;
+            body.run();
+        });
+    }
+
+    private void settleAndClose(Runnable body) {
         if (settle(body)) {
             sender.complete();
         }
     }
 
-    public void cancel(Runnable body) {
-        if (settle(() -> {
-            cancelledExit = true;
-            body.run();
-        })) {
-            sender.complete();
-        }
-    }
-
-    public void fail(Runnable body) {
-        // failed 置在收尾体里，释放钩子执行时已可读
-        if (settle(() -> {
-            failed = true;
-            body.run();
-        })) {
-            sender.complete();
+    /**
+     * 收尾体只跑一次，不管成没成都注销任务并释放资源
+     */
+    private boolean settle(Runnable body) {
+        synchronized (lifecycleLock) {
+            if (settled) {
+                return false;
+            }
+            settled = true;
+            try {
+                body.run();
+            } catch (Exception e) {
+                log.error("Agent 运行收尾处理失败, taskId: {}", taskId, e);
+            } finally {
+                try {
+                    taskManager.unregister(taskId);
+                } catch (Exception e) {
+                    // 注销失败不能挡住释放钩子，否则这个用户的并发锁要守到 TTL 过期
+                    log.error("Agent 任务注销失败, taskId: {}", taskId, e);
+                } finally {
+                    runReleaseHooks();
+                }
+            }
+            return true;
         }
     }
 
     /**
-     * CAS 保证收尾体只跑一次，无论成败都注销任务并释放资源
+     * 先置标志再遍历，之后登记的钩子走补跑分支，不会再改这个列表
      */
-    private boolean settle(Runnable body) {
-        if (!settled.compareAndSet(false, true)) {
-            return false;
-        }
-        try {
-            body.run();
-        } catch (Exception e) {
-            log.error("Agent 运行收尾处理失败, taskId: {}", taskId, e);
-        } finally {
-            taskManager.unregister(taskId);
-            runReleaseHooks();
-        }
-        return true;
-    }
-
     private void runReleaseHooks() {
-        List<Runnable> pending;
-        synchronized (releaseLock) {
-            released = true;
-            pending = new ArrayList<>(releaseHooks);
-            releaseHooks.clear();
-        }
-        // 锁外执行，避免钩子内再登记钩子时死锁
-        pending.forEach(this::runReleaseHook);
+        released = true;
+        releaseHooks.forEach(this::runReleaseHook);
+        // 清掉 lambda 捕获的引用，帮助回收
+        releaseHooks.clear();
     }
 
     private void runReleaseHook(Runnable hook) {

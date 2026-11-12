@@ -38,17 +38,22 @@ import java.time.Clock;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 class AgentRunHandleTest {
 
@@ -109,6 +114,82 @@ class AgentRunHandleTest {
     }
 
     @Test
+    void shouldReleaseAndCloseWhenUnregisterThrows() {
+        AtomicInteger released = new AtomicInteger();
+        handle.onRelease(() -> { throw new IllegalStateException("清缓存失败"); });
+        handle.onRelease(released::incrementAndGet);
+        doThrow(new IllegalStateException("Redis 不可用")).when(taskManager).unregister(TASK_ID);
+
+        assertThatCode(() -> handle.complete(() -> {})).doesNotThrowAnyException();
+
+        assertThat(released.get()).isOne();
+        verify(sender).complete();
+    }
+
+    @Test
+    void shouldNotStartAfterCancellationSettles() {
+        Runnable startup = mock(Runnable.class);
+        handle.cancel(() -> {});
+
+        handle.start(startup);
+
+        verify(startup, never()).run();
+    }
+
+    @Test
+    void shouldKeepGateUntilStartupHandoffCompletes() throws Exception {
+        var pool = Executors.newFixedThreadPool(2);
+        CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch continueStartup = new CountDownLatch(1);
+        CountDownLatch cancelEntered = new CountDownLatch(1);
+        CountDownLatch released = new CountDownLatch(1);
+        handle.onRelease(released::countDown);
+        try {
+            var starting = pool.submit(() -> handle.start(() -> {
+                entered.countDown();
+                await(continueStartup);
+                handle.bindStream(mock(Disposable.class), () -> {});
+            }));
+            assertThat(entered.await(5, TimeUnit.SECONDS)).isTrue();
+            var cancelling = pool.submit(() -> {
+                cancelEntered.countDown();
+                handle.cancel(() -> {});
+            });
+            assertThat(cancelEntered.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThat(released.await(100, TimeUnit.MILLISECONDS)).isFalse();
+            continueStartup.countDown();
+            starting.get(5, TimeUnit.SECONDS);
+            cancelling.get(5, TimeUnit.SECONDS);
+            assertThat(released.getCount()).isZero();
+        } finally {
+            continueStartup.countDown();
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    void shouldDisposeSubscriptionWhenStartupFailsAfterSubscribe() {
+        Disposable disposable = mock(Disposable.class);
+
+        assertThatCode(() -> handle.start(() -> {
+            handle.bindStream(disposable, () -> {});
+            throw new IllegalStateException("绑定取消能力失败");
+        })).isInstanceOf(IllegalStateException.class);
+
+        // 不掐链的话上游会空跑到 ReAct 迭代上限
+        verify(disposable).dispose();
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            assertThat(latch.await(5, TimeUnit.SECONDS)).isTrue();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError(e);
+        }
+    }
+
+    @Test
     void shouldRunHookRegisteredAfterSettleExactlyOnce() {
         AtomicInteger beforeSettle = new AtomicInteger();
         AtomicInteger afterSettle = new AtomicInteger();
@@ -142,6 +223,68 @@ class AgentRunHandleTest {
     }
 
     @Test
+    void shouldNotRequireStateSaveWhenCancelLosesToCompletion() throws Exception {
+        assertOnlyWinningExitSettles(false);
+    }
+
+    @Test
+    void shouldRequireStateSaveOnceWhenCancelWinsAgainstCompletion() throws Exception {
+        assertOnlyWinningExitSettles(true);
+    }
+
+    private void assertOnlyWinningExitSettles(boolean cancellationWins) throws Exception {
+        Runnable completed = mock(Runnable.class);
+        Runnable cancelled = mock(Runnable.class);
+        Runnable failed = mock(Runnable.class);
+        List<Boolean> stateSaveRequiredOnRelease = new ArrayList<>();
+        handle.onRelease(() -> stateSaveRequiredOnRelease.add(handle.isStateSaveRequired()));
+        CountDownLatch winnerEntered = new CountDownLatch(1);
+        CountDownLatch continueWinner = new CountDownLatch(1);
+        CountDownLatch loserAttempted = new CountDownLatch(1);
+        var pool = Executors.newFixedThreadPool(2);
+        try {
+            Runnable winningBody = () -> {
+                (cancellationWins ? cancelled : completed).run();
+                winnerEntered.countDown();
+                await(continueWinner);
+            };
+            var winner = pool.submit(() -> {
+                if (cancellationWins) {
+                    handle.cancel(winningBody);
+                } else {
+                    handle.complete(winningBody);
+                }
+            });
+            assertThat(winnerEntered.await(5, TimeUnit.SECONDS)).isTrue();
+            var loser = pool.submit(() -> {
+                loserAttempted.countDown();
+                if (cancellationWins) {
+                    handle.complete(completed);
+                } else {
+                    handle.cancel(cancelled);
+                }
+            });
+            assertThat(loserAttempted.await(5, TimeUnit.SECONDS)).isTrue();
+            continueWinner.countDown();
+            winner.get(5, TimeUnit.SECONDS);
+            loser.get(5, TimeUnit.SECONDS);
+            handle.fail(failed);
+
+            verify(completed, times(cancellationWins ? 0 : 1)).run();
+            verify(cancelled, times(cancellationWins ? 1 : 0)).run();
+            verify(failed, never()).run();
+            // 只有取得收尾权的一方能决定补存；释放时已可见，失败入口也不能再改写。
+            assertThat(stateSaveRequiredOnRelease).containsExactly(cancellationWins);
+            assertThat(handle.isStateSaveRequired()).isEqualTo(cancellationWins);
+            verify(taskManager, times(1)).unregister(TASK_ID);
+            verify(sender, times(1)).complete();
+        } finally {
+            continueWinner.countDown();
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
     void shouldCloseFailedRunNormally() {
         handle.fail(() -> {
         });
@@ -150,13 +293,59 @@ class AgentRunHandleTest {
         // 而响应头早已是 text/event-stream，写不出去，客户端什么终止信号都收不到
         verify(sender, times(1)).complete();
         verify(sender, never()).fail(any());
-        assertThat(handle.isFailed()).isTrue();
+        assertThat(handle.isStateSaveRequired()).isTrue();
     }
 
     @Test
-    void shouldInterruptBeforeDispose() {
+    void shouldNotRequireStateSaveWhenFailLosesSettleRace() {
+        handle.complete(() -> {
+        });
+
+        handle.fail(() -> {
+        });
+
+        // 补存盘旗标只能由赢得收尾权的那次置位，否则正常完成也会被补一次无谓的存盘
+        assertThat(handle.isStateSaveRequired()).isFalse();
+    }
+
+    @Test
+    void shouldKeepStateSaveRequiredAfterGracefulInterrupt() {
         Disposable disposable = mock(Disposable.class);
         Runnable interrupt = mock(Runnable.class);
+        doAnswer(invocation -> {
+            handle.markUpstreamTerminated();
+            return null;
+        }).when(interrupt).run();
+        handle.bindStream(disposable, interrupt);
+        handle.fail(() -> {
+        });
+
+        handle.interruptUpstream();
+
+        // 优雅中断无条件写这个旗标的话，会把失败出口的补存盘需求冲掉
+        assertThat(handle.isStateSaveRequired()).isTrue();
+    }
+
+    @Test
+    void shouldRunHookRegisteredInsideSettleBodyAfterBodyCompletes() {
+        List<String> order = Collections.synchronizedList(new ArrayList<>());
+
+        handle.complete(() -> {
+            handle.onRelease(() -> order.add("release"));
+            order.add("body");
+        });
+
+        // 收尾体里登记的钩子要排在收尾体之后，提前跑会把闸门放在落库之前
+        assertThat(order).containsExactly("body", "release");
+    }
+
+    @Test
+    void shouldInterruptBeforeDisposeAndRequireStateSaveOnGracefulCancellation() {
+        Disposable disposable = mock(Disposable.class);
+        Runnable interrupt = mock(Runnable.class);
+        Runnable cancelled = mock(Runnable.class);
+        List<Boolean> stateSaveRequiredOnRelease = new ArrayList<>();
+        handle.onRelease(() -> stateSaveRequiredOnRelease.add(handle.isStateSaveRequired()));
         // 中断动作触发上游终止，模拟框架在窗口内自行收尾的优雅路径
         doAnswer(invocation -> {
             handle.markUpstreamTerminated();
@@ -166,13 +355,17 @@ class AgentRunHandleTest {
 
         handle.interruptUpstream();
 
-        // 先 dispose 会掐断响应式链，框架的 handleInterrupt → saveStateToSession 永远跑不到
-        // 代价是已执行的工具结果不落库，确认后立刻停止这条路径尤其明显
-        InOrder order = inOrder(interrupt, disposable);
+        // 中断等待只协调上游终止，不能据此断言框架已经存盘成功。
+        assertThat(handle.isStateSaveRequired()).isFalse();
+        handle.cancel(cancelled);
+
+        // 先请求中断并等待，随后断流，最后才执行取消收尾。
+        InOrder order = inOrder(interrupt, disposable, cancelled);
         order.verify(interrupt).run();
         order.verify(disposable).dispose();
-        // 优雅收尾框架已存盘，释放钩子不该再补
-        assertThat(handle.isForcedDisposal()).isFalse();
+        order.verify(cancelled).run();
+        assertThat(stateSaveRequiredOnRelease).containsExactly(true);
+        assertThat(handle.isStateSaveRequired()).isTrue();
     }
 
     /**
@@ -238,17 +431,27 @@ class AgentRunHandleTest {
     @Test
     void shouldMarkForcedDisposalWhenAwaitTimesOut() {
         Disposable disposable = mock(Disposable.class);
+        List<Boolean> stateSaveRequiredOnRelease = new ArrayList<>();
+        handle.onRelease(() -> stateSaveRequiredOnRelease.add(handle.isStateSaveRequired()));
         // 中断动作不触发终止信号，等满窗口后必须转强制断流
         handle.bindStream(disposable, () -> {
         });
 
         handle.interruptUpstream();
 
-        assertThat(handle.isForcedDisposal()).isTrue();
+        assertThat(handle.isStateSaveRequired()).isTrue();
         verify(disposable).dispose();
         assertThat(facts.cancelledAt()).isNotNull();
         // 两条路径都写过，收口对齐先写入的
         assertThat(facts.terminationAt()).isEqualTo(facts.interruptedAt());
+
+        handle.cancel(() -> {});
+        handle.complete(() -> {});
+        handle.fail(() -> {});
+
+        assertThat(stateSaveRequiredOnRelease).containsExactly(true);
+        verify(taskManager, times(1)).unregister(TASK_ID);
+        verify(sender, times(1)).complete();
     }
 
     @Test
@@ -261,7 +464,7 @@ class AgentRunHandleTest {
         // 异常不能外抛，否则 StreamTaskManager 的取消收尾链会被打断
         assertThatCode(() -> handle.interruptUpstream()).doesNotThrowAnyException();
 
-        assertThat(handle.isForcedDisposal()).isTrue();
+        assertThat(handle.isStateSaveRequired()).isTrue();
         verify(disposable).dispose();
     }
 
@@ -279,7 +482,7 @@ class AgentRunHandleTest {
             assertThat(Thread.interrupted()).isTrue();
         }
 
-        assertThat(handle.isForcedDisposal()).isTrue();
+        assertThat(handle.isStateSaveRequired()).isTrue();
         verify(disposable).dispose();
     }
 
@@ -299,24 +502,6 @@ class AgentRunHandleTest {
 
         verify(interrupt, times(1)).run();
         verify(disposable, times(1)).dispose();
-    }
-
-    @Test
-    void shouldMarkCancelledExitOnCancel() {
-        handle.cancel(() -> {
-        });
-
-        // 取消抢在句柄绑定前结算时，调用方靠这个旗标补掐上游
-        assertThat(handle.isCancelledExit()).isTrue();
-    }
-
-    @Test
-    void shouldNotMarkCancelledExitOnComplete() {
-        handle.complete(() -> {
-        });
-
-        // 完成出口上游已自行终止，补掐会对结束的运行多调一次打断
-        assertThat(handle.isCancelledExit()).isFalse();
     }
 
     @Test

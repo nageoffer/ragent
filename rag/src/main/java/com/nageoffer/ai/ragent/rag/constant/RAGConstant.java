@@ -101,20 +101,6 @@ public class RAGConstant {
      */
     public static final String ANSWER_CITATION_RULES_PROMPT_PATH = "prompt/answer-citation-rules.st";
 
-    /**
-     * MCP 工具参数提取提示词模板路径
-     * 用于从用户问题中提取工具调用参数
-     */
-    public static final String MCP_PARAMETER_EXTRACT_PROMPT_PATH = "prompt/mcp-parameter-extract.st";
-
-    /**
-     * MCP 工具参数提取用户消息提示词模板路径
-     * 用于构建包含工具定义和用户问题的用户消息，通过 {@code {tool_definition}} 和 {@code {user_question}} 占位符注入内容
-     */
-    public static final String MCP_PARAMETER_EXTRACT_USER_PROMPT_PATH = "prompt/mcp-parameter-extract-user.st";
-
-
-
 
     // ==================== 上下文格式化模板（单文件多 section） ====================
 

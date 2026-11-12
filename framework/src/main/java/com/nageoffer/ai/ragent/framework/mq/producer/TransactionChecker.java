@@ -24,7 +24,12 @@ import com.nageoffer.ai.ragent.framework.mq.MessageWrapper;
  * <p>
  * 回查时 Broker 可能将请求发送到任意实例，因此实现类必须基于消息内容（而非内存状态）查询 DB 判断本地事务是否已提交。
  */
-public interface TransactionChecker {
+public interface TransactionChecker<T> {
+
+    /**
+     * 消息包装器中业务载荷的类型，用于回查消息反序列化
+     */
+    Class<T> bodyType();
 
     /**
      * 检查本地事务是否已提交
@@ -32,5 +37,5 @@ public interface TransactionChecker {
      * @param message 消息体，包含业务载荷，可从中提取业务参数查询 DB
      * @return true 表示本地事务已提交（消息可投递），false 表示已回滚（消息丢弃）
      */
-    boolean check(MessageWrapper<?> message);
+    boolean check(MessageWrapper<T> message);
 }

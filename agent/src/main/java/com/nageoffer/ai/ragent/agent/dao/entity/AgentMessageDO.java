@@ -57,8 +57,8 @@ public class AgentMessageDO {
     private String role;
 
     /**
-     * 终答正文，与用户所见逐字一致，不截断
-     * 唯一读者是改写上下文 loadRecentTurns 与前端的无 blocks 兜底，回放时间线不读它
+     * 用户消息存原话，助手消息存终答正文，与用户所见逐字一致，不截断
+     * 读者：消息列表接口（前端无 blocks 时兜底展示）、长期记忆抽取；回放时间线不读它
      */
     private String content;
 

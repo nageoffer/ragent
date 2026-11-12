@@ -17,6 +17,8 @@
 
 package com.nageoffer.ai.ragent.framework.mq.producer;
 
+import com.fasterxml.jackson.databind.JavaType;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nageoffer.ai.ragent.framework.mq.MessageWrapper;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.annotation.RocketMQTransactionListener;
@@ -27,6 +29,7 @@ import org.springframework.messaging.Message;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.io.IOException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.function.Consumer;
@@ -49,10 +52,13 @@ public class DelegatingTransactionListener implements RocketMQLocalTransactionLi
     /**
      * 事务回查逻辑，per-topic，所有实例共享（Spring Bean 注册）
      */
-    private final ConcurrentMap<String, TransactionChecker> checkerMap = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, TransactionChecker<?>> checkerMap = new ConcurrentHashMap<>();
 
     @Autowired
     private PlatformTransactionManager transactionManager;
+
+    @Autowired
+    private ObjectMapper objectMapper;
 
     public void registerLocalTransaction(String txId, Consumer<Object> localTransaction) {
         localTransactionMap.put(txId, localTransaction);
@@ -62,7 +68,7 @@ public class DelegatingTransactionListener implements RocketMQLocalTransactionLi
         localTransactionMap.remove(txId);
     }
 
-    public void registerChecker(String topic, TransactionChecker checker) {
+    public void registerChecker(String topic, TransactionChecker<?> checker) {
         checkerMap.put(topic, checker);
     }
 
@@ -86,14 +92,13 @@ public class DelegatingTransactionListener implements RocketMQLocalTransactionLi
     @Override
     public RocketMQLocalTransactionState checkLocalTransaction(Message message) {
         String topic = (String) message.getHeaders().get(HEADER_TOPIC);
-        TransactionChecker checker = topic != null ? checkerMap.get(topic) : null;
+        TransactionChecker<?> checker = topic != null ? checkerMap.get(topic) : null;
         if (checker == null) {
             log.warn("[事务消息] 回查时未找到 topic={} 对应的 checker, 默认 ROLLBACK", topic);
             return RocketMQLocalTransactionState.ROLLBACK;
         }
         try {
-            MessageWrapper<?> wrapper = (MessageWrapper<?>) message.getPayload();
-            boolean committed = checker.check(wrapper);
+            boolean committed = check(checker, (byte[]) message.getPayload());
             RocketMQLocalTransactionState state = committed
                     ? RocketMQLocalTransactionState.COMMIT
                     : RocketMQLocalTransactionState.ROLLBACK;
@@ -103,5 +108,12 @@ public class DelegatingTransactionListener implements RocketMQLocalTransactionLi
             log.error("[事务消息] 回查异常, topic={}", topic, e);
             return RocketMQLocalTransactionState.UNKNOWN;
         }
+    }
+
+    private <T> boolean check(TransactionChecker<T> checker, byte[] payload) throws IOException {
+        JavaType messageType = objectMapper.getTypeFactory()
+                .constructParametricType(MessageWrapper.class, checker.bodyType());
+        MessageWrapper<T> wrapper = objectMapper.readValue(payload, messageType);
+        return checker.check(wrapper);
     }
 }

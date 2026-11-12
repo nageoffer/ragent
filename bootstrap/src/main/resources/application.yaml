@@ -41,12 +41,18 @@ ragent:
 
 # Agent 执行架构（ragent.engine.type=agent 时生效）；单模型无 fallback，供应商可用性由 provider 侧保障
 agent:
+  mcp:
+    servers:
+      - name: default
+        url: http://localhost:9099
   chat:
-    provider: deepseek   # 引用 ai.providers 下的供应商，取其 url / api-key / endpoints.chat
-    model: deepseek-flash    # 直接传给 OpenAI 兼容端点的模型名
-  max-iters: 10         # ReAct 循环上限，超出后熔断收尾
-  max-retries: 1        # 最大尝试次数含首次，1 即不重试
+    provider: deepseek
+    model: deepseek-flash
+    reasoning-effort:
+  max-iters: 10
+  max-retries: 1
   sse-timeout-ms: 900000
+  max-concurrent-runs-per-user: 5
   memory:
     context-window-chars: 100000
     summary-enabled: true
@@ -94,11 +100,11 @@ rag:
       search-analyzer: ik_smart
 
   graph:
-    type: none  # 图谱后端总开关，可选 none / lightrag。lightrag 即接入后端供「后台可视化 / 检索读取」；是否参与检索、是否写入分别由 rag.search.channels.graph.enabled 与下方 ingestion.enabled 独立控制
+    type: none  # 图谱后端总开关，可选 none / lightrag。lightrag 时向量写入同步维护图谱、后台可视化可用；是否参与检索由 rag.search.channels.graph.enabled 单独控制
     lightrag:
       base-url: http://127.0.0.1:9621
       query-mode: hybrid
-    embedding-model: qwen-emb-8b  # 与 LightRAG 的 SiliconFlow Qwen3-Embedding-8B 配置一致
+    embedding-model: qwen-emb-8b  # 与 LightRAG Compose 的百炼 text-embedding-v4 配置一致
 
   default:
     collection-name: rag_default_store
@@ -143,11 +149,6 @@ rag:
       lock-seconds: 900
       batch-size: 20
       min-interval-seconds: 60
-
-  mcp:
-    servers:
-      - name: default
-        url: http://localhost:9099
 
   search:
     # 检索漏斗三段预算，各自独立、单调收窄，启动时校验 recall-budget ≥ default-top-k 且 rerank-candidate-limit ≥ default-top-k
@@ -226,7 +227,16 @@ ai:
       api-key: ${DEEPSEEK_API_KEY:}
       endpoints:
         chat: /v1/chat/completions
-        embedding: /v1/embeddings
+    hunyuan:
+      url: https://tokenhub.tencentmaas.com
+      api-key: ${HUNYUAN_API_KEY:}
+      endpoints:
+        chat: /v1/chat/completions
+    kimi:
+      url: https://api.moonshot.cn
+      api-key: ${MOONSHOT_API_KEY:}
+      endpoints:
+        chat: /v1/chat/completions
     atlascloud:
       url: ${ATLASCLOUD_BASE_URL:${ATLAS_CLOUD_BASE_URL:https://api.atlascloud.ai}}
       api-key: ${ATLASCLOUD_API_KEY:${ATLAS_CLOUD_API_KEY:}}
@@ -251,16 +261,23 @@ ai:
       - id: qwen3-local
         provider: ollama
         model: qwen3:8b-fp16
-      - id: qwen3-max
+      - id: qwen3.8
         provider: bailian
-        model: qwen3-max
-        supports-thinking: true
-      - id: gpt-5.4
+        model: qwen3.8-27b
+      - id: gpt-6.1-sol
         provider: aihubmix
-        model: gpt-5.4
+        model: gpt-6.1-sol
       - id: deepseek-flash
         provider: deepseek
         model: deepseek-flash
+        supports-thinking: true
+      - id: hy4
+        provider: hunyuan
+        model: hy4
+        supports-thinking: true
+      - id: kimi-k3.1-pro
+        provider: kimi
+        model: kimi-k3.1-pro
         supports-thinking: true
       - id: atlas-deepseek-v4-pro
         provider: atlascloud
@@ -277,10 +294,10 @@ ai:
         candidates: [ qwen-flash, qwen-plus, qwen3-local ]
         timeout-ms: 5000
       standard:
-        candidates: [ qwen3-max, qwen-plus, deepseek-flash, qwen3-local, gpt-5.4 ]
+        candidates: [ qwen3.8, qwen-plus, deepseek-flash, qwen3-local ]
         timeout-ms: 120000
       deep:
-        candidates: [ qwen3-max, deepseek-flash ]
+        candidates: [ deepseek-flash ]
         timeout-ms: 180000
 
   embedding:

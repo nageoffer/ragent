@@ -192,35 +192,6 @@ class RAGPromptServiceTest {
         assertTrue(result.startsWith("# 单意图模板"));
     }
 
-    @Test
-    void includesCitationRulesFromMixedPrompt() {
-        PromptContext context = PromptContext.builder()
-                .mcpContext("<data>动态数据</data>")
-                .kbContext("<content ref=\"1\">资料</content>")
-                .mcpIntents(List.of())
-                .kbIntents(List.of())
-                .eligibleIntentIds(Set.of())
-                .build();
-
-        String result = service(true).buildSystemPrompt(context);
-
-        assertTrue(result.contains("# 桩基础模板"));
-        assertTrue(result.contains("# 行内引用规则"));
-        assertTrue(result.indexOf("# 桩基础模板") < result.indexOf("# 行内引用规则"));
-    }
-
-    @Test
-    void doesNotAppendCitationRulesForMcpOnlyContext() {
-        PromptContext context = PromptContext.builder()
-                .mcpContext("<data>动态数据</data>")
-                .mcpIntents(List.of())
-                .build();
-
-        String result = service(true).buildSystemPrompt(context);
-
-        assertFalse(result.contains("# 行内引用规则"), "无知识库上下文时不追加引用规则");
-    }
-
     private static NodeScore intentWithTemplate(String template) {
         return intentWithTemplate("intent-1", template);
     }

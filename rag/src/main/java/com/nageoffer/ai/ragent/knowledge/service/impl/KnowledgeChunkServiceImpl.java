@@ -216,9 +216,13 @@ public class KnowledgeChunkServiceImpl implements KnowledgeChunkService {
 
         log.info("更新 Chunk 成功, kbId={}, docId={}, chunkId={}", documentDO.getKbId(), docId, chunkId);
 
-        // 同步向量数据库
-        vectorStoreService.updateChunk(collectionName, docId,
-                embedPersisted(List.of(chunkDO), vectorTargetResolver.resolve(kbDO)).get(0));
+        //chunk 或 doc 被禁用后，执行Embedding操作，会检索到不允许的向量
+        if(Integer.valueOf(0).equals(chunkDO.getEnabled()) || Integer.valueOf(0).equals(documentDO.getEnabled())){
+            log.warn("分块或文档未启用，暂不执行向量化操作");
+        }else{
+            vectorStoreService.updateChunk(collectionName, docId,
+                    embedPersisted(List.of(chunkDO), vectorTargetResolver.resolve(kbDO)).get(0));
+        }
         bizChangeLogContext.put(chunkId, before, chunkMapper.selectById(chunkId));
     }
 

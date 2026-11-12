@@ -20,13 +20,10 @@ package com.nageoffer.ai.ragent.agent.memory;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
- * 记忆注入块的渲染口径：注入与容量校验共用这一处，量的是成品不是正文求和
+ * 记忆注入块的渲染口径：注入与容量计算共用这一处，量的是成品不是正文求和
  */
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 final class AgentMemoryBlock {
@@ -51,44 +48,14 @@ final class AgentMemoryBlock {
     /**
      * 空集合返回空串，调用方据此决定插不插块
      */
-    static String render(List<AgentMemoryItem> items) {
-        if (items == null || items.isEmpty()) {
+    static String render(List<String> contents) {
+        if (contents.isEmpty()) {
             return "";
         }
         StringBuilder block = new StringBuilder(OPEN).append('\n').append(HEADER).append('\n');
-        for (AgentMemoryItem item : items) {
-            block.append(ITEM_PREFIX).append(item.content()).append('\n');
+        for (String content : contents) {
+            block.append(ITEM_PREFIX).append(content).append('\n');
         }
         return block.append(CLOSE).toString();
-    }
-
-    /**
-     * 应用这批决策之后注入块会有多长；提交前的预检与事务内的权威校验共用它
-     */
-    static int projectedChars(List<AgentMemoryItem> active, List<AgentMemoryDecision> decisions) {
-        return render(project(active, decisions)).length();
-    }
-
-    /**
-     * 预演本批应用后的记忆集：新条目此刻还没有 id，只参与量的计算
-     */
-    private static List<AgentMemoryItem> project(List<AgentMemoryItem> active,
-                                                 List<AgentMemoryDecision> decisions) {
-        Map<String, AgentMemoryItem> survivors = new LinkedHashMap<>();
-        for (AgentMemoryItem item : active) {
-            survivors.put(item.id(), item);
-        }
-        List<AgentMemoryItem> incoming = new ArrayList<>();
-        for (AgentMemoryDecision decision : decisions) {
-            if (decision.targetId() != null) {
-                survivors.remove(decision.targetId());
-            }
-            if (decision.introducesContent()) {
-                incoming.add(new AgentMemoryItem(null, decision.content()));
-            }
-        }
-        List<AgentMemoryItem> projected = new ArrayList<>(survivors.values());
-        projected.addAll(incoming);
-        return projected;
     }
 }

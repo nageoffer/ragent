@@ -30,12 +30,15 @@ import com.nageoffer.ai.ragent.agent.trace.AgentTraceEnrichmentMiddleware;
 import com.nageoffer.ai.ragent.rag.core.prompt.AgentPromptResolver;
 import com.nageoffer.ai.ragent.rag.core.prompt.AgentPromptSlot;
 import io.agentscope.core.ReActAgent;
+import io.agentscope.core.model.GenerateOptions;
 import io.agentscope.core.tracing.OtelTracingMiddleware;
 import io.agentscope.extensions.model.openai.OpenAIChatModel;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
+
+import java.util.Map;
 
 /**
  * 主 Agent 供给器：单例复用，AGENT_MAIN 人设或工具目录变化时懒重建
@@ -47,7 +50,8 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class ReActAgentProvider {
 
-    private static final String AGENT_NAME = "ragent";
+    private static final String AGENT_NAME = "RagentAI";
+    private volatile CachedAgent cached;
 
     private final AgentPromptResolver agentPromptResolver;
     private final AgentToolCatalog toolCatalog;
@@ -59,56 +63,39 @@ public class ReActAgentProvider {
     private final AgentConfirmDenialMiddleware confirmDenialMiddleware;
     private final AgentSkillMaskingMiddleware skillMaskingMiddleware;
     private final AgentToolBatchMiddleware toolBatchMiddleware;
-    /**
-     * 追踪默认关，ObjectProvider 避免开关关闭时装配失败
-     */
     private final ObjectProvider<OtelTracingMiddleware> otelTracingMiddleware;
     private final ObjectProvider<AgentTraceEnrichmentMiddleware> traceEnrichmentMiddleware;
 
-    private volatile CachedAgent cached;
-
     /**
      * 以人设内容和工具目录签名判断重建时机：控制台修改后无需重启，下一次会话生效
-     * 目录只解析一次，指纹与 Toolkit 同源，快照随实例一起返回给调用方
      */
     public ActiveAgent getAgent() {
-        String persona = resolvePersona();
-        ResolvedCatalog catalog = toolCatalog.resolve();
+        Map<String, String> prompts = agentPromptResolver.resolveAll();
+        String persona = resolvePersona(prompts);
+        ResolvedCatalog catalog = toolCatalog.resolve(prompts);
         CachedAgent current = cached;
         if (matches(current, persona, catalog)) {
-            return new ActiveAgent(current.agent(), current.catalog());
+            return current.activeAgent();
         }
         synchronized (this) {
             current = cached;
             if (matches(current, persona, catalog)) {
-                return new ActiveAgent(current.agent(), current.catalog());
+                return current.activeAgent();
             }
+
             // 旧实例不主动 close：在途会话仍在其上流式输出，交由 GC 回收
             ReActAgent agent = buildAgent(persona, catalog);
-            cached = new CachedAgent(persona, catalog, agent);
-            log.info("ReActAgent 已构建, maxIters: {}, maxRetries: {}",
-                    agentProperties.getMaxIters(), agentProperties.getMaxRetries());
-            return new ActiveAgent(agent, catalog);
-        }
-    }
+            ActiveAgent activeAgent = new ActiveAgent(agent, catalog);
 
-    /**
-     * 驱逐单个会话的内存状态：只作用于已构建的实例，清理动作不该顺手把 Agent 建起来
-     * 仅本节点有效，多节点各持一份缓存，需要时经 Redis 广播补齐
-     */
-    @SuppressWarnings("resource")
-    public void evictStateCache(String userId, String sessionId) {
-        CachedAgent current = cached;
-        if (current == null) {
-            return;
+            cached = new CachedAgent(persona, activeAgent);
+            return activeAgent;
         }
-        current.agent().clearStateCache(userId, sessionId);
     }
 
     private boolean matches(CachedAgent current, String persona, ResolvedCatalog catalog) {
         return current != null
                 && current.persona().equals(persona)
-                && current.catalog().fingerprint().equals(catalog.fingerprint());
+                && current.activeAgent().catalog().fingerprint().equals(catalog.fingerprint());
     }
 
     private ReActAgent buildAgent(String persona, ResolvedCatalog catalog) {
@@ -119,7 +106,14 @@ public class ReActAgentProvider {
                 .toolkit(toolCatalog.buildToolkit(catalog))
                 .maxIters(agentProperties.getMaxIters())
                 .maxRetries(agentProperties.getMaxRetries())
+                // 强制停止可能留下无结果的工具调用，下一问先补错误结果再继续
+                .enablePendingToolRecovery(true)
                 .stateStore(agentStateStore);
+        String reasoningEffort = agentProperties.getChat().getReasoningEffort();
+        if (StrUtil.isNotBlank(reasoningEffort)) {
+            // 挂在 Agent 上而不是模型上：模型级默认值会按字段合并进摘要与长期记忆的调用
+            builder.generateOptions(GenerateOptions.builder().reasoningEffort(reasoningEffort.trim()).build());
+        }
         // 追踪包在最外层：span 要盖住记忆与压缩才量得到耗时
         otelTracingMiddleware.ifAvailable(builder::middleware);
         traceEnrichmentMiddleware.ifAvailable(builder::middleware);
@@ -136,8 +130,8 @@ public class ReActAgentProvider {
                 .build();
     }
 
-    private String resolvePersona() {
-        String persona = agentPromptResolver.resolve(AgentPromptSlot.AGENT_MAIN);
+    private String resolvePersona(Map<String, String> prompts) {
+        String persona = prompts.get(AgentPromptSlot.AGENT_MAIN.name());
         if (StrUtil.isBlank(persona)) {
             throw new IllegalStateException("Agent人设内容不允许为空");
         }
@@ -150,6 +144,9 @@ public class ReActAgentProvider {
     public record ActiveAgent(ReActAgent agent, ResolvedCatalog catalog) {
     }
 
-    private record CachedAgent(String persona, ResolvedCatalog catalog, ReActAgent agent) {
+    /**
+     * Provider 内部的缓存条目：persona 用于判断缓存是否过期，ActiveAgent 是对外使用的快照
+     */
+    private record CachedAgent(String persona, ActiveAgent activeAgent) {
     }
 }

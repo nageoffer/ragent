@@ -18,6 +18,7 @@
 package com.nageoffer.ai.ragent.rag.dao.entity;
 
 import com.baomidou.mybatisplus.annotation.FieldFill;
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
@@ -45,6 +46,7 @@ public class IntentNodeDO {
     /**
      * 知识库 ID
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String kbId;
 
     /**
@@ -80,6 +82,7 @@ public class IntentNodeDO {
     /**
      * Milvus Collection 名称（仅对 kind=0 有意义）
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String collectionName;
 
     /**
@@ -92,6 +95,7 @@ public class IntentNodeDO {
     /**
      * MCP 工具 ID（仅对 kind=2 有意义）
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String mcpToolId;
 
     /**
@@ -119,17 +123,14 @@ public class IntentNodeDO {
     /**
      * 短规则片段（可选）
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String promptSnippet;
 
     /**
      * 场景用的完整 Prompt 模板（可选）
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String promptTemplate;
-
-    /**
-     * 参数提取提示词模板（MCP模式专属）
-     */
-    private String paramPromptTemplate;
 
     /**
      * 是否启用

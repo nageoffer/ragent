@@ -425,6 +425,9 @@ class AgentToolBodyTracerTest {
 
         assertThat(exported).isEmpty();
         assertThat(facts.toolFact("call-1").durationMs()).isEqualTo(15L);
+        // 停止时没等到结束事件的块靠它收口，关掉追踪也得有
+        assertThat(facts.toolFact("call-1").result()).isNotNull()
+                .extracting(ToolResultBlock::getState).isEqualTo(ToolResultState.SUCCESS);
     }
 
     /**

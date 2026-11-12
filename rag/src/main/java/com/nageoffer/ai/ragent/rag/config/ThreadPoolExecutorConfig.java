@@ -41,26 +41,7 @@ public class ThreadPoolExecutorConfig {
     public static final int CPU_COUNT = Runtime.getRuntime().availableProcessors();
 
     /**
-     * MCP批处理线程池
-     */
-    @Bean
-    public Executor mcpBatchExecutor() {
-        ThreadPoolExecutor executor = new ThreadPoolExecutor(
-                CPU_COUNT,
-                CPU_COUNT << 1,
-                60,
-                TimeUnit.SECONDS,
-                new SynchronousQueue<>(),
-                ThreadFactoryBuilder.create()
-                        .setNamePrefix("mcp_batch_executor_")
-                        .build(),
-                new ThreadPoolExecutor.CallerRunsPolicy()
-        );
-        return TtlExecutors.getTtlExecutor(executor);
-    }
-
-    /**
-     * RAG上下文处理线程池（子问题级并行：检索+MCP）
+     * RAG 上下文处理线程池，按子问题并行检索
      */
     @Bean
     public Executor ragContextExecutor() {

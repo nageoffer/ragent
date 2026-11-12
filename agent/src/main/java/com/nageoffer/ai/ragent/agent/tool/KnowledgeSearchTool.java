@@ -18,14 +18,13 @@
 package com.nageoffer.ai.ragent.agent.tool;
 
 import cn.hutool.core.util.StrUtil;
-import com.nageoffer.ai.ragent.agent.service.AgentConversationService;
 import com.nageoffer.ai.ragent.agent.trace.AgentToolBodyTracer;
-import com.nageoffer.ai.ragent.framework.convention.ChatMessage;
+import com.nageoffer.ai.ragent.framework.cancellation.TaskCancellation;
 import com.nageoffer.ai.ragent.rag.service.KnowledgeSearchFacade;
-import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.message.TextBlock;
 import io.agentscope.core.message.ToolResultBlock;
 import io.agentscope.core.message.ToolResultState;
+import io.agentscope.core.message.ToolUseBlock;
 import io.agentscope.core.tool.AgentTool;
 import io.agentscope.core.tool.ToolCallParam;
 import lombok.RequiredArgsConstructor;
@@ -35,6 +34,7 @@ import reactor.core.scheduler.Schedulers;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * 知识库检索工具：RAG 管线在 Agent 模式下的唯一入口，描述由当前 Agent 的提示词槽位提供
@@ -48,15 +48,11 @@ public class KnowledgeSearchTool implements AgentTool {
 
     private static final String QUERY_PARAM = "query";
     private static final String QUERY_DESCRIPTION = "用于检索知识库的完整独立问题";
-
-    /**
-     * 改写只用近期轮次消解指代，取多了也会被 buildRewriteRequest 截到 4 条
-     */
-    private static final int REWRITE_CONTEXT_TURNS = 2;
+    private static final String SEARCH_ERROR_MESSAGE = "知识库检索异常，请稍后重试";
+    private static final String INTERRUPTED_MESSAGE = "用户已停止，本次知识检索未完成";
 
     private final String description;
     private final KnowledgeSearchFacade knowledgeSearchFacade;
-    private final AgentConversationService conversationService;
 
     @Override
     public String getName() {
@@ -95,18 +91,37 @@ public class KnowledgeSearchTool implements AgentTool {
         if (param == null) {
             return buildResult(null, "工具调用参数不能为空", true);
         }
-        String toolCallId = param.getToolUseBlock() == null ? null : param.getToolUseBlock().getId();
-        Object rawQuery = param.getInput() == null ? null : param.getInput().get(QUERY_PARAM);
-        String query = rawQuery instanceof String ? ((String) rawQuery).trim() : null;
-        if (StrUtil.isBlank(query)) {
+        String toolCallId = Optional.ofNullable(param.getToolUseBlock())
+                .map(ToolUseBlock::getId)
+                .orElse(null);
+        Optional<String> query = Optional.ofNullable(param.getInput())
+                .map(input -> input.get(QUERY_PARAM))
+                .filter(String.class::isInstance)
+                .map(String.class::cast)
+                .map(String::strip)
+                .filter(StrUtil::isNotBlank);
+        if (query.isEmpty()) {
             return buildResult(toolCallId, "工具参数 query 不能为空", true);
         }
+        String normalizedQuery = query.get();
         try {
-            String result = knowledgeSearchFacade.search(query, recentTurns(param.getRuntimeContext()));
+            String result = knowledgeSearchFacade.search(normalizedQuery);
+            // RAG 逐层降级，取消到这里多半不是异常而是一份空结果，只在 catch 里判会漏掉
+            if (TaskCancellation.isCancelled()) {
+                return buildInterrupted(toolCallId);
+            }
+            if (StrUtil.isBlank(result)) {
+                log.warn("知识库检索未返回有效内容, toolCallId: {}", toolCallId);
+                return buildResult(toolCallId, SEARCH_ERROR_MESSAGE, true);
+            }
             return buildResult(toolCallId, result, false);
         } catch (Exception e) {
-            log.error("知识库检索工具调用异常", e);
-            return buildResult(toolCallId, "知识库检索异常: " + e.getMessage(), true);
+            if (TaskCancellation.isCancellation(e)) {
+                return buildInterrupted(toolCallId);
+            }
+            log.error("知识库检索工具调用异常, toolCallId: {}", toolCallId, e);
+            // 工具返回会重新进入模型上下文，不得暴露异常中的内部地址、SQL 或凭据等细节
+            return buildResult(toolCallId, SEARCH_ERROR_MESSAGE, true);
         }
     }
 
@@ -120,13 +135,15 @@ public class KnowledgeSearchTool implements AgentTool {
     }
 
     /**
-     * 主 Agent 未消解干净的指代由改写兜底，会话身份取不到时退化为无历史改写
+     * 取消不能报成 ERROR：模型见到失败会在下一轮重试检索，而用户已经喊停
      */
-    private List<ChatMessage> recentTurns(RuntimeContext runtimeContext) {
-        if (runtimeContext == null) {
-            return List.of();
-        }
-        return conversationService.loadRecentTurns(
-                runtimeContext.getSessionId(), runtimeContext.getUserId(), REWRITE_CONTEXT_TURNS);
+    private ToolResultBlock buildInterrupted(String toolCallId) {
+        log.debug("知识库检索被取消, toolCallId: {}", toolCallId);
+        return ToolResultBlock.builder()
+                .id(toolCallId)
+                .name(TOOL_NAME)
+                .output(TextBlock.builder().text(INTERRUPTED_MESSAGE).build())
+                .state(ToolResultState.INTERRUPTED)
+                .build();
     }
 }

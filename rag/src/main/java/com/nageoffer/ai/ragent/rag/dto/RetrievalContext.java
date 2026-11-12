@@ -27,16 +27,11 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * 检索上下文（MCP + KB 结果的统一承载）
+ * 知识库检索上下文
  */
 @Data
 @Builder
 public class RetrievalContext {
-
-    /**
-     * MCP 召回的上下文
-     */
-    private String mcpContext;
 
     /**
      * KB 召回的上下文
@@ -55,13 +50,6 @@ public class RetrievalContext {
     private Set<String> eligibleIntentIds = Set.of();
 
     /**
-     * 是否存在 MCP 上下文
-     */
-    public boolean hasMcp() {
-        return StrUtil.isNotBlank(mcpContext);
-    }
-
-    /**
      * 是否存在 KB 上下文
      */
     public boolean hasKb() {
@@ -72,6 +60,6 @@ public class RetrievalContext {
      * 是否无任何上下文
      */
     public boolean isEmpty() {
-        return !hasMcp() && !hasKb();
+        return !hasKb();
     }
 }

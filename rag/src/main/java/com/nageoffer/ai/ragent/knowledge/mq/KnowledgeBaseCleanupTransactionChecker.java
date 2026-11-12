@@ -32,13 +32,12 @@ import org.springframework.stereotype.Component;
 
 /**
  * 知识库删除清理事务消息回查器
- * <p>
  * 按 topic 注册，Broker 回查时可路由到任意实例，通过查询 DB 中知识库是否已逻辑删除判断本地事务是否已提交
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class KnowledgeBaseCleanupTransactionChecker implements TransactionChecker {
+public class KnowledgeBaseCleanupTransactionChecker implements TransactionChecker<KnowledgeBaseCleanupEvent> {
 
     private final KnowledgeBaseMapper knowledgeBaseMapper;
     private final DelegatingTransactionListener transactionListener;
@@ -52,10 +51,15 @@ public class KnowledgeBaseCleanupTransactionChecker implements TransactionChecke
     }
 
     @Override
-    public boolean check(MessageWrapper<?> message) {
+    public Class<KnowledgeBaseCleanupEvent> bodyType() {
+        return KnowledgeBaseCleanupEvent.class;
+    }
+
+    @Override
+    public boolean check(MessageWrapper<KnowledgeBaseCleanupEvent> message) {
         log.info("[事务回查] 知识库删除清理，消息体：{}", JSONUtil.toJsonStr(message));
 
-        KnowledgeBaseCleanupEvent event = (KnowledgeBaseCleanupEvent) message.getBody();
+        KnowledgeBaseCleanupEvent event = message.getBody();
         // 逻辑删除后 selectById 不可见；查不到即视为本地事务（软删知识库）已提交
         KnowledgeBaseDO kbDO = knowledgeBaseMapper.selectById(event.getKbId());
         return kbDO == null;

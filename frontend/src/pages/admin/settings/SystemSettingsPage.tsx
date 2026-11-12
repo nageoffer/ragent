@@ -25,7 +25,7 @@ import {
   TableHeader,
   TableRow
 } from "@/components/ui/table";
-import type { ModelGroup, RetrievalChannel, SystemSettings } from "@/services/settingsService";
+import type { AgentSettings, ModelGroup, RetrievalChannel, SystemSettings } from "@/services/settingsService";
 import { getSystemSettings } from "@/services/settingsService";
 import { cn } from "@/lib/utils";
 import { getErrorMessage } from "@/utils/error";
@@ -116,6 +116,57 @@ function KV({ label, value, mono }: { label: string; value: ReactNode; mono?: bo
       <span className="settings-kv-label">{label}</span>
       <div className={cn("settings-kv-value", mono && "font-mono")}>{value}</div>
     </div>
+  );
+}
+
+function AgentRuntimeSection({ settings }: { settings: AgentSettings }) {
+  const { chat, memory } = settings;
+  const trimEnabled = memory.evictableTools.length > 0;
+  const chars = (value: number) => `${value.toLocaleString("zh-CN")} 字符`;
+
+  return (
+    <Section title="主 Agent" hint="主模型、执行限制与会话记忆">
+      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-3">
+        <div className="settings-card">
+          <div className="settings-card-title">模型与执行</div>
+          <div className="settings-kv-grid">
+            <KV label="供应商" value={chat.provider} mono />
+            <KV label="主模型" value={chat.model} mono />
+            <KV label="ReAct 循环上限" value={settings.maxIters} mono />
+            <KV label="模型调用尝试次数（含首次）" value={settings.maxRetries} mono />
+            <KV label="每用户并发会话上限" value={settings.maxConcurrentRunsPerUser} mono />
+            <KV label="SSE 超时" value={formatDurationMs(settings.sseTimeoutMs)} />
+            <KV label="Agent 链路追踪" value={<StateTag on={settings.traceEnabled} />} />
+          </div>
+        </div>
+        <div className="settings-card">
+          <div className="settings-card-title">上下文与裁剪</div>
+          <div className="settings-kv-grid">
+            <KV label="会话上下文预算" value={chars(memory.contextWindowChars)} />
+            <KV label="旧工具结果裁剪" value={<StateTag on={trimEnabled} />} />
+            {trimEnabled ? <KV label="裁剪触发阈值" value={chars(memory.trimTriggerChars)} /> : null}
+            <div className="sm:col-span-2">
+              <KV label="允许裁剪的工具" value={memory.evictableTools.join("、") || "无"} mono />
+            </div>
+          </div>
+          <p className="settings-scope-note mt-4">预算按字符计，不等同于模型 Token 窗口；触发阈值由当前预算派生</p>
+        </div>
+        <div className="settings-card">
+          <div className="settings-card-title">摘要与长期记忆</div>
+          <div className="settings-kv-grid">
+            <KV label="历史摘要压缩" value={<StateTag on={memory.summaryEnabled} />} />
+            <KV label="跨会话长期记忆" value={<StateTag on={memory.longTermEnabled} />} />
+            {memory.summaryEnabled ? (
+              <>
+                <KV label="摘要触发阈值" value={chars(memory.compactTriggerChars)} />
+                <KV label="近期原文保留量" value={chars(memory.keepRecentChars)} />
+                <KV label="摘要目标长度" value={chars(memory.summaryTargetChars)} />
+              </>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </Section>
   );
 }
 
@@ -313,7 +364,7 @@ function LoadingSkeleton() {
       <div className="admin-page-header">
         <div>
           <h1 className="admin-page-title">系统配置</h1>
-          <p className="admin-page-subtitle">application.yaml 运行时生效配置的只读视图</p>
+          <p className="admin-page-subtitle">当前进程配置的只读视图</p>
         </div>
       </div>
       <div className="settings-arch-grid">
@@ -368,7 +419,8 @@ export function SystemSettingsPage() {
     );
   }
 
-  const { engine, backends, rag, ai, upload } = settings;
+  const { engine, agent, backends, rag, ai, upload } = settings;
+  const isAgent = engine.type === "agent";
   const { search, features } = rag;
   const { channels, fusion, scope } = search;
 
@@ -394,7 +446,7 @@ export function SystemSettingsPage() {
       <div className="admin-page-header">
         <div>
           <h1 className="admin-page-title">系统配置</h1>
-          <p className="admin-page-subtitle">application.yaml 运行时生效配置的只读视图，修改后需重启服务</p>
+          <p className="admin-page-subtitle">当前进程配置的只读视图，包含配置文件与启动参数；修改后需重启服务</p>
         </div>
         <div className="admin-page-actions">
           <Button variant="outline" size="sm" onClick={() => loadSettings(true)} disabled={refreshing}>
@@ -445,6 +497,12 @@ export function SystemSettingsPage() {
           />
         </div>
       </Section>
+
+      {isAgent ? (
+        agent ? <AgentRuntimeSection settings={agent} /> : (
+          <div className="settings-card text-amber-700">主 Agent 配置未返回，请检查后端版本</div>
+        )
+      ) : null}
 
       <Section title="检索管线" hint={`${enabledChannelCount} / 4 通道启用 · 单通道超时 ${formatDurationMs(channels.timeoutMs)}`}>
         <div className="settings-card">
@@ -551,9 +609,9 @@ export function SystemSettingsPage() {
           <div className="settings-feature-row">
             <FeaturePill label="查询改写" keyName="query-rewrite" on={features.queryRewrite} />
             <FeaturePill label="Rerank 精排" keyName="rerank" on={features.rerank} />
-            <FeaturePill label="行内引用" keyName="citation" on={features.citation} />
+            {!isAgent ? <FeaturePill label="行内引用" keyName="citation" on={features.citation} /> : null}
             <FeaturePill label="上下文富化" keyName="context-enrich" on={features.contextEnrich} />
-            <FeaturePill label="链路追踪" keyName="trace" on={features.trace} />
+            {!isAgent ? <FeaturePill label="RAG 链路追踪" keyName="trace" on={features.trace} /> : null}
           </div>
         </div>
       </Section>
@@ -564,13 +622,14 @@ export function SystemSettingsPage() {
       >
         <div className="settings-card">
           <div className="settings-card-title">
-            Chat 档位路由
+            {isAgent ? "检索与内部任务 Chat 路由" : "Workflow 与内部任务 Chat 路由"}
             <span className="settings-card-title-hint">
               默认 <code className="font-mono text-slate-500">{ai.chat.defaultTier ?? "—"}</code>
               <span className="mx-1.5 text-slate-200">|</span>
               深度思考 <code className="font-mono text-slate-500">{ai.chat.deepThinkingTier ?? "—"}</code>
             </span>
           </div>
+          <p className="settings-scope-note mb-4">ai.chat 供检索应答及内部模型任务使用{isAgent ? "；主 Agent 使用上方独立配置的单模型" : "，同时供 Workflow 对话使用"}</p>
           <div className="space-y-2">
             {tiers.map(([name, tier]) => (
               <div key={name} className="settings-tier">
@@ -613,7 +672,7 @@ export function SystemSettingsPage() {
           </div>
         </div>
 
-        <div className="grid items-start gap-4 xl:grid-cols-2">
+        <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
           <ModelCandidatesCard title="Embedding 模型" group={ai.embedding} showDimension showPriority />
           <div className="space-y-4">
             <ModelCandidatesCard title="Rerank 模型" group={ai.rerank} showPriority />
@@ -621,7 +680,7 @@ export function SystemSettingsPage() {
           </div>
         </div>
 
-        <div className="grid gap-4 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
           <div className="settings-card xl:col-span-2">
             <div className="settings-card-title">模型服务提供方</div>
             <Table>
@@ -664,45 +723,49 @@ export function SystemSettingsPage() {
         </div>
       </Section>
 
-      <Section title="运行时参数" hint="向量空间、会话记忆与资源限额">
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <Section title="基础设施与资源限额" hint={isAgent ? "向量空间、存储与上传" : "向量空间、Workflow 会话与资源限制"}>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           <div className="settings-card">
             <div className="settings-card-title">向量空间</div>
             <div className="settings-kv-grid">
               <KV label="Collection" value={rag.default.collectionName} mono />
               <KV label="向量维度" value={rag.default.dimension} mono />
               <KV label="相似度度量" value={rag.default.metricType} mono />
-              <KV label="SSE 超时" value={formatDurationMs(rag.default.sseTimeoutMs)} />
             </div>
           </div>
-          <div className="settings-card">
-            <div className="settings-card-title">
-              会话记忆
-              <span className="settings-card-title-hint">
-                <StateTag on={rag.memory.summaryEnabled} onText="摘要压缩启用" offText="摘要压缩关闭" />
-              </span>
+          {!isAgent ? (
+            <div className="settings-card">
+              <div className="settings-card-title">
+                Workflow 会话记忆
+                <span className="settings-card-title-hint">
+                  <StateTag on={rag.memory.summaryEnabled} onText="摘要压缩启用" offText="摘要压缩关闭" />
+                </span>
+              </div>
+              <div className="settings-kv-grid">
+                <KV label="SSE 超时" value={formatDurationMs(rag.default.sseTimeoutMs)} />
+                <KV label="历史保留轮数" value={`${rag.memory.historyKeepTurns} 轮`} />
+                <KV label="摘要起始轮数" value={`第 ${rag.memory.summaryStartTurns} 轮`} />
+                <KV label="摘要长度上限" value={`${rag.memory.summaryMaxChars} 字`} />
+                <KV label="会话标题上限" value={`${rag.memory.titleMaxLength} 字`} />
+              </div>
             </div>
-            <div className="settings-kv-grid">
-              <KV label="历史保留轮数" value={`${rag.memory.historyKeepTurns} 轮`} />
-              <KV label="摘要起始轮数" value={`第 ${rag.memory.summaryStartTurns} 轮`} />
-              <KV label="摘要长度上限" value={`${rag.memory.summaryMaxChars} 字`} />
-              <KV label="会话标题上限" value={`${rag.memory.titleMaxLength} 字`} />
+          ) : null}
+          {!isAgent ? (
+            <div className="settings-card">
+              <div className="settings-card-title">
+                Workflow 全局限流
+                <span className="settings-card-title-hint">
+                  <StateTag on={rag.rateLimit.global.enabled} />
+                </span>
+              </div>
+              <div className="settings-kv-grid">
+                <KV label="最大并发" value={rag.rateLimit.global.maxConcurrent} mono />
+                <KV label="最长等待" value={`${rag.rateLimit.global.maxWaitSeconds} s`} />
+                <KV label="租约时长" value={`${rag.rateLimit.global.leaseSeconds} s`} />
+                <KV label="轮询间隔" value={formatDurationMs(rag.rateLimit.global.pollIntervalMs)} />
+              </div>
             </div>
-          </div>
-          <div className="settings-card">
-            <div className="settings-card-title">
-              全局限流
-              <span className="settings-card-title-hint">
-                <StateTag on={rag.rateLimit.global.enabled} />
-              </span>
-            </div>
-            <div className="settings-kv-grid">
-              <KV label="最大并发" value={rag.rateLimit.global.maxConcurrent} mono />
-              <KV label="最长等待" value={`${rag.rateLimit.global.maxWaitSeconds} s`} />
-              <KV label="租约时长" value={`${rag.rateLimit.global.leaseSeconds} s`} />
-              <KV label="轮询间隔" value={formatDurationMs(rag.rateLimit.global.pollIntervalMs)} />
-            </div>
-          </div>
+          ) : null}
           <div className="settings-card">
             <div className="settings-card-title">对象存储</div>
             <div className="settings-kv-grid">

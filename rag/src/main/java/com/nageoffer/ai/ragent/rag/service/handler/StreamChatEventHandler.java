@@ -140,11 +140,15 @@ public class StreamChatEventHandler implements StreamCallback {
      * 取消收尾：持久化已累积内容后补发 cancel/done 事件并结束响应流
      */
     private void finishCancelledStream() {
-        CompletionPayload payload = buildCompletionPayloadOnCancel();
-        CompletionPayload actualPayload = payload == null ? new CompletionPayload(null, null) : payload;
-        sender.sendEvent(SSEEventType.CANCEL.value(), actualPayload);
-        sender.sendEvent(SSEEventType.DONE.value(), "[DONE]");
-        sender.complete();
+        try {
+            CompletionPayload payload = buildCompletionPayloadOnCancel();
+            CompletionPayload actualPayload = payload == null ? new CompletionPayload(null, null) : payload;
+            sender.sendEvent(SSEEventType.CANCEL.value(), actualPayload);
+            sender.sendEvent(SSEEventType.DONE.value(), "[DONE]");
+        } finally {
+            // 收尾链路中可能遇到异常，finally保证complete方法执行，连接断开
+            sender.complete();
+        }
     }
 
     @Override
@@ -181,7 +185,7 @@ public class StreamChatEventHandler implements StreamCallback {
         if (taskManager.isCancelled(taskId)) {
             return;
         }
-        if (StrUtil.isBlank(chunk)) {
+        if (chunk == null || chunk.isEmpty()) {
             return;
         }
         if (thinkingStartMs > 0 && thinkingDurationSeconds == 0) {
@@ -196,7 +200,7 @@ public class StreamChatEventHandler implements StreamCallback {
         if (taskManager.isCancelled(taskId)) {
             return;
         }
-        if (StrUtil.isBlank(chunk)) {
+        if (chunk == null || chunk.isEmpty()) {
             return;
         }
         if (thinkingStartMs == 0) {
@@ -270,9 +274,14 @@ public class StreamChatEventHandler implements StreamCallback {
         if (!sendTitleOnComplete) {
             return null;
         }
-        ConversationDO conversation = conversationGroupService.findConversation(conversationId, userId);
-        if (conversation != null && StrUtil.isNotBlank(conversation.getTitle())) {
-            return conversation.getTitle();
+        try {
+            ConversationDO conversation = conversationGroupService.findConversation(conversationId, userId);
+            if (conversation != null && StrUtil.isNotBlank(conversation.getTitle())) {
+                return conversation.getTitle();
+            }
+        } catch (Exception e) {
+            // 防止getTitle()执行失败，破坏数据一致性
+            log.error("查询会话标题失败，降级处理，conversationId：{}", conversationId, e);
         }
         return "新对话";
     }

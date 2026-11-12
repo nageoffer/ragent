@@ -314,7 +314,6 @@ CREATE TABLE t_intent_node (
     kind                  SMALLINT     NOT NULL DEFAULT 0,
     prompt_snippet        TEXT,
     prompt_template       TEXT,
-    param_prompt_template TEXT,
     sort_order            INTEGER      NOT NULL DEFAULT 0,
     enabled               SMALLINT     NOT NULL DEFAULT 1,
     create_by             VARCHAR(20),
@@ -323,6 +322,7 @@ CREATE TABLE t_intent_node (
     update_time           TIMESTAMP  NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deleted               SMALLINT     NOT NULL DEFAULT 0
 );
+CREATE UNIQUE INDEX uk_intent_node_mcp_tool ON t_intent_node (mcp_tool_id) WHERE kind = 2 AND deleted = 0;
 COMMENT ON TABLE t_intent_node IS '意图树节点配置表';
 
 CREATE TABLE t_query_term_mapping (
@@ -405,9 +405,10 @@ CREATE TABLE t_agent_profile (
     update_by   VARCHAR(20),
     create_time TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     update_time TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    deleted     SMALLINT     NOT NULL DEFAULT 0,
-    CONSTRAINT uk_agent_name UNIQUE (name)
+    deleted     SMALLINT     NOT NULL DEFAULT 0
 );
+-- 逻辑删除后名称应可重新占用，唯一性只约束未删除的行
+CREATE UNIQUE INDEX uk_agent_name ON t_agent_profile (name) WHERE deleted = 0;
 CREATE INDEX idx_agent_active ON t_agent_profile (active);
 COMMENT ON TABLE t_agent_profile IS '智能体人设配置表';
 
@@ -460,8 +461,8 @@ CREATE TABLE t_agent_conversation (
     update_time     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     deleted         SMALLINT    DEFAULT 0
 );
--- 部分唯一索引：逻辑删的旧行不再占用唯一键，否则删除后同 ID 重开会话必撞约束
-CREATE UNIQUE INDEX uk_agent_conversation_user ON t_agent_conversation (conversation_id, user_id) WHERE deleted = 0;
+-- 会话身份不可复用：逻辑删除后仍保留唯一键，新会话必须使用服务端生成的新 ID
+CREATE UNIQUE INDEX uk_agent_conversation_user ON t_agent_conversation (conversation_id, user_id);
 CREATE INDEX idx_agent_conv_user_time ON t_agent_conversation (user_id, last_time);
 COMMENT ON TABLE t_agent_conversation IS 'Agent 会话列表';
 
@@ -481,6 +482,8 @@ CREATE TABLE t_agent_message (
     deleted             SMALLINT    DEFAULT 0
 );
 CREATE INDEX idx_agent_msg_conv ON t_agent_message (conversation_id, user_id, create_time);
+-- 长期记忆按用户跨会话取待处理消息，按 id 升序
+CREATE INDEX idx_agent_msg_user ON t_agent_message (user_id, id);
 COMMENT ON TABLE t_agent_message IS 'Agent 消息记录';
 
 CREATE TABLE t_agent_state (
@@ -492,7 +495,7 @@ CREATE TABLE t_agent_state (
     update_time TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (user_id, session_id, state_key)
 );
-COMMENT ON TABLE t_agent_state IS 'AgentScope 工作状态存储，payload 为框架自有编码的不透明 JSON';
+COMMENT ON TABLE t_agent_state IS 'AgentScope状态存储';
 
 CREATE TABLE t_agent_context_compaction (
     id                   VARCHAR(20) NOT NULL PRIMARY KEY,
@@ -511,44 +514,27 @@ CREATE INDEX idx_agent_compaction_conv ON t_agent_context_compaction (conversati
 COMMENT ON TABLE t_agent_context_compaction IS 'Agent 上下文压缩事件，追加型审计日志，应用侧无读路径';
 
 CREATE TABLE t_agent_memory (
-    id            VARCHAR(20)  NOT NULL PRIMARY KEY,
-    user_id       VARCHAR(20)  NOT NULL,
-    content       VARCHAR(500) NOT NULL,
-    source_type   VARCHAR(16)  NOT NULL,
-    invalid_at    TIMESTAMP,
-    superseded_by VARCHAR(20),
-    create_time   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+    id                VARCHAR(20)  NOT NULL PRIMARY KEY,
+    user_id           VARCHAR(20)  NOT NULL,
+    content           VARCHAR(500) NOT NULL,
+    source_type       VARCHAR(16)  NOT NULL,
+    invalid_at        TIMESTAMP,
+    source_message_id VARCHAR(20),
+    expressed_at      TIMESTAMP,
+    create_time       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    update_time       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 -- 部分索引：读路径只查 ACTIVE，失效行不进索引
 CREATE INDEX idx_agent_memory_active ON t_agent_memory (user_id) WHERE invalid_at IS NULL;
 COMMENT ON TABLE t_agent_memory IS 'Agent长期记忆事实表';
 
-CREATE TABLE t_agent_memory_extraction (
-    id              VARCHAR(20) NOT NULL PRIMARY KEY,
-    user_id         VARCHAR(20) NOT NULL,
-    conversation_id VARCHAR(20) NOT NULL,
-    from_message_id VARCHAR(20) NOT NULL,
-    to_message_id   VARCHAR(20) NOT NULL,
-    status          VARCHAR(16) NOT NULL,
-    trigger_type    VARCHAR(16) NOT NULL,
-    decision_count  INTEGER     NOT NULL DEFAULT 0,
-    attempt_count   INTEGER     NOT NULL DEFAULT 1,
+CREATE TABLE t_agent_memory_cursor (
+    user_id         VARCHAR(20) NOT NULL PRIMARY KEY,
+    last_message_id VARCHAR(20),
     create_time     TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    settle_time     TIMESTAMP
+    update_time     TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX idx_agent_memory_extraction_conv ON t_agent_memory_extraction (user_id, conversation_id, to_message_id);
--- 部分唯一索引即分布式 claim：同一会话同时只允许一次在飞抽取
-CREATE UNIQUE INDEX uk_agent_memory_extraction_processing
-    ON t_agent_memory_extraction (user_id, conversation_id) WHERE status = 'PROCESSING';
-COMMENT ON TABLE t_agent_memory_extraction IS 'Agent长期记忆抽取台账';
-
-CREATE TABLE t_agent_memory_control (
-    user_id     VARCHAR(20) NOT NULL PRIMARY KEY,
-    revision    BIGINT      NOT NULL DEFAULT 0,
-    create_time TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    update_time TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-COMMENT ON TABLE t_agent_memory_control IS 'Agent长期记忆控制面';
+COMMENT ON TABLE t_agent_memory_cursor IS 'Agent长期记忆整理游标';
 
 -- ============================================
 -- Ingestion Pipeline Tables
@@ -824,10 +810,9 @@ COMMENT ON COLUMN t_intent_node.collection_names IS '知识库Collection集合';
 COMMENT ON COLUMN t_intent_node.top_k IS '知识库检索TopK';
 COMMENT ON COLUMN t_intent_node.mcp_tool_id IS 'MCP工具ID';
 COMMENT ON COLUMN t_intent_node.require_confirm IS '执行前是否需要用户确认 1：需要 0：不需要';
-COMMENT ON COLUMN t_intent_node.kind IS '类型 0：RAG知识库类 1：SYSTEM系统交互类';
+COMMENT ON COLUMN t_intent_node.kind IS '类型 0：知识库 1：系统交互 2：MCP 工具';
 COMMENT ON COLUMN t_intent_node.prompt_snippet IS '提示词片段';
 COMMENT ON COLUMN t_intent_node.prompt_template IS '提示词模板';
-COMMENT ON COLUMN t_intent_node.param_prompt_template IS '参数提取提示词模板（MCP模式专属）';
 COMMENT ON COLUMN t_intent_node.sort_order IS '排序字段';
 COMMENT ON COLUMN t_intent_node.enabled IS '是否启用 1：启用 0：禁用';
 COMMENT ON COLUMN t_intent_node.create_by IS '创建人';
@@ -1013,7 +998,7 @@ COMMENT ON COLUMN t_agent_message.update_time IS '更新时间';
 COMMENT ON COLUMN t_agent_message.deleted IS '是否删除 0：正常 1：删除';
 
 -- t_agent_state
-COMMENT ON COLUMN t_agent_state.user_id IS '用户ID，匿名会话为 __anon__';
+COMMENT ON COLUMN t_agent_state.user_id IS '用户ID';
 COMMENT ON COLUMN t_agent_state.session_id IS '会话ID，即 AgentScope 的 sessionId';
 COMMENT ON COLUMN t_agent_state.state_key IS '状态键，AgentScope 侧固定传 agent_state';
 COMMENT ON COLUMN t_agent_state.payload IS '框架自有编码的状态 JSON，业务侧不解析';
@@ -1037,26 +1022,15 @@ COMMENT ON COLUMN t_agent_context_compaction.create_time IS '创建时间';
 COMMENT ON COLUMN t_agent_memory.id IS '主键ID';
 COMMENT ON COLUMN t_agent_memory.user_id IS '用户ID';
 COMMENT ON COLUMN t_agent_memory.content IS '记忆正文';
-COMMENT ON COLUMN t_agent_memory.source_type IS '写入来源：FLUSH/BACKGROUND/CONSOLIDATION';
-COMMENT ON COLUMN t_agent_memory.invalid_at IS '失效时刻，NULL 即 ACTIVE';
-COMMENT ON COLUMN t_agent_memory.superseded_by IS '取代者ID，撤回行留空';
-COMMENT ON COLUMN t_agent_memory.create_time IS '创建时间';
+COMMENT ON COLUMN t_agent_memory.source_type IS '当前正文的写入入口：FLUSH/BACKGROUND';
+COMMENT ON COLUMN t_agent_memory.invalid_at IS '失效时刻，NULL 即有效；删除与容量移除时写入';
+COMMENT ON COLUMN t_agent_memory.source_message_id IS '当前正文依据的用户消息ID，即用户最近一次明确表达或确认它的发言；早期数据为空';
+COMMENT ON COLUMN t_agent_memory.expressed_at IS '那条用户消息的入库时间，即用户表达时间，不是本行写入时间；早期数据为空';
+COMMENT ON COLUMN t_agent_memory.create_time IS '本行写入时间';
+COMMENT ON COLUMN t_agent_memory.update_time IS '本行最近一次修改（改写、失效）的时间';
 
--- t_agent_memory_extraction
-COMMENT ON COLUMN t_agent_memory_extraction.id IS '主键ID';
-COMMENT ON COLUMN t_agent_memory_extraction.user_id IS '用户ID';
-COMMENT ON COLUMN t_agent_memory_extraction.conversation_id IS '会话ID，即 AgentScope 的 sessionId';
-COMMENT ON COLUMN t_agent_memory_extraction.from_message_id IS '本批首条用户消息ID';
-COMMENT ON COLUMN t_agent_memory_extraction.to_message_id IS '本批末条用户消息ID，水位取已结束抽取的最大值';
-COMMENT ON COLUMN t_agent_memory_extraction.status IS '抽取状态：PROCESSING/WRITTEN/NOOP/DROPPED/CONFLICT';
-COMMENT ON COLUMN t_agent_memory_extraction.trigger_type IS '触发方：FLUSH/BACKGROUND';
-COMMENT ON COLUMN t_agent_memory_extraction.decision_count IS '实际落库的决策条数';
-COMMENT ON COLUMN t_agent_memory_extraction.attempt_count IS '第几次尝试，达上限记 DROPPED';
-COMMENT ON COLUMN t_agent_memory_extraction.create_time IS '创建时间';
-COMMENT ON COLUMN t_agent_memory_extraction.settle_time IS '抽取结束时刻，非终态为空';
-
--- t_agent_memory_control
-COMMENT ON COLUMN t_agent_memory_control.user_id IS '用户ID';
-COMMENT ON COLUMN t_agent_memory_control.revision IS '记忆集版本号，提交期与水位一同双校验';
-COMMENT ON COLUMN t_agent_memory_control.create_time IS '建行时刻，兼作抽取下界：更早的历史消息不倒灌';
-COMMENT ON COLUMN t_agent_memory_control.update_time IS '更新时间';
+-- t_agent_memory_cursor
+COMMENT ON COLUMN t_agent_memory_cursor.user_id IS '用户ID';
+COMMENT ON COLUMN t_agent_memory_cursor.last_message_id IS '已整理到的最后一条用户消息ID，之后的用户消息待整理；NULL 表示从该用户第一条消息开始';
+COMMENT ON COLUMN t_agent_memory_cursor.create_time IS '首次纳入长期记忆的时刻';
+COMMENT ON COLUMN t_agent_memory_cursor.update_time IS '最近一次推进游标的时刻';

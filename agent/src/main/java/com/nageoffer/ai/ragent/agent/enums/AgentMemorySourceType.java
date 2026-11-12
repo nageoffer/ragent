@@ -18,7 +18,7 @@
 package com.nageoffer.ai.ragent.agent.enums;
 
 /**
- * 长期记忆条目的写入来源，语义上只有容量淘汰按它分档（FLUSH 殿后）
+ * 长期记忆的触发方，同时记在条目上标明它是哪个入口写的；只作记录，不决定条目轻重
  */
 public enum AgentMemorySourceType {
 
@@ -30,10 +30,5 @@ public enum AgentMemorySourceType {
     /**
      * 轮次释放后的后台抽取
      */
-    BACKGROUND,
-
-    /**
-     * 容量反压时的合并产物
-     */
-    CONSOLIDATION
+    BACKGROUND
 }
