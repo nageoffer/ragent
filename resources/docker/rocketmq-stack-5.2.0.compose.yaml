@@ -30,7 +30,7 @@ services:
       - "8082:8082"                              # ← dashboard 端口也从这里暴露
     environment:
       NAMESRV_ADDR: "rmqnamesrv:9876"
-      JAVA_OPT_EXT: "-Xms512m -Xmx512m"
+      JAVA_OPT_EXT: "-Xms512m -Xmx512m -XX:-UseContainerSupport"
     depends_on:
       rmqnamesrv:
         condition: service_healthy
