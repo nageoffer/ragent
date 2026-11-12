@@ -64,6 +64,11 @@ public enum ModelProvider {
     KIMI("kimi"),
 
     /**
+     * Atlas Cloud OpenAI-compatible model service
+     */
+    ATLAS_CLOUD("atlascloud"),
+
+    /**
      * 空实现，用于测试或占位
      */
     NOOP("noop");

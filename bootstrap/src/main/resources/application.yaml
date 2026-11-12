@@ -237,6 +237,11 @@ ai:
       api-key: ${MOONSHOT_API_KEY:}
       endpoints:
         chat: /v1/chat/completions
+    atlascloud:
+      url: ${ATLASCLOUD_BASE_URL:${ATLAS_CLOUD_BASE_URL:https://api.atlascloud.ai}}
+      api-key: ${ATLASCLOUD_API_KEY:${ATLAS_CLOUD_API_KEY:}}
+      endpoints:
+        chat: /v1/chat/completions
 
   selection:
     failure-threshold: 2
@@ -274,6 +279,12 @@ ai:
         provider: kimi
         model: kimi-k3.1-pro
         supports-thinking: true
+      - id: atlas-deepseek-v4-pro
+        provider: atlascloud
+        model: deepseek-ai/deepseek-v4-pro
+      - id: atlas-qwen3.5-flash
+        provider: atlascloud
+        model: qwen/qwen3.5-flash
 
     default-tier: standard
     deep-thinking-tier: deep
