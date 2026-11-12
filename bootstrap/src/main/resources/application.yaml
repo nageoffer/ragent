@@ -39,7 +39,6 @@ ragent:
   eval:
     enabled: true
 
-# Agent 执行架构（ragent.engine.type=agent 时生效）；单模型无 fallback，供应商可用性由 provider 侧保障
 agent:
   mcp:
     servers:
@@ -48,7 +47,7 @@ agent:
   chat:
     provider: deepseek
     model: deepseek-flash
-    reasoning-effort:
+    reasoning-effort: max
   max-iters: 10
   max-retries: 1
   sse-timeout-ms: 900000
@@ -59,48 +58,48 @@ agent:
     long-term-enabled: true
     evictable-tools: [ search_knowledge ]
   trace:
-    enabled: false  # 开启前先起 resources/docker/langfuse 那套服务
-    capture-content: true  # 记录提示词与工具出入参；纯骨架改 false
+    enabled: false
+    capture-content: true
     endpoint: http://localhost:3000/api/public/otel/v1/traces
-    public-key: pk-lf-ragent-local     # 与 compose 里的 LANGFUSE_INIT_PROJECT_PUBLIC_KEY 一致
-    secret-key: sk-lf-ragent-local     # 与 compose 里的 LANGFUSE_INIT_PROJECT_SECRET_KEY 一致
+    public-key: pk-lf-ragent-local
+    secret-key: sk-lf-ragent-local
     max-field-chars: 32768
-    max-attribute-chars: 131072 # 超限退成带 preview 的合法 JSON
-    service-version:  # 留空取 build-info 版本；要盖 pom 版本才填
-    environment:      # 如 local / staging / prod
+    max-attribute-chars: 131072
+    service-version:
+    environment:
 
 rag:
   storage:
-    type: s3  # 可选 s3（rustfs / minio）/ oss（阿里云）
-    kb-bucket: ragent-sources        # 全局知识库桶（私有），所有知识库文档按 collectionName 目录隔离；OSS 桶名全局唯一，生产需按部署覆盖
-    asset-bucket: ragent-assets # 多模态资产桶（公共读），PDF 抽出的图片等供浏览器匿名直连预览
+    type: s3
+    kb-bucket: ragent-sources
+    asset-bucket: ragent-assets
     s3:
       endpoint: http://localhost:9000
       access-key: rustfsadmin
       secret-key: rustfsadmin
       region: us-east-1
       path-style: true
-      public-url:  # 内外网端点不同时配置，留空回退 endpoint
+      public-url:
     oss:
       endpoint: https://oss-cn-hangzhou.aliyuncs.com
       access-key: ${OSS_ACCESS_KEY:}
       secret-key: ${OSS_SECRET_KEY:}
       region: cn-hangzhou
-      public-url:  # 虚拟主机式基址（含 bucket 子域），如 https://ragent-assets.oss-cn-hangzhou.aliyuncs.com；留空由 endpoint 推导
+      public-url:
 
   vector:
-    type: pg  # 可选 milvus / pg
+    type: pg
 
   keyword:
-    type: none  # 可选 none / es
+    type: none
     es:
       uris: http://127.0.0.1:9200
-      index: rag_keyword_store  # 全库共享索引，按 collection_name 字段区分知识库
+      index: rag_keyword_store
       analyzer: ik_max_word
       search-analyzer: ik_smart
 
   graph:
-    type: none  # 图谱后端总开关，可选 none / lightrag。lightrag 时向量写入同步维护图谱、后台可视化可用；是否参与检索由 rag.search.channels.graph.enabled 单独控制
+    type: none
     lightrag:
       base-url: http://127.0.0.1:9621
       query-mode: hybrid
@@ -110,7 +109,7 @@ rag:
     collection-name: rag_default_store
     dimension: 1536
     metric-type: COSINE
-    sse-timeout-ms: 300000  # SSE 全局超时（毫秒），默认 5 分钟
+    sse-timeout-ms: 300000
 
   query-rewrite:
     enabled: true
@@ -119,7 +118,7 @@ rag:
     enabled: true
 
   citation:
-    enabled: true  # 回答行内引用角标 [N](#cite-N)：开启会动态追加引用规则并为资料注入编号，增加首字延迟；关闭不影响文档级来源面板
+    enabled: true
 
   rate-limit:
     global:
@@ -151,23 +150,20 @@ rag:
       min-interval-seconds: 60
 
   search:
-    # 检索漏斗三段预算，各自独立、单调收窄，启动时校验 recall-budget ≥ default-top-k 且 rerank-candidate-limit ≥ default-top-k
-    default-top-k: 10           # ③ 最终进 LLM 的条数（产品语义的 topK）
-    recall-budget: 20           # ① 每通道召回条数（绝对值，向量意图路/关键词/图谱共用）；须 ≥ default-top-k，0=回退 default-top-k
-    # 检索作用域：本次请求该看哪些知识库，与用什么模态检索无关，故与 channels 平级、三条通道共读
-    # 判定只看 KB 意图最高分，不看意图个数；关掉任一通道都不影响其余通道的作用域
+    default-top-k: 10
+    recall-budget: 20
     scope:
-      min-intent-score: 0.4        # 低于此分的意图节点不参与「是否收窄」的判定
-      confidence-threshold: 0.6    # KB 意图最高分低于此值 → 退化为全库检索
-      supplement-ratio: 0.25       # 定向时各通道从自身产出额度划给「未命中库」的保底比例，兜住意图判错；0=关闭补充路，命中库已覆盖全库时自动不补
+      min-intent-score: 0.4
+      confidence-threshold: 0.6
+      supplement-ratio: 0.25
     channels:
-      timeout-ms: 15000     # 单通道查询超时上限（毫秒）
+      timeout-ms: 15000
       vector:
-        enabled: true       # 向量通道总开关
+        enabled: true
       keyword:
-        enabled: false      # 检索范围读引擎解析好的作用域，与向量通道同源
+        enabled: false
       graph:
-        enabled: false    # 图谱检索通道开关：false 不参与问答召回（后端仍在，后台可视化照常）；置 true 前需先开 rag.graph.type=lightrag
+        enabled: false
       web-search:
         enabled: false
         count: 5
@@ -191,7 +187,6 @@ rag:
     max-error-length: 1000
 
   # 图片解析（图生文）配置
-  # 产出一段自包含的知识文本：既说清"图是什么"，又完整保留所有文字与层级
   image-parse:
     description-prompt: |-
       请把这张图片的内容转写成一段自包含的知识文本，用于知识库检索与问答，不要描述颜色、布局、字体等视觉样式。要求：
@@ -237,6 +232,11 @@ ai:
       api-key: ${MOONSHOT_API_KEY:}
       endpoints:
         chat: /v1/chat/completions
+    zenmux:
+      url: https://zenmux.ai
+      api-key: ${ZENMUX_API_KEY:}
+      endpoints:
+        chat: /api/v1/chat/completions
 
   selection:
     failure-threshold: 2
@@ -327,7 +327,6 @@ ai:
         provider: bailian
         model: qwen-vl-max
 
-# MinerU SaaS API 配置（PDF / Word / PPT 走 MinerU 解析）
 mineru:
   api-url: https://mineru.net/api/v4
   api-key: ${MINERU_API_KEY:}
