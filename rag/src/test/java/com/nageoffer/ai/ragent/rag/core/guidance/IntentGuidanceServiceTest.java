@@ -282,6 +282,11 @@ class IntentGuidanceServiceTest {
         public List<IntentNode> listMcpToolNodes() {
             return List.of();
         }
+
+        @Override
+        public List<IntentNode> listClassifiableNodes() {
+            return List.copyOf(nodes.values());
+        }
     }
 
     /**

@@ -89,9 +89,9 @@ public class RetrievalScopeResolver {
     /**
      * 提取达到最低分、真正绑定了 collection 且按意图节点去重的 KB 意图
      * <p>
-     * 去重是必须的：意图按子问题分别识别，多个子问题命中同一节点会产出多条 NodeScore，
-     * 而定向路按 NodeScore 逐条 fan-out —— 不去重则同一库被查多次，同一 chunk 在通道原始列表里占多个名次，
-     * 下游 RRF 按名次累加会把它的分数翻倍；同时也会虚高「通道产能」，连带把补充路名额算大
+     * 去重是必须的：同一节点被重复打分会产出多条 NodeScore，而三处取值都对条数敏感——
+     * {@code topScore} 取最大分、向量定向深度取 {@code node.topK} 的最大值、归因按节点累加到同一 collection。
+     * 取数本身是按 collection 并集单次查询，不按节点 fan-out（见 {@code VectorSearchChannel#retrieveDirected}）
      * <p>
      * 绑定为空的意图既检索不到东西，也不该拉高置信度判定
      */

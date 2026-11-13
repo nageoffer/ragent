@@ -18,13 +18,14 @@
 package com.nageoffer.ai.ragent.rag.core.intent;
 
 import cn.hutool.core.collection.CollUtil;
+import cn.hutool.core.map.MapBuilder;
+import cn.hutool.json.JSONUtil;
 import com.nageoffer.ai.ragent.rag.dto.IntentCandidate;
 import com.nageoffer.ai.ragent.rag.dto.SubQuestionIntent;
 import com.nageoffer.ai.ragent.framework.trace.RagTraceNode;
 import com.nageoffer.ai.ragent.rag.core.rewrite.RewriteResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -43,7 +44,6 @@ import static com.nageoffer.ai.ragent.rag.enums.IntentKind.SYSTEM;
 @RequiredArgsConstructor
 public class IntentResolver {
 
-    @Qualifier("defaultIntentClassifier")
     private final IntentClassifier intentClassifier;
     private final Executor intentClassifyExecutor;
 
@@ -87,10 +87,21 @@ public class IntentResolver {
 
     private List<NodeScore> classifyIntents(String question) {
         List<NodeScore> scores = intentClassifier.classifyTargets(question);
-        return scores.stream()
+        List<NodeScore> retained = scores.stream()
                 .filter(ns -> ns.getScore() >= INTENT_MIN_SCORE)
                 .limit(MAX_INTENT_COUNT)
                 .toList();
+        log.info("用户问题：{}\n意图识别树如下所示：{}\n",
+                question,
+                JSONUtil.toJsonPrettyStr(
+                        retained.stream().map(ns -> MapBuilder.<String, Object>create(true)
+                                .put("id", ns.getNode().getId())
+                                .put("path", ns.getNode().getFullPath())
+                                .put("score", ns.getScore())
+                                .build()).toList()
+                )
+        );
+        return retained;
     }
 
     /**

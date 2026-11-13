@@ -90,6 +90,11 @@ rag:
   vector:
     type: pg
 
+  intent:
+    type: llm
+    jev:
+      min-noul: 0.4
+
   keyword:
     type: none
     es:
@@ -237,6 +242,15 @@ ai:
       api-key: ${ZENMUX_API_KEY:}
       endpoints:
         chat: /api/v1/chat/completions
+        jev: /api/v1/systemone
+
+  jev:
+    default-model: jev-stable
+    candidates:
+      - id: jev-stable
+        provider: zenmux
+        model: typesafe/jev-1.14
+        enabled: true
 
   selection:
     failure-threshold: 2

@@ -44,7 +44,13 @@ public enum ModelCapability {
      * 重排序能力
      * 对搜索结果进行重新排序，提高相关性
      */
-    RERANK("Rerank");
+    RERANK("Rerank"),
+
+    /**
+     * 结构化判断能力
+     * 对给定内容按类型化问题作答，返回结构化结论而不是正文
+     */
+    JEV("Jev");
 
     /**
      * 能力的显示名称

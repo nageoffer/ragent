@@ -19,8 +19,6 @@ package com.nageoffer.ai.ragent.rag.core.intent;
 
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.collection.CollUtil;
-import cn.hutool.core.map.MapBuilder;
-import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -111,6 +109,19 @@ public class DefaultIntentClassifier implements IntentClassifier, IntentNodeRegi
     }
 
     @Override
+    public List<IntentNode> listClassifiableNodes() {
+        IntentTreeData data = loadIntentTreeData();
+        if (data.leafNodes.isEmpty()) {
+            return List.of();
+        }
+        // Agent 的知识库工具只识别 KB，Workflow 额外保留 SYSTEM 应答
+        return data.leafNodes.stream()
+                .filter(node -> node.isKB()
+                        || (orchestrationProperties.getMode() == OrchestrationMode.WORKFLOW && node.isSystem()))
+                .toList();
+    }
+
+    @Override
     public List<IntentNode> listMcpToolNodes() {
         return loadIntentTreeData().leafNodes.stream()
                 .filter(IntentNode::isMCP)
@@ -150,18 +161,7 @@ public class DefaultIntentClassifier implements IntentClassifier, IntentNodeRegi
      */
     @Override
     public List<NodeScore> classifyTargets(String question) {
-        // 每次都从Redis读取最新数据
-        IntentTreeData data = loadIntentTreeData();
-        if (data.leafNodes.isEmpty()) {
-            log.debug("意图树没有可用叶子节点，跳过 LLM 意图识别");
-            return List.of();
-        }
-
-        // Agent 的知识库工具只识别 KB，Workflow 额外保留 SYSTEM 应答
-        List<IntentNode> candidates = data.leafNodes.stream()
-                .filter(node -> node.isKB()
-                        || (orchestrationProperties.getMode() == OrchestrationMode.WORKFLOW && node.isSystem()))
-                .toList();
+        List<IntentNode> candidates = listClassifiableNodes();
         if (candidates.isEmpty()) {
             log.debug("当前编排模式没有可用意图叶子节点，跳过 LLM 意图识别, mode={}",
                     orchestrationProperties.getMode());
@@ -182,70 +182,64 @@ public class DefaultIntentClassifier implements IntentClassifier, IntentNodeRegi
                 .build();
 
         // 标准档调用；调用失败或 JSON 非法均返回空意图（下游把空意图当作"无意图"兜底）
+        long startAt = System.currentTimeMillis();
         String raw;
         try {
             raw = llmService.chat(request);
         } catch (Exception e) {
-            log.warn("意图识别 LLM 调用失败，返回空意图", e);
+            log.warn("LLM 意图识别降级为空意图, 候选数={}, 耗时={}ms",
+                    candidates.size(), System.currentTimeMillis() - startAt, e);
             return List.of();
         }
-        return parseScores(raw, candidateById, question);
+        List<NodeScore> scores;
+        try {
+            scores = parseScores(raw, candidateById);
+        } catch (Exception e) {
+            log.warn("LLM 意图识别降级为空意图, 原因=PARSE_ERROR, 候选数={}, 耗时={}ms, 原始响应: {}",
+                    candidates.size(), System.currentTimeMillis() - startAt, LogSafe.preview(raw), e);
+            return List.of();
+        }
+        return scores;
     }
 
     /**
-     * 解析意图打分，按 score 降序返回；任何解析失败/畸形均返回空列表
+     * 解析意图打分，按 score 降序返回
      */
-    private List<NodeScore> parseScores(String raw, Map<String, IntentNode> candidateById, String question) {
-        try {
-            // 移除可能的 markdown 代码块标记
-            String cleanedRaw = LLMResponseCleaner.stripMarkdownCodeFence(raw);
-            JsonElement root = JsonParser.parseString(cleanedRaw);
-            JsonArray arr;
-            if (root.isJsonArray()) {
-                arr = root.getAsJsonArray();
-            } else if (root.isJsonObject() && root.getAsJsonObject().has("results")) {
-                // 容错：如果模型外面又包了一层 { "results": [...] }
-                arr = root.getAsJsonObject().getAsJsonArray("results");
-            } else {
-                log.warn("LLM 返回了非预期的 JSON 格式, 原始响应: {}", LogSafe.preview(raw));
-                return List.of();
-            }
-
-            List<NodeScore> scores = new ArrayList<>();
-            for (JsonElement el : arr) {
-                if (!el.isJsonObject()) continue;
-                JsonObject obj = el.getAsJsonObject();
-
-                if (!obj.has("id") || !obj.has("score")) continue;
-
-                String id = obj.get("id").getAsString();
-                IntentNode node = candidateById.get(id);
-                if (node == null) {
-                    log.warn("LLM 返回了未知或当前模式不可用的意图节点 ID: {}, 已跳过", id);
-                    continue;
-                }
-
-                scores.add(new NodeScore(node, obj.get("score").getAsDouble()));
-            }
-
-            // 降序排序
-            scores.sort(Comparator.comparingDouble(NodeScore::getScore).reversed());
-
-            log.info("当前问题：{}\n意图识别树如下所示：{}\n",
-                    question,
-                    JSONUtil.toJsonPrettyStr(
-                            scores.stream().map(ns -> MapBuilder.<String, Object>create(true)
-                                    .put("id", ns.getNode().getId())
-                                    .put("path", ns.getNode().getFullPath())
-                                    .put("score", ns.getScore())
-                                    .build()).toList()
-                    )
-            );
-            return scores;
-        } catch (Exception e) {
-            log.warn("意图打分解析失败, 原始响应: {}", LogSafe.preview(raw), e);
-            return List.of();
+    private List<NodeScore> parseScores(String raw, Map<String, IntentNode> candidateById) {
+        // 移除可能的 markdown 代码块标记
+        String cleanedRaw = LLMResponseCleaner.stripMarkdownCodeFence(raw);
+        JsonElement root = JsonParser.parseString(cleanedRaw);
+        JsonArray arr;
+        if (root.isJsonArray()) {
+            arr = root.getAsJsonArray();
+        } else if (root.isJsonObject() && root.getAsJsonObject().has("results")) {
+            // 容错：如果模型外面又包了一层 { "results": [...] }
+            arr = root.getAsJsonObject().getAsJsonArray("results");
+        } else {
+            throw new IllegalArgumentException("LLM 返回了非预期的 JSON 格式");
         }
+
+        List<NodeScore> scores = new ArrayList<>();
+        for (JsonElement el : arr) {
+            if (!el.isJsonObject()) continue;
+            JsonObject obj = el.getAsJsonObject();
+
+            if (!obj.has("id") || !obj.has("score")) continue;
+
+            String id = obj.get("id").getAsString();
+            IntentNode node = candidateById.get(id);
+            if (node == null) {
+                log.warn("LLM 返回了未知或当前模式不可用的意图节点 ID: {}, 已跳过", id);
+                continue;
+            }
+
+            scores.add(new NodeScore(node, obj.get("score").getAsDouble()));
+        }
+
+        // 降序排序
+        scores.sort(Comparator.comparingDouble(NodeScore::getScore).reversed());
+
+        return scores;
     }
 
     /**

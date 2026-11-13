@@ -62,6 +62,11 @@ public class AIModelProperties {
     private ModelGroup vlm = new ModelGroup();
 
     /**
+     * Jev 结构化判断模型配置
+     */
+    private Jev jev = new Jev();
+
+    /**
      * 模型选择策略配置
      */
     private Selection selection = new Selection();
@@ -106,6 +111,24 @@ public class AIModelProperties {
          * key: 档位名（如 fast/standard/deep），value: 该档位的候选与超时
          */
         private Map<String, TierConfig> tiers = new HashMap<>();
+    }
+
+    /**
+     * Jev 结构化判断模型配置类
+     * 不设档位和多候选容错：结构化判断只有一个上游，失败即降级，不换模型再试
+     */
+    @Data
+    public static class Jev {
+
+        /**
+         * 默认使用的候选 id，引用 candidates 里的 id
+         */
+        private String defaultModel;
+
+        /**
+         * 候选模型列表
+         */
+        private List<ModelCandidate> candidates = new ArrayList<>();
     }
 
     /**

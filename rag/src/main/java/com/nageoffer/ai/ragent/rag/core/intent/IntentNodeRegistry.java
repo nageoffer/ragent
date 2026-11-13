@@ -34,4 +34,9 @@ public interface IntentNodeRegistry {
      * 获取当前已启用、可参与路由的 MCP 叶子节点
      */
     List<IntentNode> listMcpToolNodes();
+
+    /**
+     * 获取当前编排模式下可参与意图分类的叶子节点
+     */
+    List<IntentNode> listClassifiableNodes();
 }

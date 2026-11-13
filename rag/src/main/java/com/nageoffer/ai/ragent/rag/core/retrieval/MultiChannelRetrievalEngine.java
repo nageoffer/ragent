@@ -278,7 +278,6 @@ public class MultiChannelRetrievalEngine {
         return SearchContext.builder()
                 .originalQuestion(question)
                 .rewrittenQuestion(question)
-                .intents(subIntents)
                 .budget(budget)
                 .retrievalScope(retrievalScopeResolver.resolve(subIntents))
                 .build();
