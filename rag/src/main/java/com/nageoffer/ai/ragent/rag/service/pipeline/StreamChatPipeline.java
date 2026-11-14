@@ -33,6 +33,7 @@ import com.nageoffer.ai.ragent.rag.core.memory.ConversationMemoryService;
 import com.nageoffer.ai.ragent.rag.core.prompt.AgentPromptResolver;
 import com.nageoffer.ai.ragent.rag.core.prompt.AgentPromptSlot;
 import com.nageoffer.ai.ragent.rag.core.prompt.PromptContext;
+import com.nageoffer.ai.ragent.rag.core.prompt.PromptTemplateLoader;
 import com.nageoffer.ai.ragent.rag.core.prompt.RAGPromptService;
 import com.nageoffer.ai.ragent.rag.core.retrieval.RetrievalEngine;
 import com.nageoffer.ai.ragent.rag.core.rewrite.QueryRewriteService;
@@ -50,6 +51,8 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.List;
 
+import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.NO_EVIDENCE_RESPONSE_PROMPT_PATH;
+
 /**
  * 流式对话流水线
  * <p>
@@ -63,6 +66,11 @@ import java.util.List;
 @RequiredArgsConstructor
 public class StreamChatPipeline {
 
+    /**
+     * 兜底对话都启动不了时（例如模型不可用）返回的固定文案，保证这条路径始终有回应
+     */
+    private static final String NO_EVIDENCE_FALLBACK_MESSAGE = "未检索到与问题相关的文档内容。";
+
     private final ConversationMemoryService memoryService;
     private final QueryRewriteService queryRewriteService;
     private final IntentResolver intentResolver;
@@ -71,6 +79,7 @@ public class StreamChatPipeline {
     private final LLMService llmService;
     private final RAGPromptService promptBuilder;
     private final AgentPromptResolver agentPromptResolver;
+    private final PromptTemplateLoader promptTemplateLoader;
     private final StreamTaskManager taskManager;
     private final SourcesAssembler sourcesAssembler;
     private final GroundingChunksAssembler groundingChunksAssembler;
@@ -160,13 +169,30 @@ public class StreamChatPipeline {
         return retrievalEngine.retrieve(ctx.getSubIntents());
     }
 
+    /**
+     * 检索为空时不再回一句固定文案，改走一次通用对话，让模型如实说明没找到并引导用户补充信息
+     * <p>
+     * 对话都启动不了（例如模型不可用）时退回固定文案，保证这条路径始终有回应
+     */
     private boolean handleEmptyRetrieval(StreamChatContext ctx, RetrievalContext retrievalCtx) {
         if (!retrievalCtx.isEmpty()) {
             return false;
         }
         StreamCallback callback = ctx.getCallback();
-        callback.onContent("未检索到与问题相关的文档内容。");
-        callback.onComplete();
+        try {
+            StreamCancellationHandle handle = streamSystemResponse(
+                    ctx.getRewriteResult().rewrittenQuestion(),
+                    ctx.getHistory(),
+                    promptTemplateLoader.load(NO_EVIDENCE_RESPONSE_PROMPT_PATH),
+                    callback
+            );
+            taskManager.bindHandle(ctx.getTaskId(), handle == null ? null : handle::cancel);
+        } catch (Exception e) {
+            log.warn("检索为空的兜底对话启动失败，回退固定文案，会话ID：{}，任务ID：{}",
+                    ctx.getConversationId(), ctx.getTaskId(), e);
+            callback.onContent(NO_EVIDENCE_FALLBACK_MESSAGE);
+            callback.onComplete();
+        }
         return true;
     }
 
