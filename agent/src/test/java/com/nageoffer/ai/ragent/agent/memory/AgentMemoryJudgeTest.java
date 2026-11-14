@@ -132,27 +132,84 @@ class AgentMemoryJudgeTest {
     }
 
     /**
-     * 后台：本批消息与背景都带真实 messageId 和 conversationId，A→B→A 的会话归属照原样给出，顺序保持传入顺序
-     * 背景由仓库减好后传入，这里只负责原样组装，不再二次加工
+     * A→B→A：每段会话独立排列背景和候选发言，助手追问紧邻用户确认，不能被其他会话插开
      */
     @Test
-    void backgroundShouldKeepRealConversationIdsAndOrder() {
+    void backgroundShouldGroupConversationsAndJoinConfirmationInOrder() {
         answer(EMPTY);
         AgentMessageDO context = message("1900000000000000010", "c-A", "user", "我想换个手机");
         AgentMessageDO a1 = message("1900000000000000011", "c-A", "user", "我一直喜欢小屏");
         AgentMessageDO b1 = message("1900000000000000020", "c-B", "user", "想给自己买个平板");
-        AgentMessageDO a2 = message("1900000000000000030", "c-A", "user", "还是要轻一点的");
+        AgentMessageDO question = message("1900000000000000025", "c-A", "assistant", "你一直偏好轻一点的小屏手机吗？");
+        AgentMessageDO a2 = message("1900000000000000030", "c-A", "user", "对，这个记住");
 
-        judge.judgeBackground(List.of(), List.of(a1, b1, a2), List.of(context));
+        // 3条用户消息 1条背景消息
+        judge.judgeBackground(List.of(), List.of(a1, b1, a2), Map.of("c-A", List.of(context, question)));
 
         JSONObject input = JSONUtil.parseObj(captureMessages().get(1).getTextContent());
-        assertThat(input.keySet()).containsExactly("memories", "background", "messages");
-        assertThat(input.getJSONArray("background")).hasSize(1);
-        assertThat(input.getJSONArray("background").getJSONObject(0).getStr("messageId")).isEqualTo(context.getId());
-        JSONArray judged = input.getJSONArray("messages");
-        assertThat(judged.stream().map(item -> ((JSONObject) item).getStr("messageId")))
-                .containsExactly(a1.getId(), b1.getId(), a2.getId());
-        assertThat(judged.stream().map(item -> ((JSONObject) item).getStr("conversationId"))).containsExactly("c-A", "c-B", "c-A");
+        assertThat(input.keySet()).containsExactly("memories", "conversations");
+        JSONObject conversations = input.getJSONObject("conversations");
+        assertThat(conversations.keySet()).containsExactly("c-A", "c-B");
+        JSONArray a = conversations.getJSONArray("c-A");
+        assertThat(a.stream().map(item -> ((JSONObject) item).getStr("messageId")))
+                .containsExactly(context.getId(), a1.getId(), question.getId(), a2.getId());
+        assertThat(a.stream().map(item -> ((JSONObject) item).getStr("source")))
+                .containsExactly("background", "candidate", "background", "candidate");
+        assertThat(a.stream().map(item -> ((JSONObject) item).getStr("conversationId")))
+                .containsOnly("c-A");
+        assertThat(a.getJSONObject(2).getStr("speaker")).isEqualTo("assistant");
+        assertThat(a.getJSONObject(3).getStr("text")).isEqualTo("对，这个记住");
+        assertThat(a.getJSONObject(3).getStr("time")).isEqualTo("1970-01-01 08:00:30.000");
+        JSONArray b = conversations.getJSONArray("c-B");
+        assertThat(b).hasSize(1);
+        assertThat(b.getJSONObject(0).getStr("messageId")).isEqualTo(b1.getId());
+        assertThat(b.getJSONObject(0).getStr("source")).isEqualTo("candidate");
+    }
+
+    /**
+     * 过滤content为空的消息，确保无背景消息不会导致会话被遗漏（背景消息只是用来补充上下文，记忆归纳的引用主要来自用户消息）
+     */
+    @Test
+    void backgroundShouldFilterEmptyTextAndKeepConversationWithoutBackground() {
+        answer(EMPTY);
+        AgentMessageDO question = message("1900000000000000010", "c-A", "assistant", "您平时戴眼镜吗？");
+        AgentMessageDO toolOnly = message("1900000000000000011", "c-A", "assistant", " ");
+        AgentMessageDO confirmation = message("1900000000000000020", "c-A", "user", "对，一直戴眼镜");
+        AgentMessageDO empty = message("1900000000000000030", "c-B", "user", " ");
+        AgentMessageDO first = message("1900000000000000040", "c-B", "user", "我常驻杭州");
+
+        judge.judgeBackground(List.of(), List.of(confirmation, empty, first), Map.of("c-A", List.of(question, toolOnly)));
+
+        JSONObject conversations = JSONUtil.parseObj(captureMessages().get(1).getTextContent()).getJSONObject("conversations");
+        assertThat(conversations.getJSONArray("c-A").stream().map(item -> ((JSONObject) item).getStr("messageId")))
+                .containsExactly(question.getId(), confirmation.getId());
+        assertThat(conversations.getJSONArray("c-B").stream().map(item -> ((JSONObject) item).getStr("messageId")))
+                .containsExactly(first.getId());
+    }
+
+    /**
+     * A 的末条比 B 晚，但 A 整组排在 B 前面；保留真实时间供模型跨会话比较，程序仍从来源消息取表达时间
+     */
+    @Test
+    void backgroundShouldKeepCrossConversationCorrectionTimes() {
+        AgentMessageDO a1 = message("1900000000000000010", "c-A", "user", "我常驻上海");
+        AgentMessageDO b1 = message("1900000000000000020", "c-B", "user", "我现在调到北京常驻了");
+        AgentMessageDO a2 = message("1900000000000000030", "c-A", "user", "又有调整，我现在常驻杭州了");
+        answer("{\"decisions\":[{\"action\":\"ADD\",\"content\":\"用户常驻杭州\",\"sourceMessageId\":\"" + a2.getId()
+                + "\"}],\"explanation\":\"以表达更晚的说法为准\"}");
+
+        AgentMemoryJudgement judgement = judge.judgeBackground(List.of(), List.of(a1, b1, a2), Map.of());
+
+        JSONObject conversations = JSONUtil.parseObj(captureMessages().get(1).getTextContent()).getJSONObject("conversations");
+        assertThat(conversations.keySet()).containsExactly("c-A", "c-B");
+        assertThat(conversations.getJSONArray("c-A").getJSONObject(1).getStr("time"))
+                .isEqualTo("1970-01-01 08:00:30.000");
+        assertThat(conversations.getJSONArray("c-B").getJSONObject(0).getStr("time"))
+                .isEqualTo("1970-01-01 08:00:20.000");
+        assertThat(judgement.decisions()).singleElement().satisfies(decision -> {
+            assertThat(decision.sourceMessageId()).isEqualTo(a2.getId());
+            assertThat(decision.expressedAt()).isSameAs(a2.getCreateTime());
+        });
     }
 
     /**
@@ -204,14 +261,14 @@ class AgentMemoryJudgeTest {
         answer("{\"decisions\":[{\"action\":\"ADD\",\"content\":\"用户偏好小屏手机\",\"sourceMessageId\":\"" + a1.getId() + "\"},"
                 + "{\"action\":\"ADD\",\"content\":\"用户常驻杭州\",\"sourceMessageId\":\"" + b1.getId() + "\"}],\"explanation\":\"x\"}");
 
-        List<AgentMemoryDecision> decisions = judge.judgeBackground(List.of(), List.of(a1, b1), List.of(context)).decisions();
+        List<AgentMemoryDecision> decisions = judge.judgeBackground(List.of(), List.of(a1, b1), Map.of("c-A", List.of(context))).decisions();
 
         assertThat(decisions).extracting(AgentMemoryDecision::sourceMessageId).containsExactly(a1.getId(), b1.getId());
         assertThat(decisions).extracting(AgentMemoryDecision::expressedAt).containsExactly(a1.getCreateTime(), b1.getCreateTime());
 
         answer("{\"decisions\":[{\"action\":\"ADD\",\"content\":\"用户想换手机\",\"sourceMessageId\":\"" + context.getId()
                 + "\"}],\"explanation\":\"x\"}");
-        assertThatThrownBy(() -> judge.judgeBackground(List.of(), List.of(a1, b1), List.of(context)))
+        assertThatThrownBy(() -> judge.judgeBackground(List.of(), List.of(a1, b1), Map.of("c-A", List.of(context))))
                 .isInstanceOf(IllegalStateException.class).hasMessageContaining("来源");
     }
 
@@ -272,7 +329,7 @@ class AgentMemoryJudgeTest {
                         TextBlock.builder().text(EMPTY).build()))
                 .finishReason("stop").build()));
 
-        assertThat(judge.judgeBackground(List.of(), List.of(a1), List.of()).decisions()).isEmpty();
+        assertThat(judge.judgeBackground(List.of(), List.of(a1), Map.of()).decisions()).isEmpty();
 
         GenerateOptions options = captureOptions();
         assertThat(options.getAdditionalBodyParams()).containsEntry("thinking", Map.of("type", "enabled"));
@@ -303,7 +360,7 @@ class AgentMemoryJudgeTest {
         assertThat(captureOptions().getAdditionalBodyParams()).doesNotContainKey("thinking");
         AgentMessageDO a1 = message("1900000000000000011", "c-A", "user", "我一直喜欢小屏");
         org.mockito.Mockito.clearInvocations(model);
-        judge.judgeBackground(List.of(), List.of(a1), List.of());
+        judge.judgeBackground(List.of(), List.of(a1), Map.of());
         assertThat(captureOptions().getAdditionalBodyParams()).doesNotContainKey("thinking");
         assertThat(captureOptions().getReasoningEffort()).isNull();
     }
