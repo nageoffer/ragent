@@ -109,6 +109,12 @@ public interface VectorRetrieverService {
     float[] embedAndNormalize(String query);
 
     /**
+     * 使用知识库绑定的模型生成查询向量。模型不可用时抛出异常，不得回退到其他模型，
+     * 否则查询向量与目标库向量可能属于不同语义空间。
+     */
+    float[] embedAndNormalize(String query, String modelId);
+
+    /**
      * 是否支持在一次查询里跨多个 collection 过滤
      * <p>
      * - 返回 true 时，调用方用一次 {@link #retrieveByVector} 带总预算跨库召回（PG 单表按列过滤 / Milvus 共享库按标量过滤）
