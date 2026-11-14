@@ -59,6 +59,11 @@ public class PgVectorRetrieverService implements VectorRetrieverService {
     }
 
     @Override
+    public float[] embedAndNormalize(String query, String modelId) {
+        return normalize(toArray(embeddingService.embed(query, modelId)));
+    }
+
+    @Override
     public boolean supportsGlobalRetrieval() {
         return true;
     }
