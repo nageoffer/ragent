@@ -53,7 +53,11 @@ public class AgentContextTrimmer {
     private static final String EVICTED_PREFIX = "[历史工具结果已省略，原长 ";
     private static final String EVICTED_CHARS = " 字符";
     private static final String EVICTED_INPUT = "，原入参 ";
-    private static final String EVICTED_SUFFIX = "]";
+
+    /**
+     * 裁剪不可逆，占位要告诉模型原文还能重新取，否则它会凭前文的转述作答
+     */
+    private static final String EVICTED_SUFFIX = "，需要时可重新调用]";
 
     /**
      * 长入参截断，避免占位比原文还大
