@@ -24,6 +24,7 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
+import java.sql.Timestamp;
 import java.util.List;
 
 /**
@@ -50,9 +51,16 @@ public interface OrderMapper extends BaseMapper<OrderDO> {
                 .eq(OrderDO::getUserId, userId));
     }
 
-    default List<OrderDO> selectRecent(String userId, int limit) {
+    default long countSince(String userId, Timestamp since) {
+        return selectCount(Wrappers.<OrderDO>lambdaQuery()
+                .eq(OrderDO::getUserId, userId)
+                .ge(OrderDO::getCreateTime, since));
+    }
+
+    default List<OrderDO> selectRecent(String userId, Timestamp since, int limit) {
         return selectList(Wrappers.<OrderDO>lambdaQuery()
                 .eq(OrderDO::getUserId, userId)
+                .ge(OrderDO::getCreateTime, since)
                 .orderByDesc(OrderDO::getCreateTime)
                 .last("LIMIT " + limit));
     }

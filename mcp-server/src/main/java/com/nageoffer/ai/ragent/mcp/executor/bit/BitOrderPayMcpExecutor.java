@@ -124,7 +124,7 @@ public class BitOrderPayMcpExecutor {
         String guide = switch (order.getStatus()) {
             case BitOrderReleaser.STATUS_PAID -> "这笔订单已经支付过了，不会重复扣款";
             case BitOrderReleaser.STATUS_CANCELLED ->
-                    "订单已取消，可能是超时未支付被自动释放，库存与券都已退回，需要的话可以重新下单";
+                    "订单已取消，可能是超时未支付被自动释放，库存已回补，用过的券已退回，需要的话可以重新下单";
             default -> "订单已经不在待支付状态，无需再支付";
         };
         return String.format("订单 %s 当前状态是%s，未执行支付。%s", orderNo, order.getStatus(), guide);
@@ -133,5 +133,4 @@ public class BitOrderPayMcpExecutor {
     private OrderDO loadOrder(String orderNo, String userId) {
         return orderMapper.selectByNo(orderNo, userId);
     }
-
 }

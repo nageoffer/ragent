@@ -68,15 +68,15 @@ public class BitAfterSaleQueryMcpExecutor {
 
     private Tool buildTool() {
         JsonSchema inputSchema = McpToolSchema.object()
-                .optional(string("afterSaleNo", "售后单号，如 AS88237001"))
+                .optional(string("afterSaleNo", "售后单号，取自售后查询或售后申请的结果"))
                 .optional(string("orderNo", "订单号，查这一单下的全部售后单"))
                 .build();
 
         return Tool.builder()
                 .name(TOOL_ID)
                 .description("查询当前登录用户的售后单进度，返回售后单号、对应订单与商品、售后类型、原因、"
-                        + "当前状态与时间线。两个参数都不填则列出名下全部售后单。用户说不清是哪一单时先不带参数列一遍，"
-                        + "再按用户指认的那张往下问")
+                        + "当前状态与申请、更新、完成时间；不返回仓库验收、检测、退款发起等细分节点。"
+                        + "两个参数都不填则列出名下最近 20 张售后单")
                 .inputSchema(inputSchema)
                 .annotations(McpToolAnnotations.READ_ONLY)
                 .build();
@@ -135,5 +135,4 @@ public class BitAfterSaleQueryMcpExecutor {
         }
         return sb.toString().trim();
     }
-
 }

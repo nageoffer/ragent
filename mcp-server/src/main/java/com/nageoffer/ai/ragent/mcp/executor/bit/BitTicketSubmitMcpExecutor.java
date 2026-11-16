@@ -84,10 +84,8 @@ public class BitTicketSubmitMcpExecutor {
 
         return Tool.builder()
                 .name(TOOL_ID)
-                .description("为当前登录用户提交人工客服工单，提交后由人工在工作时间内跟进。"
-                        + "工单提交后不能修改、也没有查询工单进度的工具，人工能否办成以人工处理结果为准。"
-                        + "只在自己确实办不下去时才用：用户明确要求转人工、现有工具都不覆盖该诉求、"
-                        + "或同一问题已经处理失败。问题描述取自用户原话，不要代为编造或夸大")
+                .description("为当前登录用户提交人工客服工单，提交后由人工跟进。"
+                        + "工单提交后不能修改、也没有查询工单进度的工具，人工能否办成以人工处理结果为准")
                 .inputSchema(inputSchema)
                 .annotations(McpToolAnnotations.WRITE)
                 .build();
@@ -108,7 +106,7 @@ public class BitTicketSubmitMcpExecutor {
                 return BitToolSupport.rejected("问题分类缺失或不受支持，可选值：" + String.join("、", CATEGORIES));
             }
             if (content == null) {
-                return BitToolSupport.rejected("问题描述为必填项，请把用户的诉求整理清楚后再提交");
+                return BitToolSupport.rejected("问题描述为必填项，工单未提交");
             }
             if (content.length() > MAX_CONTENT_LENGTH) {
                 content = content.substring(0, MAX_CONTENT_LENGTH);
@@ -128,7 +126,7 @@ public class BitTicketSubmitMcpExecutor {
                     状态: 待受理
                     描述: %s
 
-                    人工客服会在工作时间内跟进，请把工单号告知用户。工单提交后不能修改，也查不了进度""", ticketNo, category, content));
+                    工单将由人工客服跟进。工单提交后不能修改，也查不了进度""", ticketNo, category, content));
         } catch (Exception e) {
             log.error("MCP 工具调用失败, toolId={}, elapsed={}ms",
                     TOOL_ID, System.currentTimeMillis() - startMs, e);
