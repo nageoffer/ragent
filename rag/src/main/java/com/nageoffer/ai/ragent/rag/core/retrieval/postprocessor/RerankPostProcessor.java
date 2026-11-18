@@ -17,9 +17,12 @@
 
 package com.nageoffer.ai.ragent.rag.core.retrieval.postprocessor;
 
+import cn.hutool.core.util.StrUtil;
 import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
+import com.nageoffer.ai.ragent.framework.convention.RetrievedChunkKey;
 import com.nageoffer.ai.ragent.infra.rerank.RerankService;
 import com.nageoffer.ai.ragent.rag.config.RAGConfigProperties;
+import com.nageoffer.ai.ragent.rag.config.SearchChannelProperties;
 import com.nageoffer.ai.ragent.rag.core.retrieval.channel.SearchChannelResult;
 import com.nageoffer.ai.ragent.rag.core.retrieval.channel.SearchChannelType;
 import com.nageoffer.ai.ragent.rag.core.retrieval.channel.SearchContext;
@@ -27,6 +30,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -44,6 +49,7 @@ public class RerankPostProcessor implements SearchResultPostProcessor {
 
     private final RerankService rerankService;
     private final RAGConfigProperties ragConfigProperties;
+    private final SearchChannelProperties searchChannelProperties;
 
     @Override
     public String getName() {
@@ -69,15 +75,39 @@ public class RerankPostProcessor implements SearchResultPostProcessor {
             return chunks;
         }
 
-        List<RetrievedChunk> reranked = rerankService.rerank(
-                context.getMainQuestion(),
-                chunks,
-                context.getBudget().contextTopK()
-        );
+        List<RetrievedChunk> reranked = rerank(context.getMainQuestion(), chunks, context.getBudget().contextTopK());
 
         logScoreSpread(reranked);
         logAttribution(chunks, reranked, results);
         return reranked;
+    }
+
+    /**
+     * 开关开启时，送去打分的副本在正文前补一行文档名：同模板文档的续块正文不带产品名，精排看不出它属于哪一款
+     * <p>
+     * 结果按精排给的名次与分数输出原件的 toBuilder 副本，原件和 text 都不改；
+     * 要求精排客户端只返回送入对象或其 toBuilder 副本（id 与 text 不变），否则找不回原件
+     */
+    private List<RetrievedChunk> rerank(String question, List<RetrievedChunk> chunks, int topN) {
+        Map<String, RetrievedChunk> originalByKey = new HashMap<>();
+        List<RetrievedChunk> input = new ArrayList<>(chunks.size());
+        for (RetrievedChunk chunk : chunks) {
+            RetrievedChunk scored = searchChannelProperties.isIncludeDocName() && StrUtil.isNotBlank(chunk.getDocName())
+                    ? chunk.toBuilder().text(chunk.getDocName() + "\n" + chunk.getText()).build()
+                    : chunk;
+            originalByKey.put(RetrievedChunkKey.of(scored), chunk);
+            input.add(scored);
+        }
+
+        List<RetrievedChunk> reranked = rerankService.rerank(question, input, topN);
+        List<RetrievedChunk> result = new ArrayList<>(reranked.size());
+        for (RetrievedChunk hit : reranked) {
+            result.add(originalByKey.get(RetrievedChunkKey.of(hit)).toBuilder()
+                    .score(hit.getScore())
+                    .rerankScore(hit.getRerankScore())
+                    .build());
+        }
+        return result;
     }
 
     /**

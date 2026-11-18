@@ -64,7 +64,7 @@ public class EvidenceGatePostProcessor implements SearchResultPostProcessor, Ini
 
     @Override
     public int getOrder() {
-        return 15;  // Rerank(10) 出分之后、MetadataEnrichment(20) 回表之前
+        return 15;  // Rerank(10) 出分之后
     }
 
     @Override

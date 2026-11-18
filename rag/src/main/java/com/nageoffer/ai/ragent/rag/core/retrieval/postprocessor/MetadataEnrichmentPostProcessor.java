@@ -34,8 +34,8 @@ import java.util.Map;
 /**
  * 元数据富化后置处理器
  * <p>
- * 处于处理链末端（Rerank 之后），对最终 Top-K 结果按 chunkId 回表补齐文档归属信息
- * （文档ID、文档内序号、文档标题），供上下文组装时按文档聚合与标注来源
+ * 在 Rerank 之前对融合截断后的候选按 chunkId 回表补齐文档归属信息（文档ID、文档内序号、文档标题），
+ * 精排打分要用文档名，上下文组装要按文档聚合与标注来源
  * <p>
  * 只富化、不重排：保持进入时的相关性顺序不变
  */
@@ -54,7 +54,7 @@ public class MetadataEnrichmentPostProcessor implements SearchResultPostProcesso
 
     @Override
     public int getOrder() {
-        return 20;  // Rerank(10) 之后，链末执行
+        return 8;  // Fusion(5) 截断之后、Rerank(10) 之前
     }
 
     @Override

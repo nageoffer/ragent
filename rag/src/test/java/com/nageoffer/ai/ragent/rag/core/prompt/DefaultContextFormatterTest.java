@@ -18,14 +18,19 @@
 package com.nageoffer.ai.ragent.rag.core.prompt;
 
 import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
+import com.nageoffer.ai.ragent.framework.convention.SourceRef;
+import com.nageoffer.ai.ragent.rag.config.RAGConfigProperties;
+import com.nageoffer.ai.ragent.rag.config.SearchChannelProperties;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentNode;
 import com.nageoffer.ai.ragent.rag.core.intent.NodeScore;
+import com.nageoffer.ai.ragent.rag.core.source.CitationContextEnricher;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.DefaultResourceLoader;
 
 import java.util.List;
 import java.util.Set;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -34,13 +39,20 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p>
  * 覆盖上下文优化的核心行为：
  * 1. 按文档聚合：文档之间按相关性（各文档最佳块排名）排序，文档内部按 chunkIndex 还原原文顺序
- * 2. 只注入内部 docId 作为锚点，文档名（含文件名）绝不进上下文；docId 缺失的块单独成组、无任何属性
+ * 2. 只注入内部 docId 作为锚点属性；docId 缺失的块单独成组、无任何属性
  * 3. 同文档的块按 index 排好后用单换行顺次拼接
+ * 4. 开关开启时每份资料首行原样放一次文档名，不做属性
  */
 class DefaultContextFormatterTest {
 
     private DefaultContextFormatter formatter() {
-        return new DefaultContextFormatter(new PromptTemplateLoader(new DefaultResourceLoader()));
+        return formatter(true);
+    }
+
+    private DefaultContextFormatter formatter(boolean includeDocName) {
+        SearchChannelProperties props = new SearchChannelProperties();
+        props.setIncludeDocName(includeDocName);
+        return new DefaultContextFormatter(new PromptTemplateLoader(new DefaultResourceLoader()), props);
     }
 
     private RetrievedChunk chunk(String id, String text, String docId, String docName, Integer index, float score) {
@@ -66,12 +78,10 @@ class DefaultContextFormatterTest {
         assertTrue(result.indexOf("A-idx3正文") < result.indexOf("B-idx0正文"), "文档 A 整块应在文档 B 之前");
         assertTrue(result.indexOf("B-idx0正文") < result.indexOf("孤块正文"), "无归属孤块应排在最后");
 
-        // 只注入内部 docId，文档名一律不进上下文（模型拿不到名字才不会写"出自《XX》"）
+        // 属性只有内部 docId，文档名以正文首行出现
         assertTrue(result.contains("data-ragent-doc-id=\"docA\""), "应携带内部 docId 供后续注入引用编号");
         assertTrue(result.contains("data-ragent-doc-id=\"docB\""));
         assertFalse(result.contains("source="), "不应再注入 source 属性");
-        assertFalse(result.contains("员工手册"), "文档名不得进入上下文");
-        assertFalse(result.contains("报销政策"));
 
         // 孤块单独成组、无任何属性
         assertTrue(result.replace("\r\n", "\n").contains("<content>\n孤块正文\n</content>"),
@@ -160,6 +170,67 @@ class DefaultContextFormatterTest {
 
         assertTrue(result.contains("SNIPPET_A"));
         assertTrue(result.contains("全局资料"));
+    }
+
+    @Test
+    void docNameAppearsOnceAtTopOfEachDocument() {
+        List<RetrievedChunk> chunks = List.of(
+                chunk("a3", "A-idx3正文", "docA", "员工手册.pdf", 3, 0.9f),
+                chunk("b0", "B-idx0正文", "docB", "报销政策.md", 0, 0.8f),
+                chunk("a1", "A-idx1正文", "docA", "员工手册.pdf", 1, 0.7f));
+
+        String result = formatter().formatKbContext(List.of(), Set.of(), chunks, 100).replace("\r\n", "\n");
+
+        assertTrue(result.contains("<content data-ragent-doc-id=\"docA\">\n<doc_name>员工手册.pdf</doc_name>\n"
+                + "A-idx1正文\nA-idx3正文\n</content>"), "同文档多块只在首行带一次文档名：\n" + result);
+        assertTrue(result.contains("<content data-ragent-doc-id=\"docB\">\n<doc_name>报销政策.md</doc_name>\nB-idx0正文"));
+        assertEquals(2, result.split("<doc_name>", -1).length - 1);
+    }
+
+    @Test
+    void docNameKeptVerbatimExceptTagBreakingChars() {
+        List<RetrievedChunk> chunks = List.of(
+                chunk("q0", "正文", "docQ", "<退换货>\"说明\".docx", 0, 0.8f));
+
+        String result = formatter().formatKbContext(List.of(), Set.of(), chunks, 100);
+
+        assertTrue(result.contains("<doc_name>退换货说明.docx</doc_name>"), "只清尖括号与引号，扩展名照留：\n" + result);
+    }
+
+    @Test
+    void noDocNameLineWithoutNameOrWhenDisabled() {
+        List<RetrievedChunk> chunks = List.of(
+                chunk("a0", "有名正文", "docA", "员工手册.pdf", 0, 0.9f),
+                chunk("c0", "无名正文", "docC", null, 0, 0.8f),
+                chunk("x0", "网页正文", null, null, null, 0.7f));
+
+        String enabled = formatter().formatKbContext(List.of(), Set.of(), chunks, 100).replace("\r\n", "\n");
+        String disabled = formatter(false).formatKbContext(List.of(), Set.of(), chunks, 100);
+
+        assertTrue(enabled.contains("<content data-ragent-doc-id=\"docC\">\n无名正文\n</content>"));
+        assertTrue(enabled.contains("<content>\n网页正文\n</content>"));
+        assertFalse(disabled.contains("doc_name"));
+        assertFalse(disabled.contains("员工手册"), "关闭后文档名不进上下文");
+    }
+
+    @Test
+    void docNameLineSurvivesCitationAndAnchorStripping() {
+        List<RetrievedChunk> chunks = List.of(
+                chunk("p4", "### 尺寸与重量", "docP", "IPHONE-17.md", 4, 0.9f),
+                chunk("p3", "### 视频录制", "docP", "IPHONE-17.md", 3, 0.8f));
+        String formatted = formatter().formatKbContext(List.of(), Set.of(), chunks, 100);
+        RAGConfigProperties citationOn = new RAGConfigProperties();
+        citationOn.setCitationEnabled(true);
+        CitationContextEnricher enricher = new CitationContextEnricher(citationOn);
+
+        String workflow = enricher.enrich(formatted, List.of(SourceRef.builder().index(1).docId("docP").build()))
+                .replace("\r\n", "\n");
+        String agentTool = enricher.stripDocIdAnchors(formatted).replace("\r\n", "\n");
+
+        assertEquals("<content ref=\"1\">\n<doc_name>IPHONE-17.md</doc_name>\n### 视频录制\n### 尺寸与重量\n</content>",
+                workflow.strip());
+        assertEquals("<content>\n<doc_name>IPHONE-17.md</doc_name>\n### 视频录制\n### 尺寸与重量\n</content>",
+                agentTool.strip());
     }
 
     private NodeScore intent(String id, String snippet) {
