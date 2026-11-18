@@ -139,7 +139,7 @@ public class ConversationServiceImpl implements ConversationService {
             if (StrUtil.isBlank(title) || title.equals(placeholder)) {
                 return;
             }
-            // 仅当标题仍是占位值时才回填，避免覆盖用户在此期间的手动重命名
+            // 条件更新：仅当数据库中的当前标题仍等于占位值时才回填，避免覆盖用户在生成期间的手动重命名
             conversationMapper.update(null,
                     Wrappers.lambdaUpdate(ConversationDO.class)
                             .eq(ConversationDO::getConversationId, conversationId)

@@ -108,6 +108,17 @@ class ConversationServiceImplTitleTest {
     }
 
     @Test
+    void shouldKeepPlaceholderWhenGeneratorReturnsNullOnLlmFailure() {
+        when(titleGenerator.generate("你好")).thenReturn(null);
+        ConversationServiceImpl service = newService(Runnable::run);
+
+        service.createOrUpdate(request("你好"));
+
+        verify(conversationMapper).insert(any(ConversationDO.class));
+        verify(conversationMapper, never()).update(any(), any());
+    }
+
+    @Test
     void shouldKeepPlaceholderWhenGenerationThrows() {
         when(titleGenerator.generate("你好")).thenThrow(new IllegalStateException("LLM 不可用"));
         ConversationServiceImpl service = newService(Runnable::run);
