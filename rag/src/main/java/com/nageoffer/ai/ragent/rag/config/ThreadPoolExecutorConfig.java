@@ -60,6 +60,25 @@ public class ThreadPoolExecutorConfig {
     }
 
     /**
+     * 会话标题异步生成线程池，队列满时直接拒绝（调用方保留占位标题）
+     */
+    @Bean
+    public Executor conversationTitleExecutor() {
+        ThreadPoolExecutor executor = new ThreadPoolExecutor(
+                2,
+                4,
+                60,
+                TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>(100),
+                ThreadFactoryBuilder.create()
+                        .setNamePrefix("conversation_title_executor_")
+                        .build(),
+                new ThreadPoolExecutor.AbortPolicy()
+        );
+        return TtlExecutors.getTtlExecutor(executor);
+    }
+
+    /**
      * RAG 检索线程池（用于通道级别的并行）
      */
     @Bean

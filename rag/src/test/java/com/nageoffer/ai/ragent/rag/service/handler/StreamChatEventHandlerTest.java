@@ -23,20 +23,25 @@ import com.nageoffer.ai.ragent.framework.convention.ChatMessage;
 import com.nageoffer.ai.ragent.framework.web.StreamTaskManager;
 import com.nageoffer.ai.ragent.infra.config.AIModelProperties;
 import com.nageoffer.ai.ragent.rag.core.memory.ConversationMemoryService;
+import com.nageoffer.ai.ragent.rag.dao.entity.ConversationDO;
 import com.nageoffer.ai.ragent.rag.service.ConversationGroupService;
+import com.nageoffer.ai.ragent.rag.service.impl.ConversationTitleTaskRegistry;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class StreamChatEventHandlerTest {
@@ -79,6 +84,60 @@ class StreamChatEventHandlerTest {
         verify(memoryService).append(eq("c-1"), eq(USER_ID), message.capture());
         assertThat(message.getValue().getContent()).isEqualTo("正文一\n\n正文二");
         assertThat(message.getValue().getThinkingContent()).isEqualTo("推理一\n\n推理二");
+    }
+
+    @Test
+    void shouldAwaitAsyncTitleBeforeLookingUpTitleOnComplete() {
+        ConversationMemoryService memoryService = mock(ConversationMemoryService.class);
+        ConversationGroupService conversationGroupService = mock(ConversationGroupService.class);
+        ConversationTitleTaskRegistry titleTaskRegistry = mock(ConversationTitleTaskRegistry.class);
+        // 构造时会话不存在 => 需要下发标题；收尾时回查到异步回填后的标题
+        when(conversationGroupService.findConversation("c-1", USER_ID))
+                .thenReturn(null)
+                .thenReturn(ConversationDO.builder().conversationId("c-1").userId(USER_ID).title("LLM 标题").build());
+        SseEmitter emitter = mock(SseEmitter.class);
+        StreamChatEventHandler handler = new StreamChatEventHandler(StreamChatHandlerParams.builder()
+                .emitter(emitter)
+                .conversationId("c-1")
+                .taskId("t-1")
+                .modelProperties(new AIModelProperties())
+                .memoryService(memoryService)
+                .conversationGroupService(conversationGroupService)
+                .taskManager(mock(StreamTaskManager.class))
+                .titleTaskRegistry(titleTaskRegistry)
+                .build());
+
+        handler.onContent("正文");
+        handler.onComplete();
+
+        // 最多等待 1s，且等待发生在回查标题之前
+        InOrder inOrder = inOrder(titleTaskRegistry, conversationGroupService);
+        inOrder.verify(conversationGroupService).findConversation("c-1", USER_ID);
+        inOrder.verify(titleTaskRegistry).await(USER_ID, "c-1", 1000L);
+        inOrder.verify(conversationGroupService).findConversation("c-1", USER_ID);
+    }
+
+    @Test
+    void shouldNotAwaitTitleWhenConversationAlreadyHasTitle() {
+        ConversationGroupService conversationGroupService = mock(ConversationGroupService.class);
+        ConversationTitleTaskRegistry titleTaskRegistry = mock(ConversationTitleTaskRegistry.class);
+        when(conversationGroupService.findConversation("c-1", USER_ID))
+                .thenReturn(ConversationDO.builder().conversationId("c-1").userId(USER_ID).title("已有标题").build());
+        StreamChatEventHandler handler = new StreamChatEventHandler(StreamChatHandlerParams.builder()
+                .emitter(mock(SseEmitter.class))
+                .conversationId("c-1")
+                .taskId("t-1")
+                .modelProperties(new AIModelProperties())
+                .memoryService(mock(ConversationMemoryService.class))
+                .conversationGroupService(conversationGroupService)
+                .taskManager(mock(StreamTaskManager.class))
+                .titleTaskRegistry(titleTaskRegistry)
+                .build());
+
+        handler.onContent("正文");
+        handler.onComplete();
+
+        verifyNoInteractions(titleTaskRegistry);
     }
 
     @Test
