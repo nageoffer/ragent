@@ -38,6 +38,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.stream.Collectors;
 
 /**
@@ -49,11 +52,15 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ConversationServiceImpl implements ConversationService {
 
+    private static final String DEFAULT_TITLE = "新对话";
+
     private final ConversationMapper conversationMapper;
     private final ConversationMessageMapper messageMapper;
     private final ConversationSummaryMapper summaryMapper;
     private final MemoryProperties memoryProperties;
     private final ConversationTitleGenerator titleGenerator;
+    private final ConversationTitleTaskRegistry titleTaskRegistry;
+    private final Executor conversationTitleExecutor;
 
     @Override
     public List<ConversationVO> listByUserId(String userId) {
@@ -97,19 +104,63 @@ public class ConversationServiceImpl implements ConversationService {
         );
 
         if (existing == null) {
-            String title = titleGenerator.generate(question);
+            // 先写占位标题，LLM 标题异步生成后回填，避免阻塞首问主链路
+            String placeholder = buildPlaceholderTitle(question);
             ConversationDO record = ConversationDO.builder()
                     .conversationId(conversationId)
                     .userId(userId)
-                    .title(title)
+                    .title(placeholder)
                     .lastTime(request.getLastTime())
                     .build();
             conversationMapper.insert(record);
+            submitTitleGeneration(userId, conversationId, question, placeholder);
             return;
         }
 
         existing.setLastTime(request.getLastTime());
         conversationMapper.updateById(existing);
+    }
+
+    private void submitTitleGeneration(String userId, String conversationId, String question, String placeholder) {
+        try {
+            CompletableFuture<Void> future = CompletableFuture.runAsync(
+                    () -> refreshTitle(userId, conversationId, question, placeholder),
+                    conversationTitleExecutor
+            );
+            titleTaskRegistry.register(userId, conversationId, future);
+        } catch (RejectedExecutionException ex) {
+            log.warn("会话标题生成任务被拒绝，保留占位标题，conversationId：{}", conversationId);
+        }
+    }
+
+    private void refreshTitle(String userId, String conversationId, String question, String placeholder) {
+        try {
+            String title = StrUtil.trim(titleGenerator.generate(question));
+            if (StrUtil.isBlank(title) || title.equals(placeholder)) {
+                return;
+            }
+            // 条件更新：仅当数据库中的当前标题仍等于占位值时才回填，避免覆盖用户在生成期间的手动重命名
+            conversationMapper.update(null,
+                    Wrappers.lambdaUpdate(ConversationDO.class)
+                            .eq(ConversationDO::getConversationId, conversationId)
+                            .eq(ConversationDO::getUserId, userId)
+                            .eq(ConversationDO::getDeleted, 0)
+                            .eq(ConversationDO::getTitle, placeholder)
+                            .set(ConversationDO::getTitle, title)
+            );
+        } catch (Exception ex) {
+            log.warn("异步回填会话标题失败，保留占位标题，conversationId：{}", conversationId, ex);
+        }
+    }
+
+    private String buildPlaceholderTitle(String question) {
+        String cleaned = StrUtil.trim(question);
+        if (StrUtil.isBlank(cleaned)) {
+            return DEFAULT_TITLE;
+        }
+        Integer configured = memoryProperties.getTitleMaxLength();
+        int maxLen = configured != null && configured > 0 ? configured : 30;
+        return cleaned.length() <= maxLen ? cleaned : cleaned.substring(0, maxLen);
     }
 
     @Override

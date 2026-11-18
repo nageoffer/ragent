@@ -35,6 +35,7 @@ import com.nageoffer.ai.ragent.infra.config.AIModelProperties;
 import com.nageoffer.ai.ragent.rag.core.memory.ConversationMemoryService;
 import lombok.extern.slf4j.Slf4j;
 import com.nageoffer.ai.ragent.rag.service.ConversationGroupService;
+import com.nageoffer.ai.ragent.rag.service.impl.ConversationTitleTaskRegistry;
 
 import java.util.List;
 import java.util.Optional;
@@ -44,6 +45,10 @@ public class StreamChatEventHandler implements StreamCallback {
 
     private static final String TYPE_THINK = "think";
     private static final String TYPE_RESPONSE = "response";
+    /**
+     * FINISH 前等待异步标题生成的最长时间（毫秒）
+     */
+    private static final long TITLE_WAIT_MILLIS = 1000L;
 
     private final int messageChunkSize;
     private final SseEmitterSender sender;
@@ -53,6 +58,7 @@ public class StreamChatEventHandler implements StreamCallback {
     private final String taskId;
     private final String userId;
     private final StreamTaskManager taskManager;
+    private final ConversationTitleTaskRegistry titleTaskRegistry;
     private final boolean sendTitleOnComplete;
     private final StringBuilder answer = new StringBuilder();
     private final StringBuilder thinking = new StringBuilder();
@@ -74,6 +80,7 @@ public class StreamChatEventHandler implements StreamCallback {
         this.memoryService = params.getMemoryService();
         this.conversationGroupService = params.getConversationGroupService();
         this.taskManager = params.getTaskManager();
+        this.titleTaskRegistry = params.getTitleTaskRegistry();
         this.userId = UserContext.getUserId();
 
         // 计算配置
@@ -273,6 +280,10 @@ public class StreamChatEventHandler implements StreamCallback {
     private String resolveTitleForEvent() {
         if (!sendTitleOnComplete) {
             return null;
+        }
+        if (titleTaskRegistry != null) {
+            // 标题异步生成：最多等 1s，超时则使用占位标题
+            titleTaskRegistry.await(userId, conversationId, TITLE_WAIT_MILLIS);
         }
         try {
             ConversationDO conversation = conversationGroupService.findConversation(conversationId, userId);

@@ -72,8 +72,9 @@ public class ConversationTitleGenerator {
                     .build();
             return llmService.chat(request, Tier.FAST);
         } catch (Exception ex) {
+            // 失败时返回 null，由调用方决定兜底（保留占位标题），避免兜底值覆盖占位标题
             log.warn("生成会话标题失败", ex);
-            return "新对话";
+            return null;
         }
     }
 }
