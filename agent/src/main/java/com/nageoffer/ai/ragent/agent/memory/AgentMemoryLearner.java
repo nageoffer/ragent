@@ -27,6 +27,7 @@ import org.redisson.api.RLock;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * 后台学习：每轮结束后异步尝试一次，从用户说过的话里自动发现值得长期记住的信息
@@ -107,7 +108,7 @@ public class AgentMemoryLearner {
                 return AgentMemoryOutcome.of(Status.BELOW_THRESHOLD);
             }
             List<AgentMemoryItem> active = memoryRepository.listActiveItems(userId);
-            List<AgentMessageDO> background = memoryRepository.loadBackground(userId, messages);
+            Map<String, List<AgentMessageDO>> background = memoryRepository.loadBackground(userId, messages);
             judgement = memoryJudge.judgeBackground(active, messages, background);
             edit = AgentMemoryEdit.plan(active, judgement.decisions(), memoryProperties.resolveMemoryMaxChars());
         } catch (AgentMemoryCapacityException e) {

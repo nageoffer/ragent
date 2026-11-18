@@ -41,7 +41,9 @@ import org.springframework.stereotype.Component;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Date;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -84,11 +86,11 @@ public class AgentMemoryJudge {
      *
      * @param existing   当前有效记忆
      * @param messages   本批要判断的用户发言
-     * @param background 理解这批发言所需的其他消息，只看不引用
+     * @param background 按照conversationId来分类，理解这批发言所需的其他消息，只看不引用
      */
     public AgentMemoryJudgement judgeBackground(List<AgentMemoryItem> existing, List<AgentMessageDO> messages,
-                                                List<AgentMessageDO> background) {
-        LearnInput input = new LearnInput(existing, toViews(background), toViews(messages));
+                                                Map<String, List<AgentMessageDO>> background) {
+        LearnInput input = new LearnInput(existing, toConversations(messages, background));
         String raw = ask(input);
         return parse(raw, messages);
     }
@@ -240,6 +242,38 @@ public class AgentMemoryJudge {
                 message.getCreateTime(), message.getContent());
     }
 
+    /**
+     * 同会话的背景与候选发言合成原始消息顺序，保留来源边界；会话之间的先后仍由模型比较 time
+     */
+    private static Map<String, List<LearnMessageView>> toConversations(
+            List<AgentMessageDO> messages, Map<String, List<AgentMessageDO>> background) {
+        // conversationId -> messageList
+        Map<String, List<LearnMessageView>> conversations = new LinkedHashMap<>();
+        // 初始化list，并且添加用户消息
+        for (AgentMessageDO message : messages) {
+            List<LearnMessageView> messagesByTimeline = conversations.computeIfAbsent(message.getConversationId(),
+                    ignored -> new ArrayList<>());
+            if (StrUtil.isNotBlank(message.getContent())) {
+                messagesByTimeline.add(toLearnView(message, "candidate"));
+            }
+        }
+        // 获取用户消息对应的background，收集到同一集合中
+        conversations.forEach((conversationId, messagesByTimeline) -> {
+            for (AgentMessageDO message : background.getOrDefault(conversationId, List.of())) {
+                if (StrUtil.isNotBlank(message.getContent())) {
+                    messagesByTimeline.add(toLearnView(message, "background"));
+                }
+            }
+            messagesByTimeline.sort(Comparator.comparing(LearnMessageView::messageId));
+        });
+        return conversations;
+    }
+
+    private static LearnMessageView toLearnView(AgentMessageDO message, String source) {
+        return new LearnMessageView(message.getId(), message.getConversationId(), message.getRole(),
+                message.getCreateTime(), message.getContent(), source);
+    }
+
     record Output(List<DecisionOutput> decisions, String explanation) {
     }
 
@@ -254,9 +288,14 @@ public class AgentMemoryJudge {
     }
 
     /**
-     * 后台学习的材料：messages 里的每条都可引用
+     * 后台学习的材料：以 conversationId 为 key，每段会话中只有 source=candidate 的用户发言可引用
      */
-    record LearnInput(List<AgentMemoryItem> memories, List<MessageView> background, List<MessageView> messages) {
+    record LearnInput(List<AgentMemoryItem> memories, Map<String, List<LearnMessageView>> conversations) {
+    }
+
+    record LearnMessageView(String messageId, String conversationId, String speaker,
+                            @JsonFormat(pattern = AgentMemoryItem.TIME_PATTERN, timezone = AgentMemoryItem.TIME_ZONE) Date time,
+                            String text, String source) {
     }
 
     /**
