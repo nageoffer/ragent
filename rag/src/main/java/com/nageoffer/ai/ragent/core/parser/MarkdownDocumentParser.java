@@ -54,6 +54,7 @@ import org.commonmark.node.SoftLineBreak;
 import org.commonmark.node.StrongEmphasis;
 import org.commonmark.node.Text;
 import org.commonmark.parser.Parser;
+import org.commonmark.renderer.markdown.MarkdownRenderer;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
@@ -74,6 +75,8 @@ public class MarkdownDocumentParser implements DocumentParser {
     private static final Parser PARSER = Parser.builder()
             .extensions(List.of(TablesExtension.create()))
             .build();
+
+    private static final MarkdownRenderer MARKDOWN_RENDERER = MarkdownRenderer.builder().build();
 
     @Override
     public String getParserType() {
@@ -297,11 +300,29 @@ public class MarkdownDocumentParser implements DocumentParser {
         return sb.toString();
     }
 
+    /**
+     * 保留列表项中的代码正文与块边界；围栏长度、语言和转义规则交给 CommonMark 渲染器。
+     */
+    private static void appendCodeBlock(StringBuilder sb, FencedCodeBlock codeBlock) {
+        if (!sb.isEmpty()) {
+            sb.append("\n\n");
+        }
+        sb.append(MARKDOWN_RENDERER.render(codeBlock).stripTrailing()).append("\n\n");
+    }
+
     private static void appendInline(StringBuilder sb, Node node) {
         if (node instanceof Text t) {
             sb.append(t.getLiteral());
         } else if (node instanceof Code code) {
             sb.append('`').append(code.getLiteral()).append('`');
+        } else if (node instanceof FencedCodeBlock codeBlock) {
+            // 列表项由本方法提取，不会进入 visitor.visit(FencedCodeBlock)；正文在 literal 中。
+            appendCodeBlock(sb, codeBlock);
+        } else if (node instanceof IndentedCodeBlock codeBlock) {
+            // 转成围栏形式，避免列表项 trim() 吞掉缩进代码块首行的结构缩进。
+            FencedCodeBlock fenced = new FencedCodeBlock();
+            fenced.setLiteral(codeBlock.getLiteral());
+            appendCodeBlock(sb, fenced);
         } else if (node instanceof Link link) {
             String inner = extractInlineText(link);
             String dest = link.getDestination();
