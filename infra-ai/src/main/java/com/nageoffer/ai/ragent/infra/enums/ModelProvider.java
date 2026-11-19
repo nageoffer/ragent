@@ -69,6 +69,11 @@ public enum ModelProvider {
     ATLAS_CLOUD("atlascloud"),
 
     /**
+     * ZenMux 聚合网关
+     */
+    ZENMUX("zenmux"),
+
+    /**
      * 空实现，用于测试或占位
      */
     NOOP("noop");

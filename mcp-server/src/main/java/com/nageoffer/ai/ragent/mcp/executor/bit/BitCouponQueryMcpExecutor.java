@@ -71,9 +71,9 @@ public class BitCouponQueryMcpExecutor {
 
     private Tool buildTool() {
         JsonSchema inputSchema = McpToolSchema.object()
-                .optional(number("amount", "本次结算总金额，填了才会逐张试算能不能用、能抵多少"))
-                .optional(string("categoryAmounts", "本次结算的品类小计，形如 手机:3999,耳机:1200，从购物车查询的「品类小计」一行照抄；"
-                        + "不知道金额时只写品类名也可以，如 手机,耳机"))
+                .optional(number("amount", "本次要买的商品合计金额，填了才会逐张试算能不能用、能抵多少；只买购物车里的部分商品时按这几件计算"))
+                .optional(string("categoryAmounts", "本次要买的商品的品类小计，形如 手机:3999,耳机:1200。买整车时照抄购物车查询的「品类小计」一行，"
+                        + "只买其中几件时按这几件的单价乘数量计算；试算品类券必须传准确的品类小计"))
                 .optional(string("status", "持券状态，默认只看未使用的")
                         .options(STATUSES)
                         .defaultTo(DEFAULT_STATUS))
@@ -83,7 +83,6 @@ public class BitCouponQueryMcpExecutor {
                 .name(TOOL_ID)
                 .description("查询当前登录用户的优惠券，返回名称、券码、类型、门槛、适用品类与有效期。"
                         + "传入结算金额和品类小计后，会逐张判定能否使用并算出抵扣金额，给出最优的一张。"
-                        + "回答「我有什么券」「这单能便宜多少」前必须调它，不要按券名自行推算门槛和折扣。"
                         + "试算结果仅供参考，下单时以创建订单返回的实际抵扣为准")
                 .inputSchema(inputSchema)
                 .annotations(McpToolAnnotations.READ_ONLY)
@@ -196,5 +195,4 @@ public class BitCouponQueryMcpExecutor {
         }
         return sb.toString().trim();
     }
-
 }

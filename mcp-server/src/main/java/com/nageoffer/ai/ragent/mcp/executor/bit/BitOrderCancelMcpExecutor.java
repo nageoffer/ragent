@@ -70,8 +70,7 @@ public class BitOrderCancelMcpExecutor {
         return Tool.builder()
                 .name(TOOL_ID)
                 .description("取消当前登录用户的一笔订单，同时归还它占用的库存与优惠券。"
-                        + "只有待支付和已支付待发货的订单能取消，已发货之后只能拒收或走售后。"
-                        + "取消前先用订单查询确认订单号与当前状态")
+                        + "只有待支付和已支付待发货的订单能取消。订单号取自订单查询")
                 .inputSchema(inputSchema)
                 .annotations(McpToolAnnotations.WRITE)
                 .build();
@@ -117,8 +116,8 @@ public class BitOrderCancelMcpExecutor {
 
     private String uncancellable(String orderNo, String status) {
         String guide = switch (status) {
-            case "已发货" -> "包裹已经出库，可以拒收，拒收后订单自动退款；也可以等签收后走七天无理由退货";
-            case "已签收" -> "订单已签收，取消已经不适用，请改用售后申请";
+            case "已发货" -> "包裹已经出库，订单不能再取消";
+            case "已签收" -> "订单已签收，不能取消；售后是否受理按签收时间判定";
             default -> "订单已经是取消状态，不需要再取消一次";
         };
         return String.format("订单 %s 当前状态是%s，未执行取消。%s", orderNo, status, guide);
@@ -129,7 +128,7 @@ public class BitOrderCancelMcpExecutor {
         sb.append(String.format("订单 %s 已取消%n%n", orderNo));
         sb.append("库存已回补到商品\n");
         if (StrUtil.isNotBlank(order.getCouponCode())) {
-            sb.append(String.format("优惠券 %s 已退回，状态恢复为未使用%n", order.getCouponCode()));
+            sb.append(String.format("优惠券 %s 已退回券包%n", order.getCouponCode()));
         }
         if (BitOrderReleaser.STATUS_PAID.equals(order.getStatus())) {
             sb.append(String.format("实付 %s 将原路退回，演示环境为模拟退款，不产生真实资金变动%n",
@@ -137,5 +136,4 @@ public class BitOrderCancelMcpExecutor {
         }
         return sb.toString().trim();
     }
-
 }

@@ -152,7 +152,7 @@ class AgentContextTrimmerTest {
 
         assertThat(result.replacements()).containsOnlyKeys(oldest);
         String placeholder = ((TextBlock) resultBlock(context.get(2)).getOutput().get(0)).getText();
-        assertThat(placeholder).isEqualTo("[历史工具结果已省略，原长 " + SEARCH_OUTPUT.length() + " 字符，原入参 {}]");
+        assertThat(placeholder).isEqualTo("[历史工具结果已省略，原长 " + SEARCH_OUTPUT.length() + " 字符，原入参 {}，需要时可重新调用]");
     }
 
     private static Msg userMessage(String text) {

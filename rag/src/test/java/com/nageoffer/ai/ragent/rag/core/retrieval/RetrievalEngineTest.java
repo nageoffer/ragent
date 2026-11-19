@@ -99,7 +99,7 @@ class RetrievalEngineTest {
                 any(SubQuestionIntent.class), any(RetrievalBudget.class)))
                 .thenReturn(new KnowledgeRetrievalResult(List.of(globalChunk), Map.of(), Set.of()));
         ContextFormatter contextFormatter = new DefaultContextFormatter(
-                new PromptTemplateLoader(new DefaultResourceLoader()));
+                new PromptTemplateLoader(new DefaultResourceLoader()), new SearchChannelProperties());
 
         RetrievalContext result = engine(multiChannel, contextFormatter).retrieve(List.of(
                 new SubQuestionIntent("问题", List.of(

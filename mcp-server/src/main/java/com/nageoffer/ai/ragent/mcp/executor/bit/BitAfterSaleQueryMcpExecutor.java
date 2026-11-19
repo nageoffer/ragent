@@ -56,6 +56,14 @@ public class BitAfterSaleQueryMcpExecutor {
      */
     private static final int MAX_ROWS = 20;
 
+    /**
+     * 状态值的含义随结果一起给：只给「处理中」三个字，模型会把它读成仍在审核，或断言退款还没发起
+     * <p>
+     * 与 apply_after_sale 写入的状态、知识库里的售后流程一致，改状态流转时三处一起改
+     */
+    static final String STATUS_LEGEND = "状态说明：待处理 = 等待人工审核；处理中 = 审核已通过，"
+            + "寄回、验收或检测、退款发起都在这一状态内，系统不区分；已完成 = 处理结束";
+
     private final AfterSaleMapper afterSaleMapper;
 
     @Bean
@@ -68,15 +76,15 @@ public class BitAfterSaleQueryMcpExecutor {
 
     private Tool buildTool() {
         JsonSchema inputSchema = McpToolSchema.object()
-                .optional(string("afterSaleNo", "售后单号，如 AS88237001"))
+                .optional(string("afterSaleNo", "售后单号，取自售后查询或售后申请的结果"))
                 .optional(string("orderNo", "订单号，查这一单下的全部售后单"))
                 .build();
 
         return Tool.builder()
                 .name(TOOL_ID)
                 .description("查询当前登录用户的售后单进度，返回售后单号、对应订单与商品、售后类型、原因、"
-                        + "当前状态与时间线。两个参数都不填则列出名下全部售后单。用户说不清是哪一单时先不带参数列一遍，"
-                        + "再按用户指认的那张往下问")
+                        + "当前状态与申请、更新、完成时间；不返回仓库验收、检测、退款发起等细分节点。"
+                        + "两个参数都不填则列出名下最近 20 张售后单")
                 .inputSchema(inputSchema)
                 .annotations(McpToolAnnotations.READ_ONLY)
                 .build();
@@ -117,9 +125,10 @@ public class BitAfterSaleQueryMcpExecutor {
         return afterSaleMapper.selectDetails(userId, afterSaleNo, orderNo, MAX_ROWS);
     }
 
-    private String buildResult(List<AfterSaleDetailResult> rows) {
+    static String buildResult(List<AfterSaleDetailResult> rows) {
         StringBuilder sb = new StringBuilder();
         sb.append(String.format("【售后单 %d 张】%n", rows.size()));
+        sb.append(STATUS_LEGEND).append('\n');
         for (AfterSaleDetailResult row : rows) {
             sb.append(String.format("%n售后单号: %s%n", row.getAfterSaleNo()));
             sb.append(String.format("对应订单: %s%n", row.getOrderNo()));
@@ -135,5 +144,4 @@ public class BitAfterSaleQueryMcpExecutor {
         }
         return sb.toString().trim();
     }
-
 }

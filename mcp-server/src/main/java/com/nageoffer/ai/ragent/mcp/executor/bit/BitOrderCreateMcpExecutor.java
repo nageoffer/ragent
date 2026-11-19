@@ -94,8 +94,8 @@ public class BitOrderCreateMcpExecutor {
                                 .required(string("skuCode", "商品 SKU 型号，来自购物车查询").title("商品型号"))
                                 .required(integer("quantity", "本次购买数量，必须为正整数").title("数量")))
                         .title("商品与数量"))
-                .optional(string("couponCode", "要使用的优惠券编码，来自券包查询。不确定能不能用就先查券包试算，"
-                        + "能不能用最终由本工具判定")
+                .optional(string("couponCode", "要使用的优惠券编码，来自券包查询。能否使用最终由本工具判定，"
+                        + "下单前可用券包查询试算")
                         .title("优惠券编码"))
                 .optional(string("receiverName", "收货人姓名，不传则沿用该用户最近一笔订单的收货信息（按下单时间取，不论订单状态）")
                         .title("收货人"))
@@ -108,9 +108,9 @@ public class BitOrderCreateMcpExecutor {
 
         return Tool.builder()
                 .name(TOOL_ID)
-                .description("用当前登录用户购物车里的商品创建订单，下单后为待支付状态，需要再调用支付工具完成支付。"
-                        + "下单会占用库存并核销所选优惠券，商品单价与优惠金额以本工具返回的为准，不要自行计算后告知用户。"
-                        + "下单前先用购物车查询确认商品与数量，按 items 中的数量购买，购物车剩余数量保留")
+                .description("用当前登录用户购物车里的商品创建订单，下单后为待支付状态，不会自动支付，支付需另行调用支付工具。"
+                        + "下单会占用库存并核销所选优惠券，最终单价、优惠与应付以本工具返回的为准。"
+                        + "按 items 中的数量购买，购物车剩余数量保留")
                 .inputSchema(inputSchema)
                 .annotations(McpToolAnnotations.WRITE)
                 .build();
@@ -216,7 +216,7 @@ public class BitOrderCreateMcpExecutor {
         Receiver receiver = resolveReceiver(userId, input);
         if (receiver == null) {
             status.setRollbackOnly();
-            return BitToolSupport.rejected("没有可用的收货信息，请向用户确认收货人、手机号和完整地址后再下单");
+            return BitToolSupport.rejected("没有可用的收货信息，需要收货人、手机号和完整地址，订单未创建");
         }
 
         for (CartLineResult line : lines) {
@@ -297,12 +297,12 @@ public class BitOrderCreateMcpExecutor {
             line.setQuantity(quantity);
             if (!"在售".equals(line.getStatus())) {
                 return BitToolSupport.rejected(String.format(
-                        "%s（%s）已下架，本单未创建。把它从购物车移除后可以继续买其余商品",
+                        "%s（%s）已下架，本单未创建。下单可以只选其余商品，不需要先从购物车移除",
                         line.getSkuName(), line.getSkuCode()));
             }
             if (line.getStock() <= 0) {
                 return BitToolSupport.rejected(String.format(
-                        "%s（%s）已经缺货，本单未创建。把它从购物车移除后可以继续买其余商品",
+                        "%s（%s）已经缺货，本单未创建。下单可以只选其余商品，不需要先从购物车移除",
                         line.getSkuName(), line.getSkuCode()));
             }
             if (line.getStock() < line.getQuantity()) {
@@ -358,7 +358,7 @@ public class BitOrderCreateMcpExecutor {
             sb.append("（未填写的收货信息沿用了最近一笔订单）\n");
         }
 
-        sb.append(String.format("%n请提醒用户在 %d 分钟内完成支付，超时订单会自动取消并退回库存与优惠券。"
+        sb.append(String.format("%n须在 %d 分钟内完成支付，超时订单会自动取消并退回库存与优惠券。"
                         + "演示环境为模拟支付，不产生真实扣款",
                 bitProperties.getPendingOrder().getTimeout().toMinutes()));
         return sb.toString().trim();

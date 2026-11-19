@@ -71,6 +71,12 @@ public class SearchChannelProperties implements InitializingBean {
     private Evidence evidence = new Evidence();
 
     /**
+     * 精排与回答上下文是否带文档名：精排副本正文前补一行文档名，回答上下文每份资料首行放一次 {@code <doc_name>}
+     * 文档名原样取 doc_name，关闭即两处都不带；来源摘录与测评 contexts 保留原文，但进上下文的片段和排名会变
+     */
+    private boolean includeDocName = true;
+
+    /**
      * 解析召回扇出基数：优先使用显式 recallBudget，未配置（<=0）时回退到最终条数
      */
     public int resolveRecallBudget(int contextTopK) {

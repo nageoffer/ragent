@@ -38,7 +38,7 @@ import java.util.stream.Collectors;
  * 检索命中的 {@code chunkId}（等于向量库主键，也等于 {@code t_knowledge_chunk.id}）批量回表，
  * 补齐其所属文档信息（文档ID、文档内序号、文档标题），供上下文组装时按文档聚合与标注来源
  * <p>
- * 只对已截断的最终结果集回表，行数小，两次批量查询开销可忽略
+ * 只对融合截断后的候选回表（不超过 rerank-candidate-limit），两次批量查询开销可忽略
  */
 @Service
 @RequiredArgsConstructor

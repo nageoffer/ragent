@@ -68,8 +68,7 @@ public class BitCartQueryMcpExecutor {
         return Tool.builder()
                 .name(TOOL_ID)
                 .description("查询当前登录用户的购物车，返回每件商品的型号、数量、加购价、现价、价差、库存情况，"
-                        + "以及按品类的小计和合计金额。用户问「购物车里有什么」「一共多少钱」「能用哪张券」时先调它，"
-                        + "拿到的合计金额和品类再去查可用优惠券，不要让用户自己报金额")
+                        + "以及按品类的小计和合计金额；小计与合计按全车现价计算，含当前不可结算的商品")
                 .inputSchema(inputSchema)
                 .annotations(McpToolAnnotations.READ_ONLY)
                 .build();
@@ -135,7 +134,7 @@ public class BitCartQueryMcpExecutor {
                 .toList();
         sb.append(String.format("品类小计: %s%n", String.join(",", parts)));
         if (unavailable > 0) {
-            sb.append(String.format("提示: 有 %d 件商品当前不可结算，下单前需要先移除或改数量%n", unavailable));
+            sb.append(String.format("提示: 有 %d 件商品当前不可结算；下单可以只选其余商品，库存不足的可按库存以内的数量购买，不需要先从购物车移除%n", unavailable));
         }
         return sb.toString().trim();
     }
@@ -153,5 +152,4 @@ public class BitCartQueryMcpExecutor {
                 ? String.format("（已降价 %s）", BitToolSupport.money(diff))
                 : String.format("（已涨价 %s）", BitToolSupport.money(diff));
     }
-
 }

@@ -66,13 +66,13 @@ public class BitLogisticsQueryMcpExecutor {
 
     private Tool buildTool() {
         JsonSchema inputSchema = McpToolSchema.object()
-                .required(string("trackingNo", "运单号，如 BIT9100000233，从订单查询的结果里取"))
+                .required(string("trackingNo", "运单号，从订单查询的结果里取"))
                 .build();
 
         return Tool.builder()
                 .name(TOOL_ID)
                 .description("按运单号查询物流轨迹，返回对应订单号、订单状态与全部轨迹节点，由新到旧。"
-                        + "运单号先用订单查询取到再传进来，不要凭用户口述或自行拼接")
+                        + "运单号取自订单查询")
                 .inputSchema(inputSchema)
                 .annotations(McpToolAnnotations.READ_ONLY)
                 .build();
@@ -132,6 +132,4 @@ public class BitLogisticsQueryMcpExecutor {
         }
         return sb.toString().trim();
     }
-
-
 }

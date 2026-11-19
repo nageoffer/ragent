@@ -19,6 +19,7 @@ package com.nageoffer.ai.ragent.agent.config;
 
 import cn.hutool.core.util.StrUtil;
 import com.nageoffer.ai.ragent.agent.dao.mapper.AgentStateMapper;
+import com.nageoffer.ai.ragent.agent.model.ZenMuxFormatter;
 import com.nageoffer.ai.ragent.agent.state.PgAgentStateStore;
 import com.nageoffer.ai.ragent.infra.config.AIModelProperties;
 import com.nageoffer.ai.ragent.infra.enums.ModelProvider;
@@ -85,12 +86,16 @@ public class AgentEngineConfiguration {
      *
      * Kimi 的 formatter 在通用实现上摘掉固定的采样参数（temperature 等传了就报错），
      * reasoning_content 照通用实现全量回传，正是 K3 系要求的
+     *
+     * ZenMux 是聚合网关，用 model 前缀区分上游：openai/ 系按推理模型摘掉采样参数，并补 service_tier
      */
     private void applyProviderFormatter(OpenAIChatModel.Builder builder, String providerId) {
         if (ModelProvider.DEEP_SEEK.matches(providerId)) {
             builder.formatter(new DeepSeekFormatter());
         } else if (ModelProvider.KIMI.matches(providerId)) {
             builder.formatter(new KimiFormatter());
+        } else if (ModelProvider.ZENMUX.matches(providerId)) {
+            builder.formatter(new ZenMuxFormatter());
         }
     }
 

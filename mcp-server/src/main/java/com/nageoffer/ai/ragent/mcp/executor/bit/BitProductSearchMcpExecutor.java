@@ -83,10 +83,10 @@ public class BitProductSearchMcpExecutor {
 
     private Tool buildTool() {
         JsonSchema inputSchema = McpToolSchema.object()
-                .optional(string("spuCodes", "按商品款查，多个用逗号分隔，如 SPU-IPHONE-18-PRO；"
-                        + "返回该款全部可选配置与各自的下单编码，用户说定了要哪个容量哪个颜色时用它取编码"))
-                .optional(string("skuCodes", "按下单编码精确查，多个用逗号分隔，如 MJTK4CH/A；"
-                        + "填了它其余筛选条件不生效，已下架的也一起返回"))
+                .optional(string("spuCodes", "按商品款查，多个用逗号分隔，款编码取自之前的商品查询结果；"
+                        + "返回该款全部可选配置与各自的下单编码"))
+                .optional(string("skuCodes", "按下单编码精确查，多个用逗号分隔，编码取自订单、购物车或之前的商品查询结果；"
+                        + "不要同时传 spuCodes（同时传时按款查），其余筛选条件不生效，已下架的也一起返回"))
                 .optional(string("category", "一级品类")
                         .options(CATEGORIES))
                 .optional(string("keyword", "关键词，在商品名、子品类、标签和卖点里模糊匹配"))
@@ -104,9 +104,7 @@ public class BitProductSearchMcpExecutor {
                 .name(TOOL_ID)
                 .description("检索比特严选在售商品，支持按品类、价格区间、标签、关键词筛选。"
                         + "按条件筛选时按商品款返回，一款一条，给出价格区间与可选配置数；"
-                        + "要具体到某个容量某个颜色时，用 spuCodes 取该款的全部配置及其下单编码。"
-                        + "推荐商品前先用它确认款名与现价，参数规格再用返回的款名去知识库检索，"
-                        + "不要凭印象报价格和配置")
+                        + "要具体到某个容量某个颜色时，用 spuCodes 取该款的全部配置及其下单编码")
                 .inputSchema(inputSchema)
                 .annotations(McpToolAnnotations.READ_ONLY)
                 .build();
@@ -252,6 +250,4 @@ public class BitProductSearchMcpExecutor {
             return !spuCodes.isEmpty() || !skuCodes.isEmpty();
         }
     }
-
-
 }

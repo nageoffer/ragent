@@ -18,7 +18,6 @@
 package com.nageoffer.ai.ragent.rag.core.retrieval.channel;
 
 import com.nageoffer.ai.ragent.rag.core.retrieval.RetrievalBudget;
-import com.nageoffer.ai.ragent.rag.dto.SubQuestionIntent;
 import lombok.Builder;
 import lombok.Data;
 
@@ -49,11 +48,6 @@ public class SearchContext {
      * 子问题列表
      */
     private List<String> subQuestions;
-
-    /**
-     * 意图识别结果
-     */
-    private List<SubQuestionIntent> intents;
 
     /**
      * 检索预算：召回扇出 / Rerank 候选池上限 / 最终条数，三段各自独立

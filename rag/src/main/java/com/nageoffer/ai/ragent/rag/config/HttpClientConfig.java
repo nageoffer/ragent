@@ -17,6 +17,7 @@
 
 package com.nageoffer.ai.ragent.rag.config;
 
+import okhttp3.ConnectionPool;
 import okhttp3.OkHttpClient;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -55,6 +56,21 @@ public class HttpClientConfig {
                 .writeTimeout(Duration.ofSeconds(30))
                 .readTimeout(Duration.ofSeconds(30))
                 .callTimeout(Duration.ofSeconds(45))
+                .retryOnConnectionFailure(true)
+                .build();
+    }
+
+    /**
+     * Jev 结构化判断客户端，独立连接池
+     */
+    @Bean
+    public OkHttpClient jevHttpClient() {
+        return new OkHttpClient.Builder()
+                .connectionPool(new ConnectionPool())
+                .connectTimeout(Duration.ofSeconds(2))
+                .writeTimeout(Duration.ofSeconds(5))
+                .readTimeout(Duration.ofSeconds(5))
+                .callTimeout(Duration.ofSeconds(5))
                 .retryOnConnectionFailure(true)
                 .build();
     }

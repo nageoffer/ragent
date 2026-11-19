@@ -93,21 +93,22 @@ public class BitAfterSaleApplyMcpExecutor {
         JsonSchema inputSchema = McpToolSchema.object()
                 .required(string("orderNo", "要申请售后的订单号，来自订单查询")
                         .title("订单号"))
-                .required(string("skuCode", "要申请售后的商品 SKU 型号，取自该订单的商品明细。一单多件时只对这一件生效")
+                .required(string("skuCode", "要申请售后的商品 SKU 型号，取自该订单的商品明细。售后作用于这一商品行的全部数量，不支持只退其中几件")
                         .title("商品型号"))
-                .required(string("type", "售后类型：退货退款要把货寄回，换货换同款，仅退款适用于未收到货或货已丢失")
+                .required(string("type", "售后类型：退货退款需寄回商品；换货只换同款同配置；仅退款不寄回商品。签收超过七天只受理退货退款和换货")
                         .title("售后类型")
                         .options(TYPES))
-                .required(string("reason", "申请原因，据实填写用户说明的问题，不要代为编造")
+                .required(string("reason", "申请原因，即用户说明的问题")
                         .title("申请原因"))
                 .build();
 
         return Tool.builder()
                 .name(TOOL_ID)
-                .description("为当前登录用户的某笔订单发起售后申请，提交后进入人工审核。"
-                        + "只有已签收的订单能申请：签收七天内任何理由都收，第 8 到 15 天只收质量问题且仅限退货退款或换货，"
-                        + "超过 15 天走保修。落在哪一档由本工具按签收时间判定，不要自行推算天数。"
-                        + "提交前先用订单查询确认订单状态与商品型号，售后类型和原因取自用户明确说明")
+                .description("为当前登录用户某笔订单中的一个商品行发起售后申请，提交后进入人工审核，结果以审核为准。"
+                        + "只受理已签收的订单，受理档位由本工具按签收时间判定：签收后七个自然日内受理退货退款、换货和仅退款；"
+                        + "第 8 到 15 天为质量问题档，只受理退货退款和换货；超过 15 天不受理。"
+                        + "本工具只校验订单状态、受理档位、商品归属和重复申请，不判断申请是否符合退换政策、是否属于质量问题。"
+                        + "订单号与商品型号取自订单查询")
                 .inputSchema(inputSchema)
                 .annotations(McpToolAnnotations.WRITE)
                 .build();
@@ -183,13 +184,13 @@ public class BitAfterSaleApplyMcpExecutor {
 
     private CallToolResult validate(String orderNo, String skuCode, String type, String reason) {
         if (orderNo == null || skuCode == null) {
-            return BitToolSupport.rejected("订单号与商品型号都要有，先用订单查询确认是哪一单的哪一件");
+            return BitToolSupport.rejected("订单号与商品型号都要有，二者取自订单查询");
         }
         if (type == null || !TYPES.contains(type)) {
             return BitToolSupport.rejected("售后类型缺失或不受支持，可选值：" + String.join("、", TYPES));
         }
         if (reason == null) {
-            return BitToolSupport.rejected("申请原因为必填项，请向用户确认具体问题后再提交");
+            return BitToolSupport.rejected("申请原因为必填项，未提交售后申请");
         }
         return null;
     }
@@ -197,48 +198,51 @@ public class BitAfterSaleApplyMcpExecutor {
     /**
      * 窗口按 receive_time 现算，不采信模型算出来的天数
      * <p>
-     * 三档：七天内任何理由都收，第 8 到 15 天只收质量问题，超 15 天走保修
-     * 服务端只重算窗口与类型，判不了「是不是质量问题」——那正是要检测的原因
+     * 三档：七天内三种类型都收，第 8 到 15 天只收退货退款与换货，超 15 天不受理
+     * 服务端只重算窗口与类型，判不了「是不是质量问题」「商品是否完好」——那是审核与检测的事，政策条款归知识库
      */
     private CallToolResult checkEligible(String orderNo, OrderDO order, String type) {
         if (!"已签收".equals(order.getStatus())) {
-            String guide = switch (order.getStatus()) {
-                case BitOrderReleaser.STATUS_PENDING -> "这单还没支付，不需要走售后，直接取消即可";
-                case BitOrderReleaser.STATUS_PAID -> "这单还没发货，取消订单比走售后快";
-                case "已发货" -> "包裹还在路上，可以拒收，或等签收后再申请售后";
-                default -> "订单已取消，不需要再走售后";
+            String action = switch (order.getStatus()) {
+                case BitOrderReleaser.STATUS_PENDING, BitOrderReleaser.STATUS_PAID -> "，该状态下可以取消订单";
+                default -> "";
             };
-            return BitToolSupport.rejected(
-                    String.format("订单 %s 当前状态是%s，未提交售后申请。%s", orderNo, order.getStatus(), guide));
+            return BitToolSupport.rejected(String.format("订单 %s 当前状态是%s，未提交售后申请。售后只受理已签收的订单%s",
+                    orderNo, order.getStatus(), action));
         }
         if (order.getReceiveTime() == null) {
             return BitToolSupport.rejected(
-                    String.format("订单 %s 没有签收时间，无法判定七天无理由窗口，请转人工处理", orderNo));
+                    String.format("订单 %s 没有签收时间，无法判定受理档位，未提交售后申请", orderNo));
         }
         LocalDate today = BitToolSupport.today();
         long days = BitToolSupport.daysSince(order.getReceiveTime());
-        if (today.isAfter(BitToolSupport.windowDeadline(order.getReceiveTime(), BitToolSupport.QUALITY_WINDOW_DAYS))) {
+        LocalDate noReasonEnd = BitToolSupport.windowDeadline(order.getReceiveTime(), BitToolSupport.RETURN_WINDOW_DAYS);
+        LocalDate qualityEnd = BitToolSupport.windowDeadline(order.getReceiveTime(), BitToolSupport.QUALITY_WINDOW_DAYS);
+        if (today.isAfter(qualityEnd)) {
             return BitToolSupport.rejected(String.format(
-                    "订单 %s 已签收 %d 天，七天无理由与十五天质量问题两个窗口都已过，未提交售后申请。"
-                            + "商品还在保修期内的话可以走保修，需要的话可以帮用户转人工",
-                    orderNo, days));
+                    "订单 %s 已签收 %d 天，七天与十五天两个受理档位都已过（%s 24:00 截止），未提交售后申请",
+                    orderNo, days, qualityEnd));
         }
-        if (today.isAfter(BitToolSupport.windowDeadline(order.getReceiveTime(), BitToolSupport.RETURN_WINDOW_DAYS))
-                && !QUALITY_TYPES.contains(type)) {
+        if (today.isAfter(noReasonEnd) && !QUALITY_TYPES.contains(type)) {
             return BitToolSupport.rejected(String.format(
-                    "订单 %s 已签收 %d 天，七天无理由窗口已过，这一档只受理质量问题，未提交售后申请。"
-                            + "可用的类型是%s；如果是货没收到，请改走转人工",
-                    orderNo, days, String.join("、", QUALITY_TYPES)));
+                    "订单 %s 已签收 %d 天，处于质量问题档（%s 24:00 截止），只受理%s，未提交售后申请",
+                    orderNo, days, qualityEnd, String.join("、", QUALITY_TYPES)));
         }
         return null;
     }
 
     /**
-     * 走到这里已经保证已签收且有签收时间，超 15 天的在 checkEligible 就被挡掉了
+     * 受理档位连同截止日一起报；走到这里已经保证已签收且有签收时间，超 15 天的在 checkEligible 就被挡掉了
+     * <p>
+     * 只报档位不报「按七天无理由处理」：七天内的质量问题也落在这一档，能不能退由审核、验收或检测决定
      */
-    private Window windowOf(OrderDO order) {
-        LocalDate noReasonDeadline = BitToolSupport.windowDeadline(order.getReceiveTime(), BitToolSupport.RETURN_WINDOW_DAYS);
-        return BitToolSupport.today().isAfter(noReasonDeadline) ? Window.QUALITY : Window.NO_REASON;
+    private String windowOf(OrderDO order) {
+        LocalDate noReasonEnd = BitToolSupport.windowDeadline(order.getReceiveTime(), BitToolSupport.RETURN_WINDOW_DAYS);
+        if (!BitToolSupport.today().isAfter(noReasonEnd)) {
+            return String.format("签收七天内（%s 24:00 截止）", noReasonEnd);
+        }
+        return String.format("签收第 8 到 15 天，质量问题档（%s 24:00 截止）",
+                BitToolSupport.windowDeadline(order.getReceiveTime(), BitToolSupport.QUALITY_WINDOW_DAYS));
     }
 
     /**
@@ -266,44 +270,23 @@ public class BitAfterSaleApplyMcpExecutor {
         return String.format("AS%s%03d", orderNo, existing + 1);
     }
 
+    /**
+     * 回执只报写进库里的事实和受理档位；后续流程、时效和退换条件归知识库，怎么跟用户说归 Agent
+     */
     private String buildReceipt(String afterSaleNo, String orderNo, OrderItemDO item,
-                                String type, String reason, Window window) {
-        String next = switch (type) {
-            case "退货退款" -> "审核通过后会给出寄回地址，货到并验收后原路退款";
-            case "换货" -> "审核通过后会安排上门取件，换出的新品在旧品验收后寄出";
-            default -> "审核通过后原路退款，一般 1 至 3 个工作日到账";
-        };
-        String basis = window == Window.QUALITY
-                ? "质量问题售后（已签收超过七天，需经检测确认）"
-                : "七天无理由";
-        // 这一档能不能退是检测说了算，回执里先把话堵住，别让模型替检测下结论
-        String caveat = window == Window.QUALITY
-                ? "能否退货或换货以检测结论为准，不要向用户承诺一定能退。"
-                : "";
+                                String type, String reason, String window) {
         return String.format("""
-                售后申请已提交
+                售后申请已提交，等待人工审核
 
                 售后单号: %s
                 订单号: %s
                 商品: %s（%s）
                 类型: %s
-                受理依据: %s
+                受理档位: %s
                 原因: %s
                 状态: 待处理
 
-                %s。%s请把售后单号告知用户，后续可用售后进度查询跟进""",
-                afterSaleNo, orderNo, item.getSkuName(), item.getSkuCode(), type, basis, reason, next, caveat);
+                审核结果与后续处理以人工审核为准，进度可用售后进度查询跟进""",
+                afterSaleNo, orderNo, item.getSkuName(), item.getSkuCode(), type, window, reason);
     }
-
-    /**
-     * 签收后的两段受理窗口
-     */
-    private enum Window {
-
-        NO_REASON,
-
-        QUALITY
-    }
-
-
 }

@@ -88,8 +88,7 @@ public class BitOrderAddressMcpExecutor {
         return Tool.builder()
                 .name(TOOL_ID)
                 .description("修改当前登录用户某笔订单的收货信息，只有待支付和已支付待发货的订单能改，"
-                        + "已发货之后改不动。收货人、手机号、地址三项按用户明确说明的填，"
-                        + "没说要改的那几项不要传，传了就会覆盖原值")
+                        + "已发货之后改不动。收货人、手机号、地址只传要修改的项，传了就会覆盖原值")
                 .inputSchema(inputSchema)
                 .annotations(McpToolAnnotations.WRITE)
                 .build();
@@ -147,17 +146,17 @@ public class BitOrderAddressMcpExecutor {
             return BitToolSupport.rejected("没有要修改的内容，收货人、手机号、地址至少提供一项");
         }
         if (phone != null && !phone.matches(PHONE_PATTERN)) {
-            return BitToolSupport.rejected("收货手机号格式不正确，请向用户确认完整号码后再提交");
+            return BitToolSupport.rejected("收货手机号格式不正确，收货信息未修改");
         }
         if (address != null && address.length() < MIN_ADDRESS_LENGTH) {
-            return BitToolSupport.rejected("收货地址太短，需要省市区与详细门牌号，请向用户确认完整地址");
+            return BitToolSupport.rejected("收货地址太短，需要省市区与详细门牌号，收货信息未修改");
         }
         return null;
     }
 
     private String unmodifiable(String orderNo, String status) {
         String guide = switch (status) {
-            case "已发货" -> "包裹已经出库，改地址已经来不及，可以拒收后重新下单，或直接联系快递改派";
+            case "已发货" -> "包裹已经出库，订单里的收货信息不能再修改";
             case "已签收" -> "订单已签收，收货信息不再可改";
             default -> "订单已取消，收货信息不再可改";
         };

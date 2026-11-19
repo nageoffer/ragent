@@ -23,8 +23,14 @@ import com.nageoffer.ai.ragent.rag.core.prompt.PromptTemplateLoader;
 import com.nageoffer.ai.ragent.rag.dao.entity.IntentNodeDO;
 import com.nageoffer.ai.ragent.rag.dao.mapper.IntentNodeMapper;
 import com.nageoffer.ai.ragent.rag.enums.IntentKind;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
@@ -61,6 +67,34 @@ class DefaultIntentClassifierTest {
     private DefaultIntentClassifier classifier;
     private OrchestrationProperties orchestrationProperties;
 
+    private ListAppender<ILoggingEvent> appender;
+    private Logger classifierLogger;
+
+    @BeforeEach
+    void attachAppender() {
+        appender = new ListAppender<>();
+        appender.start();
+        classifierLogger = (Logger) LoggerFactory.getLogger(DefaultIntentClassifier.class);
+        classifierLogger.addAppender(appender);
+    }
+
+    @AfterEach
+    void detachAppender() {
+        classifierLogger.detachAppender(appender);
+        appender.stop();
+    }
+
+    private boolean logContains(String fragment) {
+        return appender.list.stream()
+                .anyMatch(event -> event.getFormattedMessage().contains(fragment));
+    }
+
+    private void stubSingleKbCandidate() {
+        when(intentTreeCacheManager.getIntentTreeFromCache()).thenReturn(List.of(
+                IntentNode.builder().id("kb-return").name("退换货政策").kind(IntentKind.KB).build()));
+        when(promptTemplateLoader.render(anyString(), anyMap())).thenReturn("system-prompt");
+    }
+
     @BeforeEach
     void setUp() {
         orchestrationProperties = new OrchestrationProperties();
@@ -71,6 +105,19 @@ class DefaultIntentClassifierTest {
                 intentTreeCacheManager,
                 orchestrationProperties
         );
+    }
+
+    @Test
+    @DisplayName("模型没返 JSON 时记 PARSE_ERROR 降级，不能写成「完成, 命中数=0」")
+    void parseFailureIsLoggedAsDegradationNotCompletion() {
+        stubSingleKbCandidate();
+        // 实测触发形态：模型用中文散文开头作答，JsonParser 当场抛异常（见 jev-eval 第 10/11/30 题）
+        when(llmService.chat(any())).thenReturn("这是一个关于跨平台数据迁移的问题。");
+
+        assertTrue(classifier.classifyTargets("安卓微信怎么迁到 iPhone").isEmpty());
+
+        assertTrue(logContains("原因=PARSE_ERROR"),
+                "解析失败必须留下降级证据，否则会被读成模型有意判断无匹配");
     }
 
     @Test
@@ -105,6 +152,29 @@ class DefaultIntentClassifierTest {
         ArgumentCaptor<Map<String, String>> captor = ArgumentCaptor.forClass(Map.class);
         verify(promptTemplateLoader).render(anyString(), captor.capture());
         assertTrue(captor.getValue().get("intent_list").contains("examples=回答得不错 / 你答错了"));
+    }
+
+    @Test
+    void listClassifiableNodesIsModeAwareAndSharedByBothStrategies() {
+        IntentNode kb = IntentNode.builder().id("kb-return").name("退换货政策").kind(IntentKind.KB).build();
+        IntentNode mcp = IntentNode.builder().id("mcp-cancel").name("取消订单").kind(IntentKind.MCP)
+                .mcpToolId("cancel_order").build();
+        IntentNode system = IntentNode.builder().id("sys-greeting").name("打招呼").kind(IntentKind.SYSTEM).build();
+        when(intentTreeCacheManager.getIntentTreeFromCache()).thenReturn(List.of(kb, mcp, system));
+
+        orchestrationProperties.setType("agent");
+        assertEquals(List.of("kb-return"),
+                classifier.listClassifiableNodes().stream().map(IntentNode::getId).toList(),
+                "Agent 模式只分类 KB 叶子");
+
+        orchestrationProperties.setType("workflow");
+        assertEquals(List.of("kb-return", "sys-greeting"),
+                classifier.listClassifiableNodes().stream().map(IntentNode::getId).sorted().toList(),
+                "Workflow 额外保留 SYSTEM");
+
+        assertEquals(List.of("mcp-cancel"),
+                classifier.listMcpToolNodes().stream().map(IntentNode::getId).toList(),
+                "MCP 工具发现与分类候选是两套读取，互不影响");
     }
 
     @Test
