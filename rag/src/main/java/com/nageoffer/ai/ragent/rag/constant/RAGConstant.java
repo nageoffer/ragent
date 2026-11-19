@@ -102,6 +102,15 @@ public class RAGConstant {
     public static final String ANSWER_CITATION_RULES_PROMPT_PATH = "prompt/answer-citation-rules.st";
 
 
+    /**
+     * 知识库检索为空的兜底提示词模板路径
+     * <p>
+     * 检索不到依据时不再回一句固定文案，而是带着这段约束走一次通用对话，
+     * 让模型如实说明没有找到，并引导用户补充信息
+     */
+    public static final String NO_EVIDENCE_RESPONSE_PROMPT_PATH = "prompt/no-evidence-response.st";
+
+
     // ==================== 上下文格式化模板（单文件多 section） ====================
 
     /**
