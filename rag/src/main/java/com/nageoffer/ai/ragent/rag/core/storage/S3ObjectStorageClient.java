@@ -244,11 +244,19 @@ public class S3ObjectStorageClient implements ObjectStorageClient {
                 String errorBody = readErrorStream(conn);
                 throw new IOException(String.format(
                         "S3 流式上传失败: HTTP %d, url=%s, body=%s",
-                        code, presignedReq.url(), errorBody));
+                        code, safeUploadTarget(presignedReq), errorBody));
             }
         } finally {
             conn.disconnect();
         }
+    }
+
+    /**
+     * 预签名 URL 的查询参数包含临时凭据与签名，异常会进入日志和失败审计，排障信息只能保留请求目标
+     */
+    private String safeUploadTarget(PresignedPutObjectRequest presignedReq) {
+        var url = presignedReq.url();
+        return url.getProtocol() + "://" + url.getAuthority() + url.getPath();
     }
 
     private String readErrorStream(HttpURLConnection conn) {
