@@ -64,6 +64,11 @@ public enum ModelProvider {
     KIMI("kimi"),
 
     /**
+     * Atlas Cloud OpenAI-compatible model service
+     */
+    ATLAS_CLOUD("atlascloud"),
+
+    /**
      * ZenMux 聚合网关
      */
     ZENMUX("zenmux"),
