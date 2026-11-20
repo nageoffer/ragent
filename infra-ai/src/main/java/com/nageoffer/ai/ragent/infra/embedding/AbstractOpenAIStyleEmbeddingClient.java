@@ -183,9 +183,16 @@ public abstract class AbstractOpenAIStyleEmbeddingClient implements EmbeddingCli
                     provider() + " embedding 响应中缺少 data 数组",
                     ModelClientErrorType.INVALID_RESPONSE, null);
         }
+        if (data.size() != texts.size()) {
+            throw new ModelClientException(
+                    provider() + " embedding 响应条数不匹配: expected=" + texts.size() + ", actual=" + data.size(),
+                    ModelClientErrorType.INVALID_RESPONSE, null);
+        }
 
-        List<List<Float>> results = new ArrayList<>(data.size());
-        for (JsonElement el : data) {
+        boolean indexed = data.get(0).getAsJsonObject().has("index");
+        List<List<Float>> results = new ArrayList<>(Collections.nCopies(texts.size(), null));
+        for (int responseIndex = 0; responseIndex < data.size(); responseIndex++) {
+            JsonElement el = data.get(responseIndex);
             JsonObject obj = el.getAsJsonObject();
             JsonArray emb = obj.getAsJsonArray("embedding");
             if (emb == null || emb.isEmpty()) {
@@ -197,9 +204,39 @@ public abstract class AbstractOpenAIStyleEmbeddingClient implements EmbeddingCli
             for (JsonElement v : emb) {
                 vector.add(v.getAsFloat());
             }
-            results.add(vector);
+
+            boolean hasIndex = obj.has("index") && !obj.get("index").isJsonNull();
+            if (hasIndex != indexed) {
+                throw new ModelClientException(
+                        provider() + " embedding 响应中的 index 字段不一致",
+                        ModelClientErrorType.INVALID_RESPONSE, null);
+            }
+            int resultIndex = indexed ? parseResultIndex(obj, texts.size()) : responseIndex;
+            if (results.get(resultIndex) != null) {
+                throw new ModelClientException(
+                        provider() + " embedding 响应包含重复 index: " + resultIndex,
+                        ModelClientErrorType.INVALID_RESPONSE, null);
+            }
+            results.set(resultIndex, vector);
         }
 
         return results;
+    }
+
+    private int parseResultIndex(JsonObject item, int expectedSize) {
+        int index;
+        try {
+            index = item.get("index").getAsInt();
+        } catch (RuntimeException e) {
+            throw new ModelClientException(
+                    provider() + " embedding 响应包含无效 index",
+                    ModelClientErrorType.INVALID_RESPONSE, null, e);
+        }
+        if (index < 0 || index >= expectedSize) {
+            throw new ModelClientException(
+                    provider() + " embedding 响应 index 越界: " + index,
+                    ModelClientErrorType.INVALID_RESPONSE, null);
+        }
+        return index;
     }
 }
