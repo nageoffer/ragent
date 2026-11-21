@@ -56,6 +56,7 @@ public class ChatQueueLimiter {
 
     private final FairDistributedRateLimiter chatRateLimiter;
     private final Executor chatEntryExecutor;
+    private final Executor chatRejectExecutor;
     private final RAGRateLimitProperties rateLimitProperties;
     private final ConversationMemoryService memoryService;
     private final ConversationGroupService conversationGroupService;
@@ -77,6 +78,7 @@ public class ChatQueueLimiter {
                 .onAcquired(TtlRunnable.get(onAcquire))
                 .onTimeout(TtlRunnable.get(() -> handleReject(question, conversationId, emitter)))
                 .onAcquiredExecutor(chatEntryExecutor)
+                .onTimeoutExecutor(chatRejectExecutor)
                 .cancelBinder(cancel -> {
                     emitter.onCompletion(cancel);
                     emitter.onTimeout(cancel);
