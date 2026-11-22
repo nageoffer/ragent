@@ -24,7 +24,9 @@ import com.nageoffer.ai.ragent.knowledge.dao.mapper.KnowledgeBaseMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 有效知识库 collection 提供者
@@ -43,15 +45,34 @@ public class KbCollectionProvider {
      * 返回所有有效知识库的 collection 名称（去重、去空）
      */
     public List<String> listActiveCollections() {
-        List<KnowledgeBaseDO> kbList = knowledgeBaseMapper.selectList(
-                Wrappers.lambdaQuery(KnowledgeBaseDO.class)
-                        .select(KnowledgeBaseDO::getCollectionName)
-                        .eq(KnowledgeBaseDO::getDeleted, 0)
-        );
-        return kbList.stream()
+        return selectActiveKnowledgeBases().stream()
                 .map(KnowledgeBaseDO::getCollectionName)
                 .filter(StrUtil::isNotBlank)
                 .distinct()
                 .toList();
+    }
+
+    /**
+     * 返回所有有效知识库的 collection → 绑定的 embedding 模型 id 映射（去重、去空 collection）
+     * <p>
+     * 检索侧生成 query 向量时必须使用目标库绑定的模型，否则 query 与库向量不在同一语义空间，
+     * 相似度计算无意义（issue #159）；未绑定模型（空白）的库映射值为空，由调用方回退默认优先级链
+     */
+    public Map<String, String> listActiveCollectionModels() {
+        Map<String, String> collectionModels = new LinkedHashMap<>();
+        for (KnowledgeBaseDO kb : selectActiveKnowledgeBases()) {
+            if (StrUtil.isNotBlank(kb.getCollectionName())) {
+                collectionModels.putIfAbsent(kb.getCollectionName(), kb.getEmbeddingModel());
+            }
+        }
+        return collectionModels;
+    }
+
+    private List<KnowledgeBaseDO> selectActiveKnowledgeBases() {
+        return knowledgeBaseMapper.selectList(
+                Wrappers.lambdaQuery(KnowledgeBaseDO.class)
+                        .select(KnowledgeBaseDO::getCollectionName, KnowledgeBaseDO::getEmbeddingModel)
+                        .eq(KnowledgeBaseDO::getDeleted, 0)
+        );
     }
 }
