@@ -17,13 +17,16 @@
 
 package com.nageoffer.ai.ragent.mcp.executor.bit;
 
+import com.nageoffer.ai.ragent.mcp.dao.result.AfterSaleDetailResult;
 import org.junit.jupiter.api.Test;
 
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 /**
  * 订单列表的表头必须让模型分得清「这是全部」还是「只列了一部分」
@@ -46,6 +49,29 @@ class BitOrderQueryMcpExecutorTest {
         assertEquals("近 3 个月没有订单；更早的购买可把 months 调大（最多 24）再查",
                 BitOrderQueryMcpExecutor.listHeader(3, 0, 0));
         assertEquals("近 24 个月没有订单", BitOrderQueryMcpExecutor.listHeader(24, 0, 0));
+    }
+
+    /**
+     * 售后窗口按原订单签收时间算；同一商品行有已完成的换货单时，换回来的新品期限另按知识库，回执要点明
+     */
+    @Test
+    void exchangedLineWarnsWindowIsForOriginalOrder() {
+        assertEquals("该商品行已有已完成的换货单 AS1（MG6W4CH/A），上面的窗口按原订单签收时间计算；"
+                        + "换回新品的 7 天、15 天退换期限需人工核实，同单其他商品不受影响",
+                BitOrderQueryMcpExecutor.exchangeNotice(List.of(
+                        sale("AS1", "MG6W4CH/A", "换货", "已完成"),
+                        sale("AS2", "MX2D3CH/A", "换货", "处理中"),
+                        sale("AS3", "MH304CH/A", "退货退款", "已完成"))));
+        assertNull(BitOrderQueryMcpExecutor.exchangeNotice(List.of(sale("AS2", "MX2D3CH/A", "换货", "处理中"))));
+    }
+
+    private static AfterSaleDetailResult sale(String no, String skuCode, String type, String status) {
+        AfterSaleDetailResult row = new AfterSaleDetailResult();
+        row.setAfterSaleNo(no);
+        row.setSkuCode(skuCode);
+        row.setType(type);
+        row.setStatus(status);
+        return row;
     }
 
     /**

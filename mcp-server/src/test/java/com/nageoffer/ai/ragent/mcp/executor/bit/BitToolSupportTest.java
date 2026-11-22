@@ -64,26 +64,26 @@ class BitToolSupportTest {
     @Test
     void qualityWindowCountsCalendarDays() {
         // 签收 09:37，截止日仍是第 15 个自然日 11-07，11-02 之后还有 5 天
-        assertEquals("售后窗口: 已签收 10 天；七天无理由已于 2026-10-30 截止；十五天质量问题 2026-11-07 24:00 截止（今天之后还有 5 天）",
+        assertEquals("原订单售后窗口: 已签收 10 天；七天无理由已于 2026-10-30 截止；十五天质量问题 2026-11-07 24:00 截止（今天之后还有 5 天）",
                 BitToolSupport.returnWindow(at("2026-10-23T09:37"), LocalDate.parse("2026-11-02")));
         // 截止日 11-03，11-02 之后还剩 11-03 当天可以申请
-        assertEquals("售后窗口: 已签收 14 天；七天无理由已于 2026-10-26 截止；十五天质量问题 2026-11-03 24:00 截止（今天之后还有 1 天）",
+        assertEquals("原订单售后窗口: 已签收 14 天；七天无理由已于 2026-10-26 截止；十五天质量问题 2026-11-03 24:00 截止（今天之后还有 1 天）",
                 BitToolSupport.returnWindow(at("2026-10-19T09:30"), LocalDate.parse("2026-11-02")));
     }
 
     @Test
     void noReasonWindowListsBothDeadlines() {
-        assertEquals("售后窗口: 已签收 3 天；七天无理由 2026-11-06 24:00 截止（今天之后还有 4 天）；十五天质量问题 2026-11-14 24:00 截止",
+        assertEquals("原订单售后窗口: 已签收 3 天；七天无理由 2026-11-06 24:00 截止（今天之后还有 4 天）；十五天质量问题 2026-11-14 24:00 截止",
                 BitToolSupport.returnWindow(at("2026-10-30T21:00"), LocalDate.parse("2026-11-02")));
     }
 
     @Test
     void lastDayAndExpired() {
-        assertEquals("售后窗口: 已签收 7 天；七天无理由 2026-11-02 24:00 截止（今天是最后一天）；十五天质量问题 2026-11-10 24:00 截止",
+        assertEquals("原订单售后窗口: 已签收 7 天；七天无理由 2026-11-02 24:00 截止（今天是最后一天）；十五天质量问题 2026-11-10 24:00 截止",
                 BitToolSupport.returnWindow(at("2026-10-26T18:00"), LocalDate.parse("2026-11-02")));
-        assertEquals("售后窗口: 已签收 15 天；七天无理由已于 2026-10-26 截止；十五天质量问题 2026-11-03 24:00 截止（今天是最后一天）",
+        assertEquals("原订单售后窗口: 已签收 15 天；七天无理由已于 2026-10-26 截止；十五天质量问题 2026-11-03 24:00 截止（今天是最后一天）",
                 BitToolSupport.returnWindow(at("2026-10-19T09:30"), LocalDate.parse("2026-11-03")));
-        assertEquals("售后窗口: 已签收 16 天；七天无理由与十五天质量问题窗口都已过（2026-11-03 截止）",
+        assertEquals("原订单售后窗口: 已签收 16 天；七天无理由已于 2026-10-26 截止；十五天质量问题已于 2026-11-03 截止",
                 BitToolSupport.returnWindow(at("2026-10-19T09:30"), LocalDate.parse("2026-11-04")));
     }
 }

@@ -172,15 +172,15 @@ final class BitToolSupport {
         LocalDate noReasonEnd = windowDeadline(receiveTime, RETURN_WINDOW_DAYS);
         LocalDate qualityEnd = windowDeadline(receiveTime, QUALITY_WINDOW_DAYS);
         if (!today.isAfter(noReasonEnd)) {
-            return String.format("售后窗口: 已签收 %d 天；七天无理由 %s 24:00 截止（%s）；十五天质量问题 %s 24:00 截止",
+            return String.format("原订单售后窗口: 已签收 %d 天；七天无理由 %s 24:00 截止（%s）；十五天质量问题 %s 24:00 截止",
                     signedDays, noReasonEnd, daysLeft(today, noReasonEnd), qualityEnd);
         }
         if (!today.isAfter(qualityEnd)) {
-            return String.format("售后窗口: 已签收 %d 天；七天无理由已于 %s 截止；十五天质量问题 %s 24:00 截止（%s）",
+            return String.format("原订单售后窗口: 已签收 %d 天；七天无理由已于 %s 截止；十五天质量问题 %s 24:00 截止（%s）",
                     signedDays, noReasonEnd, qualityEnd, daysLeft(today, qualityEnd));
         }
-        return String.format("售后窗口: 已签收 %d 天；七天无理由与十五天质量问题窗口都已过（%s 截止）",
-                signedDays, qualityEnd);
+        return String.format("原订单售后窗口: 已签收 %d 天；七天无理由已于 %s 截止；十五天质量问题已于 %s 截止",
+                signedDays, noReasonEnd, qualityEnd);
     }
 
     private static String daysLeft(LocalDate today, LocalDate deadline) {

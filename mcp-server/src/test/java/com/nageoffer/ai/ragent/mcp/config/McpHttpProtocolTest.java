@@ -17,6 +17,7 @@
 
 package com.nageoffer.ai.ragent.mcp.config;
 
+import com.nageoffer.ai.ragent.mcp.dao.mapper.AfterSaleMapper;
 import com.nageoffer.ai.ragent.mcp.dao.mapper.OrderItemMapper;
 import com.nageoffer.ai.ragent.mcp.dao.mapper.OrderMapper;
 import com.nageoffer.ai.ragent.mcp.executor.McpToolResults;
@@ -99,14 +100,19 @@ class McpHttpProtocolTest {
         }
 
         @Bean
+        AfterSaleMapper afterSaleMapper() {
+            return mock(AfterSaleMapper.class);
+        }
+
+        @Bean
         McpServerFeatures.SyncToolSpecification currentDateToolSpecification() {
             return new CurrentDateMcpExecutor().currentDateToolSpecification();
         }
 
         @Bean
         McpServerFeatures.SyncToolSpecification queryOrderToolSpecification(
-                OrderMapper orderMapper, OrderItemMapper orderItemMapper) {
-            return new BitOrderQueryMcpExecutor(orderMapper, orderItemMapper).queryOrderToolSpecification();
+                OrderMapper orderMapper, OrderItemMapper orderItemMapper, AfterSaleMapper afterSaleMapper) {
+            return new BitOrderQueryMcpExecutor(orderMapper, orderItemMapper, afterSaleMapper).queryOrderToolSpecification();
         }
     }
 }

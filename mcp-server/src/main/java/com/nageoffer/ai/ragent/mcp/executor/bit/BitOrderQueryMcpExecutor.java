@@ -22,8 +22,10 @@ import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.nageoffer.ai.ragent.mcp.dao.entity.OrderDO;
 import com.nageoffer.ai.ragent.mcp.dao.entity.OrderItemDO;
+import com.nageoffer.ai.ragent.mcp.dao.mapper.AfterSaleMapper;
 import com.nageoffer.ai.ragent.mcp.dao.mapper.OrderItemMapper;
 import com.nageoffer.ai.ragent.mcp.dao.mapper.OrderMapper;
+import com.nageoffer.ai.ragent.mcp.dao.result.AfterSaleDetailResult;
 import com.nageoffer.ai.ragent.mcp.config.McpToolAnnotations;
 import com.nageoffer.ai.ragent.mcp.executor.McpToolResults;
 import com.nageoffer.ai.ragent.mcp.executor.McpToolSchema;
@@ -67,8 +69,14 @@ public class BitOrderQueryMcpExecutor {
      */
     private static final int LIST_SIZE = 20;
 
+    /**
+     * 一单的售后单数量有限，取够判断换货即可
+     */
+    private static final int AFTER_SALE_LIMIT = 20;
+
     private final OrderMapper orderMapper;
     private final OrderItemMapper orderItemMapper;
+    private final AfterSaleMapper afterSaleMapper;
 
     @Bean
     public McpServerFeatures.SyncToolSpecification queryOrderToolSpecification() {
@@ -89,7 +97,7 @@ public class BitOrderQueryMcpExecutor {
                 .name(TOOL_ID)
                 .description("查询当前登录用户的订单，只能查本账号名下的，不能按手机号、姓名或其他账号查。"
                         + "传订单号返回单笔详情，含状态、下单支付发货签收四个时间、"
-                        + "商品明细、金额与是否用券、运单号、收货信息，已签收的还会给出售后窗口的截止日期与剩余天数；"
+                        + "商品明细、金额与是否用券、运单号、收货信息，已签收的还会给出原订单售后窗口的截止日期与剩余天数，同一商品行换过货的会注明换回新品的期限需人工核实；"
                         + "不传订单号返回近几个月的订单列表，按下单时间倒序最多列 20 笔，并给出这段时间的订单总数。"
                         + "运单号只能从这里取得")
                 .inputSchema(inputSchema)
@@ -166,8 +174,27 @@ public class BitOrderQueryMcpExecutor {
 
         if (head.getReceiveTime() != null) {
             sb.append("\n").append(BitToolSupport.returnWindow(head.getReceiveTime(), BitToolSupport.today())).append("\n");
+            String notice = exchangeNotice(afterSaleMapper.selectDetails(userId, null, head.getOrderNo(), AFTER_SALE_LIMIT));
+            if (notice != null) {
+                sb.append(notice).append("\n");
+            }
         }
         return sb.toString().trim();
+    }
+
+    /**
+     * 换过货的商品行，原订单窗口不适用于换回来的新品；没有已完成的换货单返回 null
+     */
+    static String exchangeNotice(List<AfterSaleDetailResult> sales) {
+        List<String> exchanged = sales.stream()
+                .filter(row -> "换货".equals(row.getType()) && "已完成".equals(row.getStatus()))
+                .map(row -> row.getAfterSaleNo() + "（" + row.getSkuCode() + "）")
+                .toList();
+        if (exchanged.isEmpty()) {
+            return null;
+        }
+        return "该商品行已有已完成的换货单 " + String.join("、", exchanged) + "，上面的窗口按原订单签收时间计算；"
+                + "换回新品的 7 天、15 天退换期限需人工核实，同单其他商品不受影响";
     }
 
     private String queryRecent(String userId, int months) {

@@ -93,13 +93,21 @@ public class BitCartQueryMcpExecutor {
         }
     }
 
+    /**
+     * 一种商品可以有多件，只报行数会被读成总件数
+     */
+    static String header(List<CartLineResult> lines) {
+        int pieces = lines.stream().mapToInt(CartLineResult::getQuantity).sum();
+        return String.format("【购物车 %d 种商品，共 %d 件】", lines.size(), pieces);
+    }
+
     private String buildResult(List<CartLineResult> lines) {
         if (lines.isEmpty()) {
             return "购物车是空的";
         }
 
         StringBuilder sb = new StringBuilder();
-        sb.append(String.format("【购物车 %d 件商品】%n", lines.size()));
+        sb.append(header(lines)).append('\n');
 
         // 品类小计单独给一份：品类券能不能用要按品类金额判，让模型自己加容易错
         Map<String, BigDecimal> categoryAmount = new TreeMap<>();

@@ -220,8 +220,8 @@ public class BitAfterSaleApplyMcpExecutor {
         LocalDate qualityEnd = BitToolSupport.windowDeadline(order.getReceiveTime(), BitToolSupport.QUALITY_WINDOW_DAYS);
         if (today.isAfter(qualityEnd)) {
             return BitToolSupport.rejected(String.format(
-                    "订单 %s 已签收 %d 天，七天与十五天两个受理档位都已过（%s 24:00 截止），未提交售后申请",
-                    orderNo, days, qualityEnd));
+                    "订单 %s 已签收 %d 天，七天无理由已于 %s 截止、十五天质量问题已于 %s 截止，未提交售后申请",
+                    orderNo, days, noReasonEnd, qualityEnd));
         }
         if (today.isAfter(noReasonEnd) && !QUALITY_TYPES.contains(type)) {
             return BitToolSupport.rejected(String.format(
