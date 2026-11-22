@@ -203,7 +203,7 @@ public class AgentProfileAdminServiceImpl implements AgentProfileAdminService {
             bizNo = "{{#id}}"
     )
     public void activate(String id) {
-        AgentProfileDO target = mustLoad(id);
+        mustLoad(id);
 
         // 显式 set 清零，不依赖 Builder + update(entity, wrapper) 的 NOT_NULL 策略
         agentProfileMapper.update(null,
@@ -211,8 +211,8 @@ public class AgentProfileAdminServiceImpl implements AgentProfileAdminService {
                         .set(AgentProfileDO::getActive, 0)
                         .eq(AgentProfileDO::getActive, 1));
 
-        target.setActive(1);
-        agentProfileMapper.updateById(target);
+        // 只写 active：整行写回会把并发刚保存的名称、描述改回读出时的旧值
+        agentProfileMapper.updateById(AgentProfileDO.builder().id(id).active(1).build());
         cacheManager.clearCache();
     }
 
