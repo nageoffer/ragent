@@ -46,11 +46,12 @@ public enum AgentPromptSlot {
     /**
      * 唯一一个不进对话消息的槽位：它随工具定义下发，模型在调用前就要读懂
      */
-    KNOWLEDGE_TOOL_DESCRIPTION("知识库工具声明", Group.AGENT,
+    KNOWLEDGE_TOOL_DESCRIPTION("知识库问答", Group.AGENT,
             Set.of(OrchestrationMode.AGENT),
             "WorkFlow 模式不注册原生知识库工具",
             Set.of(),
-            "模型靠它判断要不要查知识库，此时还看不到检索结果；写清这个库覆盖哪类问题，不必在这里规定回答风格"),
+            "这段是发给主 Agent 的知识库工具声明，工具返回资料原文：写清这个库覆盖哪类问题、返回什么格式、"
+                    + "主 Agent 怎么读资料作答；资料边界守多严写在 Agent人设里"),
 
     AGENT_CONTEXT_COMPACTION("Agent上下文压缩", Group.AGENT,
             Set.of(OrchestrationMode.AGENT),
@@ -77,12 +78,9 @@ public enum AgentPromptSlot {
             "模型靠它判断这轮要不要整理记忆，此时还看不到整理结果；"
                     + "「记住」「忘掉」「清空全部」三类场景都要写到，具体记什么忘什么由抽取环节判断"),
 
-    /**
-     * 两种架构共用：WorkFlow 下由主链路合成，Agent 下由 RAG Tool 内部合成
-     */
-    KB_ANSWER("知识库应答", Group.COMMON,
-            Set.of(OrchestrationMode.WORKFLOW, OrchestrationMode.AGENT),
-            null,
+    KB_ANSWER("知识库应答", Group.WORKFLOW,
+            Set.of(OrchestrationMode.WORKFLOW),
+            "Agent 模式下知识库工具不写答案：工具说明改「知识库问答」，回答要求改「Agent人设」",
             Set.of()),
 
     /**

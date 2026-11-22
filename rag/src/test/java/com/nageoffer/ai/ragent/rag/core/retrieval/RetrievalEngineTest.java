@@ -36,9 +36,9 @@ import java.util.Set;
 
 import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.MULTI_CHANNEL_KEY;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -70,7 +70,7 @@ class RetrievalEngineTest {
                 MULTI_CHANNEL_KEY, List.of(globalChunk)
         ), result.getIntentChunks());
         assertEquals(Set.of("A"), result.getEligibleIntentIds());
-        verify(contextFormatter).formatKbContext(anyList(), eq(Set.of("A")), eq(List.of(chunkA, globalChunk)), anyInt());
+        verify(contextFormatter).formatKbContext(anyList(), eq(Set.of("A")), eq(List.of(chunkA, globalChunk)));
     }
 
     @Test
@@ -88,7 +88,7 @@ class RetrievalEngineTest {
 
         assertEquals(Set.of("A", "B"), result.getEligibleIntentIds());
         verify(contextFormatter).formatKbContext(
-                anyList(), eq(Set.of("A", "B")), eq(List.of(globalChunk)), anyInt());
+                anyList(), eq(Set.of("A", "B")), eq(List.of(globalChunk)));
     }
 
     @Test
@@ -121,7 +121,7 @@ class RetrievalEngineTest {
         when(multiChannel.retrieveKnowledgeChannels(
                 any(SubQuestionIntent.class), any(RetrievalBudget.class)))
                 .thenReturn(new KnowledgeRetrievalResult(List.of(supplement), Map.of(), Set.of("A")));
-        when(contextFormatter.formatKbContext(anyList(), any(), anyList(), anyInt()))
+        when(contextFormatter.formatKbContext(anyList(), any(), anyList()))
                 .thenReturn("补充资料上下文");
 
         RetrievalContext result = engine(multiChannel, contextFormatter).retrieve(List.of(
@@ -131,7 +131,7 @@ class RetrievalEngineTest {
         assertTrue(result.getEligibleIntentIds().isEmpty());
         assertEquals("补充资料上下文", result.getKbContext());
         assertEquals(List.of(supplement), result.getIntentChunks().get(MULTI_CHANNEL_KEY));
-        verify(contextFormatter).formatKbContext(anyList(), eq(Set.of()), eq(List.of(supplement)), anyInt());
+        verify(contextFormatter).formatKbContext(anyList(), eq(Set.of()), eq(List.of(supplement)));
     }
 
     @Test
@@ -165,6 +165,79 @@ class RetrievalEngineTest {
         assertEquals(Set.of("A"), result.getEligibleIntentIds());
     }
 
+    /**
+     * Agent 的资料要跨子问题去重，前提是每个子问题选中的分片都交出来，子问题之间重复的不在这里丢
+     */
+    @Test
+    void exposesEverySubQuestionsContextChunksInOrder() {
+        RetrievedChunk shared = chunk("shared", "两个问题都命中");
+        RetrievedChunk onlySecond = chunk("second", "只有问题二命中");
+        MultiChannelRetrievalEngine multiChannel = mock(MultiChannelRetrievalEngine.class);
+        when(multiChannel.retrieveKnowledgeChannels(any(SubQuestionIntent.class), any(RetrievalBudget.class)))
+                .thenReturn(
+                        new KnowledgeRetrievalResult(List.of(shared), Map.of(), Set.of()),
+                        new KnowledgeRetrievalResult(List.of(onlySecond, shared), Map.of(), Set.of()));
+
+        ContextFormatter contextFormatter = mock(ContextFormatter.class);
+
+        RetrievalContext result = engine(multiChannel, contextFormatter).retrieve(List.of(
+                new SubQuestionIntent("问题一", List.of()),
+                new SubQuestionIntent("问题二", List.of())));
+
+        assertEquals(List.of(shared, onlySecond, shared), result.getContextChunks());
+        // WorkFlow 的格式化器拿到同一份选片
+        verify(contextFormatter).formatKbContext(anyList(), any(), eq(List.of(shared)));
+        verify(contextFormatter).formatKbContext(anyList(), any(), eq(List.of(onlySecond, shared)));
+    }
+
+    /**
+     * 关掉精排时候选池比 topK 大：WorkFlow 上下文和 Agent 资料都只用前 topK 段，来源与评测读的 intentChunks 仍是整个候选池
+     */
+    @Test
+    void selectsTopKOnceForBothModesWhileIntentChunksKeepWholePool() {
+        RetrievedChunk battery = chunk("a", "左耳无声先确认电量");
+        RetrievedChunk reset = chunk("b", "仍无声时重置 AirPods Pro");
+        RetrievedChunk repair = chunk("c", "送修前在 iPhone 上取消配对");
+        MultiChannelRetrievalEngine multiChannel = mock(MultiChannelRetrievalEngine.class);
+        when(multiChannel.retrieveKnowledgeChannels(any(SubQuestionIntent.class), any(RetrievalBudget.class)))
+                .thenReturn(new KnowledgeRetrievalResult(List.of(battery, reset, repair), Map.of(), Set.of()));
+        SearchChannelProperties properties = new SearchChannelProperties();
+        properties.setDefaultTopK(2);
+        ContextFormatter contextFormatter = new DefaultContextFormatter(
+                new PromptTemplateLoader(new DefaultResourceLoader()), properties);
+
+        RetrievalContext result = engine(multiChannel, contextFormatter, properties).retrieve(List.of(
+                new SubQuestionIntent("AirPods Pro 左耳没声音怎么办", List.of())));
+
+        assertEquals(List.of(battery, reset), result.getContextChunks());
+        assertTrue(result.getKbContext().contains("左耳无声先确认电量"));
+        assertTrue(result.getKbContext().contains("仍无声时重置 AirPods Pro"));
+        assertFalse(result.getKbContext().contains("送修前在 iPhone 上取消配对"));
+        assertEquals(List.of(battery, reset, repair), result.getIntentChunks().get(MULTI_CHANNEL_KEY));
+    }
+
+    /**
+     * 「以旧换新怎么算」走全局检索零命中，候选意图仍算 eligible；「手机有多重」命中一段。
+     * 只有后者的意图进 evidencedIntentIds；eligibleIntentIds 两个都含，WorkFlow 按它挑规则
+     */
+    @Test
+    void evidencedIntentsSkipSubQuestionsWithoutChunks() {
+        RetrievedChunk weight = chunk("weight", "重量：170 克");
+        MultiChannelRetrievalEngine multiChannel = mock(MultiChannelRetrievalEngine.class);
+        when(multiChannel.retrieveKnowledgeChannels(any(SubQuestionIntent.class), any(RetrievalBudget.class)))
+                .thenReturn(
+                        new KnowledgeRetrievalResult(List.of(), Map.of(), Set.of()),
+                        new KnowledgeRetrievalResult(List.of(weight), Map.of(RetrievedChunkKey.of(weight), Set.of("weight")),
+                                Set.of("weight")));
+
+        RetrievalContext result = engine(multiChannel, mock(ContextFormatter.class)).retrieve(List.of(
+                new SubQuestionIntent("以旧换新怎么算", List.of(intent("trade-in"))),
+                new SubQuestionIntent("手机有多重", List.of(intent("weight")))));
+
+        assertEquals(Set.of("trade-in", "weight"), result.getEligibleIntentIds());
+        assertEquals(Set.of("weight"), result.getEvidencedIntentIds());
+    }
+
     private Set<String> eligibleAfterTwoQuestions(KnowledgeRetrievalResult first,
                                                    KnowledgeRetrievalResult second) {
         MultiChannelRetrievalEngine multiChannel = mock(MultiChannelRetrievalEngine.class);
@@ -180,8 +253,13 @@ class RetrievalEngineTest {
     }
 
     private RetrievalEngine engine(MultiChannelRetrievalEngine multiChannel, ContextFormatter contextFormatter) {
+        return engine(multiChannel, contextFormatter, new SearchChannelProperties());
+    }
+
+    private RetrievalEngine engine(MultiChannelRetrievalEngine multiChannel, ContextFormatter contextFormatter,
+                                   SearchChannelProperties properties) {
         return new RetrievalEngine(
-                new SearchChannelProperties(),
+                properties,
                 contextFormatter,
                 mock(PromptTemplateLoader.class),
                 multiChannel,

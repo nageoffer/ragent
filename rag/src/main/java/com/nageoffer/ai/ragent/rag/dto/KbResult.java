@@ -29,8 +29,10 @@ import java.util.Set;
  * @param groupedContext 分组后的上下文文本
  * @param intentChunks   意图 ID -> 分片列表
  * @param eligibleIntentIds 允许参与模板选择和规则注入的意图 ID
+ * @param contextChunks  进入 groupedContext 的分片，截到 topK，保持精排顺序
  */
 public record KbResult(String groupedContext,
                        Map<String, List<RetrievedChunk>> intentChunks,
-                       Set<String> eligibleIntentIds) {
+                       Set<String> eligibleIntentIds,
+                       List<RetrievedChunk> contextChunks) {
 }

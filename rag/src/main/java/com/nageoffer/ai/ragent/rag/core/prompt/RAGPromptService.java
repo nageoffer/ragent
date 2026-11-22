@@ -54,13 +54,6 @@ public class RAGPromptService {
      * 生成系统提示词，并对模板格式做清理
      */
     public String buildSystemPrompt(PromptContext context) {
-        return buildSystemPrompt(context, true);
-    }
-
-    /**
-     * citationEligible=false 时无条件跳过引用规则拼接（Agent 模式检索门面无来源编号，不读引用开关）
-     */
-    private String buildSystemPrompt(PromptContext context, boolean citationEligible) {
         if (!context.hasKb()) {
             throw new IllegalStateException("PromptContext requires KB context");
         }
@@ -69,7 +62,7 @@ public class RAGPromptService {
                 ? configured
                 : agentPromptResolver.resolve(AgentPromptSlot.KB_ANSWER);
         String systemPrompt = StrUtil.isBlank(template) ? "" : PromptTemplateUtils.cleanupPrompt(template);
-        if (!citationEligible || !Boolean.TRUE.equals(ragConfigProperties.getCitationEnabled())) {
+        if (!Boolean.TRUE.equals(ragConfigProperties.getCitationEnabled())) {
             return systemPrompt;
         }
 
@@ -91,21 +84,10 @@ public class RAGPromptService {
                                                      List<ChatMessage> history,
                                                      String question,
                                                      List<String> subQuestions) {
-        return buildStructuredMessages(context, history, question, subQuestions, true);
-    }
-
-    /**
-     * citationEligible 透传给系统提示词分支，false 表示调用方不具备角标渲染能力
-     */
-    public List<ChatMessage> buildStructuredMessages(PromptContext context,
-                                                     List<ChatMessage> history,
-                                                     String question,
-                                                     List<String> subQuestions,
-                                                     boolean citationEligible) {
         List<ChatMessage> messages = new ArrayList<>();
 
         // 1. 系统提示词
-        String systemPrompt = buildSystemPrompt(context, citationEligible);
+        String systemPrompt = buildSystemPrompt(context);
         if (StrUtil.isNotBlank(systemPrompt)) {
             messages.add(ChatMessage.system(systemPrompt));
         }

@@ -85,7 +85,8 @@ public class RetrievalEngine {
                                 return new SubQuestionContext(
                                         intent.subQuestion(), "", Map.of(),
                                         KnowledgeRetrievalResult.empty().eligibleIntentIds(
-                                                NodeScoreFilters.kb(intent.nodeScores())));
+                                                NodeScoreFilters.kb(intent.nodeScores())),
+                                        List.of());
                             }
                         },
                         ragContextExecutor
@@ -97,8 +98,14 @@ public class RetrievalEngine {
 
         Map<String, List<RetrievedChunk>> mergedIntentChunks = new LinkedHashMap<>();
         Set<String> eligibleIntentIds = new LinkedHashSet<>();
+        List<RetrievedChunk> contextChunks = new ArrayList<>();
+        Set<String> evidencedIntentIds = new LinkedHashSet<>();
         for (SubQuestionContext context : contexts) {
             eligibleIntentIds.addAll(context.eligibleIntentIds());
+            contextChunks.addAll(context.contextChunks());
+            if (!context.contextChunks().isEmpty()) {
+                evidencedIntentIds.addAll(context.eligibleIntentIds());
+            }
             if (CollUtil.isNotEmpty(context.intentChunks())) {
                 context.intentChunks().forEach((intentId, chunks) -> {
                     if (CollUtil.isNotEmpty(chunks)) {
@@ -128,6 +135,8 @@ public class RetrievalEngine {
                 .kbContext(kbContext)
                 .intentChunks(mergedIntentChunks)
                 .eligibleIntentIds(Set.copyOf(eligibleIntentIds))
+                .contextChunks(List.copyOf(contextChunks))
+                .evidencedIntentIds(Set.copyOf(evidencedIntentIds))
                 .build();
     }
 
@@ -135,7 +144,7 @@ public class RetrievalEngine {
         List<NodeScore> kbIntents = NodeScoreFilters.kb(intent.nodeScores());
         KbResult kbResult = retrieveAndRerank(intent, kbIntents, budget);
         return new SubQuestionContext(intent.subQuestion(), kbResult.groupedContext(),
-                kbResult.intentChunks(), kbResult.eligibleIntentIds());
+                kbResult.intentChunks(), kbResult.eligibleIntentIds(), kbResult.contextChunks());
     }
 
     private void appendSection(StringBuilder builder, int index, String question, String context) {
@@ -154,18 +163,27 @@ public class RetrievalEngine {
         List<RetrievedChunk> chunks = retrievalResult.chunks();
         Set<String> eligibleIntentIds = retrievalResult.eligibleIntentIds(kbIntents);
         if (CollUtil.isEmpty(chunks)) {
-            return new KbResult("", Map.of(), eligibleIntentIds);
+            return new KbResult("", Map.of(), eligibleIntentIds, List.of());
         }
 
         Map<String, List<RetrievedChunk>> intentChunks = retrievalResult.groupByIntent(MULTI_CHANNEL_KEY);
-        String groupedContext = contextFormatter.formatKbContext(
-                kbIntents, eligibleIntentIds, chunks, budget.contextTopK());
-        return new KbResult(groupedContext, intentChunks, eligibleIntentIds);
+        List<RetrievedChunk> contextChunks = selectContextChunks(chunks, budget.contextTopK());
+        String groupedContext = contextFormatter.formatKbContext(kbIntents, eligibleIntentIds, contextChunks);
+        return new KbResult(groupedContext, intentChunks, eligibleIntentIds, contextChunks);
+    }
+
+    /**
+     * 截到 topK，WorkFlow 的上下文和 Agent 的资料共用这一份；关掉精排时候选池大于 topK
+     * 分片已在后置处理链第一步按分片键去重，之后各环节只排序和截断
+     */
+    private List<RetrievedChunk> selectContextChunks(List<RetrievedChunk> chunks, int topK) {
+        return chunks.stream().limit(topK > 0 ? topK : Long.MAX_VALUE).toList();
     }
 
     private record SubQuestionContext(String question,
                                       String kbContext,
                                       Map<String, List<RetrievedChunk>> intentChunks,
-                                      Set<String> eligibleIntentIds) {
+                                      Set<String> eligibleIntentIds,
+                                      List<RetrievedChunk> contextChunks) {
     }
 }

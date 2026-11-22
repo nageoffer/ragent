@@ -44,6 +44,18 @@ public class RetrievalContext {
     private Map<String, List<RetrievedChunk>> intentChunks;
 
     /**
+     * 各子问题进入 kbContext 的分片，按子问题先后拼接；同一分片可能被多个子问题命中而重复出现
+     */
+    @Builder.Default
+    private List<RetrievedChunk> contextChunks = List.of();
+
+    /**
+     * 只取留下了分片的子问题的 eligibleIntentIds：走全局检索的候选意图在零命中时也算 eligible，跨子问题合并正文时不能用它挑规则
+     */
+    @Builder.Default
+    private Set<String> evidencedIntentIds = Set.of();
+
+    /**
      * 允许参与模板选择和规则注入的意图 ID
      */
     @Builder.Default

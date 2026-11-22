@@ -56,13 +56,6 @@ public class CitationContextEnricher {
         return replaceAnchors(kbContext, indexByDocId);
     }
 
-    /**
-     * 只抹内部锚点不注入编号，供没有角标渲染能力的调用方使用（如 Agent 模式的检索工具）
-     */
-    public String stripDocIdAnchors(String kbContext) {
-        return replaceAnchors(kbContext, Map.of());
-    }
-
     private String replaceAnchors(String kbContext, Map<String, Integer> indexByDocId) {
         if (StrUtil.isBlank(kbContext)) {
             return StrUtil.emptyIfNull(kbContext);

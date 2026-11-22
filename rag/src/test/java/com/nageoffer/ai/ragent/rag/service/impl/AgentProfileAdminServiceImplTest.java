@@ -20,8 +20,10 @@ package com.nageoffer.ai.ragent.rag.service.impl;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.nageoffer.ai.ragent.audit.support.BizChangeLogContext;
 import com.nageoffer.ai.ragent.rag.config.OrchestrationProperties;
+import com.nageoffer.ai.ragent.rag.controller.vo.AgentPromptConfigVO;
 import com.nageoffer.ai.ragent.rag.core.prompt.AgentPromptCacheManager;
 import com.nageoffer.ai.ragent.rag.core.prompt.AgentPromptResolver;
+import com.nageoffer.ai.ragent.rag.core.prompt.AgentPromptSlot;
 import com.nageoffer.ai.ragent.rag.dao.entity.AgentProfileDO;
 import com.nageoffer.ai.ragent.rag.dao.mapper.AgentProfileMapper;
 import com.nageoffer.ai.ragent.rag.dao.mapper.AgentPromptMapper;
@@ -30,6 +32,8 @@ import org.apache.ibatis.session.Configuration;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -66,5 +70,25 @@ class AgentProfileAdminServiceImplTest {
         assertThat(written.getValue()).usingRecursiveComparison()
                 .isEqualTo(AgentProfileDO.builder().id("agent-b").active(1).build());
         verify(cacheManager).clearCache();
+    }
+
+    /**
+     * Agent 下 KB_ANSWER 列出并标为不生效，原因里指明改哪两个槽位，已填内容照常可见
+     */
+    @Test
+    void listsKbAnswerAsInactiveUnderAgent() {
+        when(profileMapper.selectById("agent-b")).thenReturn(AgentProfileDO.builder().id("agent-b").builtin(0).build());
+        when(promptResolver.loadOwnPrompts("agent-b")).thenReturn(Map.of(AgentPromptSlot.KB_ANSWER.name(), "旧的合成要求"));
+        orchestration.setType("agent");
+
+        AgentPromptConfigVO config = service.loadPrompts("agent-b");
+
+        assertThat(config.getSlots()).hasSize(AgentPromptSlot.values().length);
+        AgentPromptConfigVO.Slot kbAnswer = config.getSlots().stream()
+                .filter(slot -> AgentPromptSlot.KB_ANSWER.name().equals(slot.getSlotKey()))
+                .findFirst().orElseThrow();
+        assertThat(kbAnswer.getEffective()).isFalse();
+        assertThat(kbAnswer.getInactiveReason()).contains("「知识库问答」", "「Agent人设」");
+        assertThat(kbAnswer.getContent()).isEqualTo("旧的合成要求");
     }
 }

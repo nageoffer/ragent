@@ -71,7 +71,7 @@ class DefaultContextFormatterTest {
                 chunk("a1", "A-idx1正文", "docA", "员工手册.pdf", 1, 0.7f),
                 chunk("x0", "孤块正文", null, null, null, 0.6f));
 
-        String result = formatter().formatKbContext(List.of(), Set.of(), chunks, 100);
+        String result = formatter().formatKbContext(List.of(), Set.of(), chunks);
 
         // 文档 A 整体在文档 B 之前（A 的最佳块排名更高），孤块最后
         assertTrue(result.indexOf("A-idx1正文") < result.indexOf("A-idx3正文"), "同文档内应按 chunkIndex 升序");
@@ -95,7 +95,7 @@ class DefaultContextFormatterTest {
                 chunk("c1", "第一块正文", "docC", "说明.txt", 1, 0.9f),
                 chunk("c2", "第二块正文", "docC", "说明.txt", 2, 0.8f));
 
-        String result = formatter().formatKbContext(List.of(), Set.of(), chunks, 100);
+        String result = formatter().formatKbContext(List.of(), Set.of(), chunks);
 
         assertTrue(result.contains("第一块正文\n第二块正文"), "同文档块之间用单换行拼接");
     }
@@ -105,21 +105,9 @@ class DefaultContextFormatterTest {
         List<RetrievedChunk> chunks = List.of(
                 chunk("c1", "无标题正文", "docC", null, 0, 0.9f));
 
-        String result = formatter().formatKbContext(List.of(), Set.of(), chunks, 100);
+        String result = formatter().formatKbContext(List.of(), Set.of(), chunks);
 
         assertTrue(result.contains("<content data-ragent-doc-id=\"docC\">"));
-    }
-
-    @Test
-    void keepsDifferentChunksWhenIdsAreBlank() {
-        List<RetrievedChunk> chunks = List.of(
-                chunk("", "第一块正文", "docC", null, 0, 0.9f),
-                chunk("", "第二块正文", "docC", null, 1, 0.8f));
-
-        String result = formatter().formatKbContext(List.of(), Set.of(), chunks, 100);
-
-        assertTrue(result.contains("第一块正文"));
-        assertTrue(result.contains("第二块正文"));
     }
 
     @Test
@@ -131,8 +119,7 @@ class DefaultContextFormatterTest {
         String result = formatter().formatKbContext(
                 List.of(intentA, intentB),
                 Set.of("A"),
-                List.of(chunkA),
-                100
+                List.of(chunkA)
         );
 
         assertTrue(result.contains("SNIPPET_A"));
@@ -148,8 +135,7 @@ class DefaultContextFormatterTest {
         String result = formatter().formatKbContext(
                 List.of(intentA),
                 Set.of(),
-                List.of(supplement),
-                100
+                List.of(supplement)
         );
 
         assertFalse(result.contains("SNIPPET_A"));
@@ -164,8 +150,7 @@ class DefaultContextFormatterTest {
         String result = formatter().formatKbContext(
                 List.of(intentA),
                 Set.of("A"),
-                List.of(globalChunk),
-                100
+                List.of(globalChunk)
         );
 
         assertTrue(result.contains("SNIPPET_A"));
@@ -179,7 +164,7 @@ class DefaultContextFormatterTest {
                 chunk("b0", "B-idx0正文", "docB", "报销政策.md", 0, 0.8f),
                 chunk("a1", "A-idx1正文", "docA", "员工手册.pdf", 1, 0.7f));
 
-        String result = formatter().formatKbContext(List.of(), Set.of(), chunks, 100).replace("\r\n", "\n");
+        String result = formatter().formatKbContext(List.of(), Set.of(), chunks).replace("\r\n", "\n");
 
         assertTrue(result.contains("<content data-ragent-doc-id=\"docA\">\n<doc_name>员工手册.pdf</doc_name>\n"
                 + "A-idx1正文\nA-idx3正文\n</content>"), "同文档多块只在首行带一次文档名：\n" + result);
@@ -192,7 +177,7 @@ class DefaultContextFormatterTest {
         List<RetrievedChunk> chunks = List.of(
                 chunk("q0", "正文", "docQ", "<退换货>\"说明\".docx", 0, 0.8f));
 
-        String result = formatter().formatKbContext(List.of(), Set.of(), chunks, 100);
+        String result = formatter().formatKbContext(List.of(), Set.of(), chunks);
 
         assertTrue(result.contains("<doc_name>退换货说明.docx</doc_name>"), "只清尖括号与引号，扩展名照留：\n" + result);
     }
@@ -204,8 +189,8 @@ class DefaultContextFormatterTest {
                 chunk("c0", "无名正文", "docC", null, 0, 0.8f),
                 chunk("x0", "网页正文", null, null, null, 0.7f));
 
-        String enabled = formatter().formatKbContext(List.of(), Set.of(), chunks, 100).replace("\r\n", "\n");
-        String disabled = formatter(false).formatKbContext(List.of(), Set.of(), chunks, 100);
+        String enabled = formatter().formatKbContext(List.of(), Set.of(), chunks).replace("\r\n", "\n");
+        String disabled = formatter(false).formatKbContext(List.of(), Set.of(), chunks);
 
         assertTrue(enabled.contains("<content data-ragent-doc-id=\"docC\">\n无名正文\n</content>"));
         assertTrue(enabled.contains("<content>\n网页正文\n</content>"));
@@ -214,23 +199,20 @@ class DefaultContextFormatterTest {
     }
 
     @Test
-    void docNameLineSurvivesCitationAndAnchorStripping() {
+    void docNameLineSurvivesCitation() {
         List<RetrievedChunk> chunks = List.of(
                 chunk("p4", "### 尺寸与重量", "docP", "IPHONE-17.md", 4, 0.9f),
                 chunk("p3", "### 视频录制", "docP", "IPHONE-17.md", 3, 0.8f));
-        String formatted = formatter().formatKbContext(List.of(), Set.of(), chunks, 100);
+        String formatted = formatter().formatKbContext(List.of(), Set.of(), chunks);
         RAGConfigProperties citationOn = new RAGConfigProperties();
         citationOn.setCitationEnabled(true);
         CitationContextEnricher enricher = new CitationContextEnricher(citationOn);
 
         String workflow = enricher.enrich(formatted, List.of(SourceRef.builder().index(1).docId("docP").build()))
                 .replace("\r\n", "\n");
-        String agentTool = enricher.stripDocIdAnchors(formatted).replace("\r\n", "\n");
 
         assertEquals("<content ref=\"1\">\n<doc_name>IPHONE-17.md</doc_name>\n### 视频录制\n### 尺寸与重量\n</content>",
                 workflow.strip());
-        assertEquals("<content>\n<doc_name>IPHONE-17.md</doc_name>\n### 视频录制\n### 尺寸与重量\n</content>",
-                agentTool.strip());
     }
 
     private NodeScore intent(String id, String snippet) {
