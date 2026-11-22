@@ -30,6 +30,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.util.List;
+import java.util.Map;
 import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -38,6 +39,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -47,16 +49,22 @@ class VectorSearchChannelTest {
     private static final String QUESTION = "报销发票贴哪张表？";
     private static final List<String> SUPPLEMENT = List.of("kb-hr", "kb-tech");
     private static final float[] QUERY_VECTOR = {0.6F, 0.8F};
+    private static final String MODEL = "embed-common";
     /** 生产配置：每通道召回 20、Rerank 候选池 40、最终 10 条 */
     private static final RetrievalBudget PRODUCTION_BUDGET = new RetrievalBudget(20, 40, 10);
 
     private VectorRetrieverService retrieverService;
+    private KbCollectionProvider collectionProvider;
     private SearchChannelProperties properties;
 
     @BeforeEach
     void setUp() {
         retrieverService = mock(VectorRetrieverService.class);
-        when(retrieverService.embedAndNormalize(QUESTION)).thenReturn(QUERY_VECTOR);
+        when(retrieverService.embedAndNormalize(QUESTION, MODEL)).thenReturn(QUERY_VECTOR);
+        collectionProvider = mock(KbCollectionProvider.class);
+        when(collectionProvider.listActiveCollectionModels()).thenReturn(Map.of(
+                "kb-finance", MODEL, "kb-hr", MODEL, "kb-tech", MODEL,
+                "kb-faq", MODEL, "kb-policy", MODEL, "kb-0", MODEL, "kb-1", MODEL, "kb-2", MODEL));
         when(retrieverService.supportsGlobalRetrieval()).thenReturn(true);
         // 遵守 topK 的桩：真实后端返回条数受请求深度约束，否则测不出「主路产能 < 名额」这类错配
         when(retrieverService.retrieveByVector(any(float[].class), any(RetrieveRequest.class)))
@@ -188,7 +196,7 @@ class VectorSearchChannelTest {
         ArgumentCaptor<float[]> vectorCaptor = ArgumentCaptor.forClass(float[].class);
         verify(retrieverService, times(2)).retrieveByVector(vectorCaptor.capture(), any(RetrieveRequest.class));
         vectorCaptor.getAllValues().forEach(vector -> assertSame(QUERY_VECTOR, vector));
-        verify(retrieverService, times(1)).embedAndNormalize(QUESTION);
+        verify(retrieverService, times(1)).embedAndNormalize(QUESTION, MODEL);
     }
 
     @Test
@@ -204,6 +212,14 @@ class VectorSearchChannelTest {
         assertEquals(1, requests.size());
         assertEquals(List.of("kb-finance", "kb-hr", "kb-tech"), requests.get(0).getEffectiveCollectionNames());
         assertEquals(20, requests.get(0).getTopK());
+    }
+
+    @Test
+    @DisplayName("知识库检索不得走默认 embedding 候选链")
+    void knowledgeRetrievalMustNotUseDefaultEmbeddingRouting() {
+        search(directedScope(), PRODUCTION_BUDGET);
+
+        verify(retrieverService, never()).embedAndNormalize(QUESTION);
     }
 
     @Test
@@ -319,7 +335,7 @@ class VectorSearchChannelTest {
                 .budget(budget)
                 .retrievalScope(scope)
                 .build();
-        return new VectorSearchChannel(retrieverService, properties, Runnable::run).search(context);
+        return new VectorSearchChannel(retrieverService, properties, collectionProvider, Runnable::run).search(context);
     }
 
     private List<RetrieveRequest> captureRequests() {

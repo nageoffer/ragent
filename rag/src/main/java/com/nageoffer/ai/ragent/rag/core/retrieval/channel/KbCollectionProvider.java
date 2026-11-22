@@ -24,7 +24,9 @@ import com.nageoffer.ai.ragent.knowledge.dao.mapper.KnowledgeBaseMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 有效知识库 collection 提供者
@@ -43,15 +45,32 @@ public class KbCollectionProvider {
      * 返回所有有效知识库的 collection 名称（去重、去空）
      */
     public List<String> listActiveCollections() {
-        List<KnowledgeBaseDO> kbList = knowledgeBaseMapper.selectList(
-                Wrappers.lambdaQuery(KnowledgeBaseDO.class)
-                        .select(KnowledgeBaseDO::getCollectionName)
-                        .eq(KnowledgeBaseDO::getDeleted, 0)
-        );
-        return kbList.stream()
+        return selectActiveKnowledgeBases().stream()
                 .map(KnowledgeBaseDO::getCollectionName)
                 .filter(StrUtil::isNotBlank)
                 .distinct()
                 .toList();
+    }
+
+    /**
+     * 检索所用的知识库以及关联的嵌入模型；嵌入模型缺失保留为空，由检索侧打警告日志
+     */
+    public Map<String, String> listActiveCollectionModels() {
+        Map<String, String> models = new LinkedHashMap<>();
+        for (KnowledgeBaseDO kb : selectActiveKnowledgeBases()) {
+            if (StrUtil.isNotBlank(kb.getCollectionName())) {
+                models.put(kb.getCollectionName(), kb.getEmbeddingModel());
+            }
+        }
+        return models;
+    }
+
+    /**
+     * 查询知识库以及关联的嵌入模型
+     */
+    private List<KnowledgeBaseDO> selectActiveKnowledgeBases() {
+        return knowledgeBaseMapper.selectList(Wrappers.lambdaQuery(KnowledgeBaseDO.class)
+                .select(KnowledgeBaseDO::getCollectionName, KnowledgeBaseDO::getEmbeddingModel)
+                .eq(KnowledgeBaseDO::getDeleted, 0));
     }
 }
