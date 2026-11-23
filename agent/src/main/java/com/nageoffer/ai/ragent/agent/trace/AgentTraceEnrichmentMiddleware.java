@@ -20,6 +20,7 @@ package com.nageoffer.ai.ragent.agent.trace;
 import cn.hutool.core.util.StrUtil;
 import com.nageoffer.ai.ragent.agent.enums.AgentToolStatus;
 import com.nageoffer.ai.ragent.agent.memory.AgentContextChars;
+import com.nageoffer.ai.ragent.agent.model.AnthropicMessagesChatModel;
 import com.nageoffer.ai.ragent.agent.tool.AgentToolExecutionFacts;
 import io.agentscope.core.agent.Agent;
 import io.agentscope.core.agent.RuntimeContext;
@@ -45,7 +46,10 @@ import io.agentscope.core.middleware.AgentInput;
 import io.agentscope.core.middleware.MiddlewareBase;
 import io.agentscope.core.middleware.ModelCallInput;
 import io.agentscope.core.middleware.ReasoningInput;
+import io.agentscope.core.model.ChatResponse;
 import io.agentscope.core.model.ChatUsage;
+import io.agentscope.core.model.GenerateOptions;
+import io.agentscope.core.model.Model;
 import io.agentscope.core.model.ToolSchema;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.StatusCode;
@@ -64,6 +68,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -216,7 +221,7 @@ public class AgentTraceEnrichmentMiddleware implements MiddlewareBase {
             span.setAttribute(AgentTraceAttributes.MODEL_PARAMETERS, serializer.modelParameters(input.options()));
             // 官方那层建了 chat span 却没写这两个规范属性，provider 是必填、stream 漏写会被读成非流式
             // 模型名反过来，它写的 gen_ai.request.model 与 langfuse.observation.model.name 喂同一个列，我方不必再写一遍
-            span.setAttribute(GenAiAttributes.PROVIDER_NAME, GenAiAttributes.PROVIDER_OPENAI);
+            span.setAttribute(GenAiAttributes.PROVIDER_NAME, GenAiAttributes.providerOf(input.model()));
             span.setAttribute(GenAiAttributes.REQUEST_STREAM, true);
             // 遮蔽生效之后的名单，能直接看出技能遮蔽有没有在干活
             span.setAttribute(RagentAttributes.TOOLS_VISIBLE, toolNames(input.tools()));
@@ -231,7 +236,12 @@ public class AgentTraceEnrichmentMiddleware implements MiddlewareBase {
             AtomicBoolean firstDelta = new AtomicBoolean();
             Runnable writeOutput = () -> span.setAttribute(AgentTraceAttributes.OBSERVATION_OUTPUT,
                     serializer.modelOutput(text, thinking, toolCalls));
-            return next.apply(input)
+            // 缓存写入量只在响应元数据里，事件流带不出来；包一层模型截下它，跟着本次调用走
+            AtomicReference<Integer> cacheWrite = new AtomicReference<>();
+            ModelCallInput tapped = input.model() instanceof AnthropicMessagesChatModel model
+                    ? new ModelCallInput(input.messages(), input.tools(), input.options(), new CacheWriteTap(model, cacheWrite))
+                    : input;
+            return next.apply(tapped)
                     .doOnNext(event -> {
                         if (event instanceof TextBlockDeltaEvent delta) {
                             markCompletionStart(span, firstDelta);
@@ -244,7 +254,7 @@ public class AgentTraceEnrichmentMiddleware implements MiddlewareBase {
                         } else if (event instanceof ToolCallEndEvent call) {
                             toolCalls.add(describeToolCall(pendingArguments, call));
                         } else if (event instanceof ModelCallEndEvent end) {
-                            writeUsage(span, end.getUsage());
+                            writeUsage(span, end.getUsage(), cacheWrite.get());
                         }
                     })
                     .doOnTerminate(writeOutput)
@@ -360,13 +370,13 @@ public class AgentTraceEnrichmentMiddleware implements MiddlewareBase {
                 .collect(Collectors.joining(", "));
     }
 
-    private void writeUsage(Span span, ChatUsage usage) {
+    private void writeUsage(Span span, ChatUsage usage, Integer cacheWrite) {
         if (usage == null) {
             return;
         }
         // gen_ai.usage.* 官方已写两项，但 cachedTokens 没有对应的通用属性，这里补一份完整的
-        span.setAttribute(AgentTraceAttributes.USAGE_DETAILS, serializer.usageDetails(
-                usage.getInputTokens(), usage.getOutputTokens(), usage.getCachedTokens(), usage.getTotalTokens()));
+        span.setAttribute(AgentTraceAttributes.USAGE_DETAILS, serializer.usageDetails(usage.getInputTokens(),
+                usage.getOutputTokens(), usage.getCachedTokens(), cacheWrite, usage.getTotalTokens()));
     }
 
     /**
@@ -691,6 +701,33 @@ public class AgentTraceEnrichmentMiddleware implements MiddlewareBase {
 
         private static String callKey(String toolCallId) {
             return StrUtil.blankToDefault(toolCallId, FALLBACK_CALL_KEY);
+        }
+    }
+
+    /**
+     * 只截缓存写入量，其余原样转给被包的模型
+     */
+    private record CacheWriteTap(Model delegate, AtomicReference<Integer> sink) implements Model {
+
+        @Override
+        public Flux<ChatResponse> stream(List<Msg> messages, List<ToolSchema> tools, GenerateOptions options) {
+            return delegate.stream(messages, tools, options).doOnNext(response -> {
+                Object tokens = response.getMetadata() == null ? null
+                        : response.getMetadata().get(AnthropicMessagesChatModel.METADATA_CACHE_WRITE_TOKENS);
+                if (tokens instanceof Integer value) {
+                    sink.set(value);
+                }
+            });
+        }
+
+        @Override
+        public String getModelName() {
+            return delegate.getModelName();
+        }
+
+        @Override
+        public int getContextWindowSize() {
+            return delegate.getContextWindowSize();
         }
     }
 }

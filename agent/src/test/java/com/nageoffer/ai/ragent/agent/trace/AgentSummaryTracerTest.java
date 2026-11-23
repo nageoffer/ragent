@@ -20,6 +20,7 @@ package com.nageoffer.ai.ragent.agent.trace;
 import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.model.ChatResponse;
 import io.agentscope.core.model.ChatUsage;
+import io.agentscope.core.model.Model;
 import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.StatusCode;
@@ -40,6 +41,8 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
  * 摘要调用不经过中间件链，这里钉住它在链路上的样子：挂在本次运行的根下、带会话身份与用量
@@ -76,7 +79,7 @@ class AgentSummaryTracerTest {
         AgentRunTracer.nextRound(ctx);
         List<ChatResponse> responses = List.of(response(1200, 300, 200));
 
-        assertThat(AgentSummaryTracer.trace(ctx, MODEL, () -> responses)).isSameAs(responses);
+        assertThat(AgentSummaryTracer.trace(ctx, chatModel(), () -> responses)).isSameAs(responses);
         root.end();
 
         SpanData summary = summarySpan();
@@ -98,7 +101,7 @@ class AgentSummaryTracerTest {
     void shouldPassThroughWithoutRoot() {
         List<ChatResponse> responses = List.of(response(10, 5, 0));
 
-        assertThat(AgentSummaryTracer.trace(ctx, MODEL, () -> responses)).isSameAs(responses);
+        assertThat(AgentSummaryTracer.trace(ctx, chatModel(), () -> responses)).isSameAs(responses);
 
         assertThat(exported).isEmpty();
     }
@@ -111,7 +114,7 @@ class AgentSummaryTracerTest {
         Span root = bindRoot();
         IllegalStateException failure = new IllegalStateException("timeout");
 
-        assertThatThrownBy(() -> AgentSummaryTracer.trace(ctx, MODEL, () -> {
+        assertThatThrownBy(() -> AgentSummaryTracer.trace(ctx, chatModel(), () -> {
             throw failure;
         })).isSameAs(failure);
         root.end();
@@ -132,6 +135,12 @@ class AgentSummaryTracerTest {
     private SpanData summarySpan() {
         return exported.stream().filter(span -> span.getName().equals("context_compaction"))
                 .findFirst().orElseThrow();
+    }
+
+    private static Model chatModel() {
+        Model model = mock(Model.class);
+        when(model.getModelName()).thenReturn(MODEL);
+        return model;
     }
 
     private static ChatResponse response(int input, int output, int cached) {

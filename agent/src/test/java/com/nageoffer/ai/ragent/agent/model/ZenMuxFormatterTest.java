@@ -82,7 +82,18 @@ class ZenMuxFormatterTest {
                 GenerateOptions.builder().temperature(0.3D).build());
 
         assertThat(body.get("temperature").asDouble()).isEqualTo(0.3D);
-        assertThat(body.get("service_tier").asText()).isEqualTo("default");
+    }
+
+    /**
+     * service_tier 是 OpenAI 的档位语义，ZenMux 文档列明转 Gemini 时不支持；Gemini 请求里不该出现
+     */
+    @Test
+    void shouldNotSendServiceTierToGemini() throws Exception {
+        JsonNode body = body(new ZenMuxFormatter(), "google/gemini-4-argon:google-vertex",
+                GenerateOptions.builder().reasoningEffort("high").build());
+
+        assertThat(body.has("service_tier")).isFalse();
+        assertThat(body.get("reasoning_effort").asText()).isEqualTo("high");
     }
 
     /**

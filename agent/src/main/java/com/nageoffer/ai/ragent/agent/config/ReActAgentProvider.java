@@ -31,10 +31,9 @@ import com.nageoffer.ai.ragent.rag.core.prompt.AgentPromptResolver;
 import com.nageoffer.ai.ragent.rag.core.prompt.AgentPromptSlot;
 import io.agentscope.core.ReActAgent;
 import io.agentscope.core.model.GenerateOptions;
+import io.agentscope.core.model.Model;
 import io.agentscope.core.tracing.OtelTracingMiddleware;
-import io.agentscope.extensions.model.openai.OpenAIChatModel;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
@@ -44,7 +43,6 @@ import java.util.Map;
  * 主 Agent 供给器：单例复用，AGENT_MAIN 人设或工具目录变化时懒重建
  * 会话状态在 PgAgentStateStore 中按次加载，重建不丢历史
  */
-@Slf4j
 @Component
 @ConditionalOnAgentEngine
 @RequiredArgsConstructor
@@ -55,7 +53,7 @@ public class ReActAgentProvider {
 
     private final AgentPromptResolver agentPromptResolver;
     private final AgentToolCatalog toolCatalog;
-    private final OpenAIChatModel agentChatModel;
+    private final Model agentChatModel;
     private final PgAgentStateStore agentStateStore;
     private final AgentProperties agentProperties;
     private final AgentUserMemoryMiddleware userMemoryMiddleware;
@@ -106,7 +104,7 @@ public class ReActAgentProvider {
                 .toolkit(toolCatalog.buildToolkit(catalog))
                 .maxIters(agentProperties.getMaxIters())
                 .maxRetries(agentProperties.getMaxRetries())
-                // 强制停止可能留下无结果的工具调用，下一问先补错误结果再继续
+                // 强制停止可能留下无结果的工具调用：框架只补最后一条助手消息里的，更早的在 PgAgentStateStore 加载时补
                 .enablePendingToolRecovery(true)
                 .stateStore(agentStateStore);
         String reasoningEffort = agentProperties.getChat().getReasoningEffort();

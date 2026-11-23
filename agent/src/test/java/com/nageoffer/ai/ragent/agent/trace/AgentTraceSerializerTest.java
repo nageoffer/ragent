@@ -156,11 +156,25 @@ class AgentTraceSerializerTest {
      */
     @Test
     void shouldSplitCachedTokensOutOfInputTokens() {
-        JSONObject usage = JSONUtil.parseObj(serializer.usageDetails(120, 30, 20, 150));
+        JSONObject usage = JSONUtil.parseObj(serializer.usageDetails(120, 30, 20, null, 150));
 
         assertThat(usage.getInt("input")).isEqualTo(100);
         assertThat(usage.getInt("input_cached_tokens")).isEqualTo(20);
         assertThat(usage.getInt("total")).isEqualTo(150);
+        // 上游没报写入量就不写这个键，评测按未知披露，不当成零
+        assertThat(usage.containsKey("cache_creation_input_tokens")).isFalse();
+    }
+
+    /**
+     * Opus 的一笔真实账单：输入 11、写缓存 2896，ChatUsage 的输入总量 2907 里两者都在，拆开后不能重叠
+     */
+    @Test
+    void shouldSplitCacheWriteOutOfInputTokens() {
+        JSONObject usage = JSONUtil.parseObj(serializer.usageDetails(2907, 3, 0, 2896, 2910));
+
+        assertThat(usage.getInt("input")).isEqualTo(11);
+        assertThat(usage.getInt("input_cached_tokens")).isZero();
+        assertThat(usage.getInt("cache_creation_input_tokens")).isEqualTo(2896);
     }
 
     /**
@@ -191,7 +205,7 @@ class AgentTraceSerializerTest {
 
         assertThat(muted.toolDefinitions(tools)).contains("leave_submit");
         assertThat(muted.modelParameters(null)).isEqualTo("{}");
-        assertThat(JSONUtil.parseObj(muted.usageDetails(120, 30, 20, 150)).getInt("output")).isEqualTo(30);
+        assertThat(JSONUtil.parseObj(muted.usageDetails(120, 30, 20, null, 150)).getInt("output")).isEqualTo(30);
     }
 
     /**

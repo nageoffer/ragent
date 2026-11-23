@@ -225,6 +225,29 @@ class AgentConversationSummarizerTest {
         assertThat(messages.get(2).getTimestamp()).isEqualTo("2026-10-04 12:35:00.000");
     }
 
+    /**
+     * 工具调用的元数据里存着 Claude 的思考原块与 Gemini 的签名，跟着进摘要请求就等于思考又发了一遍
+     */
+    @Test
+    void shouldDropToolCallMetadataFromMaterial() {
+        Msg call = Msg.builder().name("assistant").role(MsgRole.ASSISTANT)
+                .content(ToolUseBlock.builder().id("call-1").name("query_order")
+                        .input(Map.of("order_no", "BT1")).content("{\"order_no\":\"BT1\"}")
+                        .metadata(Map.of("anthropicThinkingBlocks", List.of(Map.of("type", "thinking", "signature", "SIG")),
+                                "thoughtSignature", "SIG2"))
+                        .build())
+                .build();
+        answer("## 当前进度\n无");
+
+        summarizer.summarize(List.of(userMsg("2026-10-04 12:34:56.789", "查订单"), call), null, RUN);
+
+        ToolUseBlock sent = captureMessages().get(2).getFirstContentBlock(ToolUseBlock.class);
+        assertThat(sent.getMetadata()).isNullOrEmpty();
+        assertThat(sent.getId()).isEqualTo("call-1");
+        assertThat(sent.getName()).isEqualTo("query_order");
+        assertThat(sent.getInput()).containsEntry("order_no", "BT1");
+    }
+
     @Test
     void shouldSkipModelWhenMaterialHasNoContent() {
         Msg thinkingOnly = Msg.builder().name("assistant").role(MsgRole.ASSISTANT)

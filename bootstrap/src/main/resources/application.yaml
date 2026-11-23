@@ -245,6 +245,11 @@ ai:
       endpoints:
         chat: /api/v1/chat/completions
         jev: /api/v1/systemone
+    zenmux-anthropic:
+      url: https://zenmux.ai
+      api-key: ${ZENMUX_API_KEY:}
+      endpoints:
+        chat: /api/anthropic/v1/messages
 
   jev:
     default-model: jev-stable

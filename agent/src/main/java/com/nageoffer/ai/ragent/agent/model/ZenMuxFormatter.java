@@ -28,7 +28,8 @@ import io.agentscope.extensions.model.openai.formatter.OpenAIChatFormatter;
 public class ZenMuxFormatter extends OpenAIChatFormatter {
 
     /**
-     * 标准在线档；不发时 ZenMux 可能按账号默认落到别的档，费用与限流口径就跟记录的价格对不上
+     * OpenAI 的标准在线档；不发时 ZenMux 可能按账号默认落到别的档，费用与限流口径就跟记录的价格对不上
+     * 只给 openai/ 发：ZenMux 文档列明转到 Gemini 时不支持 service_tier，返回 200 不代表生效
      */
     static final String SERVICE_TIER = "default";
 
@@ -41,19 +42,19 @@ public class ZenMuxFormatter extends OpenAIChatFormatter {
     }
 
     /**
-     * 上游是 OpenAI 的推理模型：采样参数只接受默认值，传了报 400
-     * 摘要器与长期记忆裁决都写死 temperature=0.3，不在这里摘掉就会把这两次调用打挂
+     * 上游是 OpenAI 时才收敛：推理模型的采样参数只接受默认值，传了报 400，摘要器与长期记忆裁决都写死 temperature=0.3；
+     * service_tier 也只有这家认
      */
-    static boolean hasFixedSamplingParams(String model) {
+    static boolean isOpenAiUpstream(String model) {
         return model != null && model.startsWith(OPENAI_FAMILY);
     }
 
     static void sanitize(OpenAIRequest request) {
         String model = request.getModel();
-        if (request.getServiceTier() == null) {
-            request.setServiceTier(SERVICE_TIER);
-        }
-        if (hasFixedSamplingParams(model)) {
+        if (isOpenAiUpstream(model)) {
+            if (request.getServiceTier() == null) {
+                request.setServiceTier(SERVICE_TIER);
+            }
             request.setTemperature(null);
             request.setTopP(null);
             request.setFrequencyPenalty(null);

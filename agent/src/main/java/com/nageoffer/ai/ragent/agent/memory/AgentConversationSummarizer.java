@@ -30,6 +30,7 @@ import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.MsgRole;
 import io.agentscope.core.message.TextBlock;
 import io.agentscope.core.message.ThinkingBlock;
+import io.agentscope.core.message.ToolUseBlock;
 import io.agentscope.core.model.ChatResponse;
 import io.agentscope.core.model.ExecutionConfig;
 import io.agentscope.core.model.GenerateOptions;
@@ -42,6 +43,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.IntStream;
 
 /**
  * 会话摘要生成：把即将丢弃的上下文原文压成交接说明，留住用户要办的事与办事结果
@@ -89,7 +91,7 @@ public class AgentConversationSummarizer {
         try {
             // 字符目标写入提示词；收集完整响应后再提取摘要
             // 不传工具声明：素材里的工具调用只是历史，摘要器不许再调工具
-            List<ChatResponse> responses = AgentSummaryTracer.trace(context, agentChatModel.getModelName(),
+            List<ChatResponse> responses = AgentSummaryTracer.trace(context, agentChatModel,
                     () -> agentChatModel
                             .stream(buildMessages(dialogue, existingSummary, targetChars), null, buildOptions())
                             .collectList()
@@ -185,6 +187,7 @@ public class AgentConversationSummarizer {
 
     /**
      * 思考是助手没说出口的推演，不进素材；空白文本一并去掉，剥完没内容的消息整条不要
+     * 工具调用只留 id、名字和入参：元数据里存着各家的思考原块与签名，带进摘要请求等于把思考又发了一遍
      * 全剥空返回空列表：切点前只剩上一代摘要时素材就是空的，不能拿空素材去调模型
      */
     private List<Msg> withoutThinking(List<Msg> material) {
@@ -193,11 +196,14 @@ public class AgentConversationSummarizer {
             List<ContentBlock> content = msg.getContent().stream()
                     .filter(block -> !(block instanceof ThinkingBlock)
                             && !(block instanceof TextBlock text && StrUtil.isBlank(text.getText())))
+                    .map(AgentConversationSummarizer::withoutMetadata)
                     .toList();
             if (content.isEmpty()) {
                 continue;
             }
-            dialogue.add(content.size() == msg.getContent().size() ? msg : Msg.builder()
+            boolean unchanged = content.size() == msg.getContent().size()
+                    && IntStream.range(0, content.size()).allMatch(i -> content.get(i) == msg.getContent().get(i));
+            dialogue.add(unchanged ? msg : Msg.builder()
                     .id(msg.getId())
                     .name(msg.getName())
                     .role(msg.getRole())
@@ -207,5 +213,17 @@ public class AgentConversationSummarizer {
                     .build());
         }
         return dialogue;
+    }
+
+    private static ContentBlock withoutMetadata(ContentBlock block) {
+        if (!(block instanceof ToolUseBlock call) || call.getMetadata() == null || call.getMetadata().isEmpty()) {
+            return block;
+        }
+        return ToolUseBlock.builder()
+                .id(call.getId())
+                .name(call.getName())
+                .input(call.getInput())
+                .content(call.getContent())
+                .build();
     }
 }

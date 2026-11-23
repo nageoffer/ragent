@@ -21,6 +21,7 @@ import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import com.nageoffer.ai.ragent.agent.enums.AgentToolStatus;
+import com.nageoffer.ai.ragent.agent.model.AnthropicMessagesChatModel;
 import com.nageoffer.ai.ragent.agent.tool.AgentToolBatchMiddleware;
 import com.nageoffer.ai.ragent.agent.tool.AgentToolExecutionFacts;
 import io.agentscope.core.agent.RuntimeContext;
@@ -54,6 +55,9 @@ import io.agentscope.core.middleware.ModelCallInput;
 import io.agentscope.core.middleware.ReasoningInput;
 import io.agentscope.core.model.ChatUsage;
 import io.agentscope.core.model.ToolSchema;
+import io.agentscope.core.model.transport.HttpRequest;
+import io.agentscope.core.model.transport.HttpResponse;
+import io.agentscope.core.model.transport.HttpTransport;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.context.Context;
@@ -208,6 +212,36 @@ class AgentTraceEnrichmentMiddlewareTest {
         assertThat(span(ROOT_SPAN).getAttributes().get(AgentTraceAttributes.USAGE_DETAILS)).isNull();
         assertThat(span("chat").getAttributes().get(AgentTraceAttributes.USAGE_DETAILS))
                 .contains("\"input_cached_tokens\":20");
+    }
+
+    /**
+     * 缓存写入量只在 Anthropic 模型的响应元数据里，事件流带不出来；漏了它，Opus 每笔写缓存都按普通输入价少算
+     */
+    @Test
+    void shouldRecordCacheWriteAndProviderForAnthropicModel() {
+        RuntimeContext ctx = askContext();
+        List<Msg> msgs = List.of(new UserMessage("问题"));
+        AnthropicMessagesChatModel model = new AnthropicMessagesChatModel("https://zenmux.ai/api/anthropic/v1/messages",
+                "sk-test", "anthropic/claude-opus-5.5", new ScriptedStream(List.of(
+                "{\"type\":\"message_start\",\"message\":{\"id\":\"m1\",\"usage\":{\"input_tokens\":11,"
+                        + "\"cache_creation_input_tokens\":2896,\"cache_read_input_tokens\":0,\"output_tokens\":1}}}",
+                "{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}",
+                "{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"好\"}}",
+                "{\"type\":\"content_block_stop\",\"index\":0}",
+                "{\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":3}}",
+                "{\"type\":\"message_stop\"}")));
+
+        Span root = startRoot();
+        underRoot(root, ctx, msgs, input -> reasoningRound(ctx, msgs, List.of(), childSpan("chat",
+                () -> middleware.onModelCall(null, ctx, new ModelCallInput(msgs, List.of(), null, model),
+                        call -> call.model().stream(call.messages(), call.tools(), call.options())
+                                .last()
+                                .flatMapMany(last -> Flux.just(new ModelCallEndEvent("r1", last.getUsage()))))))).blockLast();
+        root.end();
+
+        assertThat(span("chat").getAttributes().get(GenAiAttributes.PROVIDER_NAME)).isEqualTo("anthropic");
+        assertThat(span("chat").getAttributes().get(AgentTraceAttributes.USAGE_DETAILS))
+                .contains("\"input\":11", "\"input_cached_tokens\":0", "\"cache_creation_input_tokens\":2896");
     }
 
     /**
@@ -1086,6 +1120,23 @@ class AgentTraceEnrichmentMiddlewareTest {
         @Override
         public CompletableResultCode shutdown() {
             return CompletableResultCode.ofSuccess();
+        }
+    }
+
+    private record ScriptedStream(List<String> data) implements HttpTransport {
+
+        @Override
+        public HttpResponse execute(HttpRequest request) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public Flux<String> stream(HttpRequest request) {
+            return Flux.fromIterable(data);
+        }
+
+        @Override
+        public void close() {
         }
     }
 }

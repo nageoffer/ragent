@@ -19,10 +19,12 @@ package com.nageoffer.ai.ragent.agent.state;
 
 import cn.hutool.core.util.StrUtil;
 import com.nageoffer.ai.ragent.agent.dao.mapper.AgentStateMapper;
+import io.agentscope.core.state.AgentState;
 import io.agentscope.core.state.AgentStateStore;
 import io.agentscope.core.state.State;
 import io.agentscope.core.util.JsonUtils;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -31,8 +33,9 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * AgentStateStore 的 PostgreSQL 实现
+ * AgentStateStore 的 PostgreSQL 实现；加载会话状态时补齐缺结果的工具调用，修好的状态随本次调用收尾存回
  */
+@Slf4j
 @RequiredArgsConstructor
 public class PgAgentStateStore implements AgentStateStore {
 
@@ -54,7 +57,14 @@ public class PgAgentStateStore implements AgentStateStore {
         if (StrUtil.isBlank(payload)) {
             return Optional.empty();
         }
-        return Optional.ofNullable(JsonUtils.getJsonCodec().fromJson(payload, type));
+        T value = JsonUtils.getJsonCodec().fromJson(payload, type);
+        if (value instanceof AgentState state) {
+            int filled = AgentMissingToolResults.fill(state.contextMutable());
+            if (filled > 0) {
+                log.warn("会话状态里有 {} 个工具调用缺结果，已补齐, userId: {}, sessionId: {}", filled, userId, sessionId);
+            }
+        }
+        return Optional.ofNullable(value);
     }
 
     @Override

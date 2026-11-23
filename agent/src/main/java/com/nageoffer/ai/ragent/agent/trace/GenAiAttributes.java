@@ -17,6 +17,8 @@
 
 package com.nageoffer.ai.ragent.agent.trace;
 
+import com.nageoffer.ai.ragent.agent.model.AnthropicMessagesChatModel;
+import io.agentscope.core.model.Model;
 import io.opentelemetry.api.common.AttributeKey;
 
 /**
@@ -75,10 +77,16 @@ public final class GenAiAttributes {
     public static final String TOOL_TYPE_FUNCTION = "function";
 
     /**
-     * 本仓统一走 OpenAI 协议的客户端，即使 base-url 指向兼容网关也按协议口径记 openai
+     * 按协议口径记：base-url 指向兼容网关也记 openai，只有走 Anthropic 原生入口的记 anthropic
      */
     public static final String PROVIDER_OPENAI = "openai";
 
+    public static final String PROVIDER_ANTHROPIC = "anthropic";
+
     private GenAiAttributes() {
+    }
+
+    public static String providerOf(Model model) {
+        return model instanceof AnthropicMessagesChatModel ? PROVIDER_ANTHROPIC : PROVIDER_OPENAI;
     }
 }

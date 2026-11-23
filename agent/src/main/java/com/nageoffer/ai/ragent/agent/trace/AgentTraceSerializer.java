@@ -279,15 +279,20 @@ class AgentTraceSerializer {
 
     /**
      * 键名用 LangFuse 认得的那几个，才会被算进成本与用量统计，改成驼峰就只是普通元数据了
-     * 各键之间必须互不重叠：ChatUsage 的 cachedTokens 含在 inputTokens 里，直接写两份会把缓存部分算两遍
+     * 各键之间必须互不重叠：ChatUsage 的 inputTokens 含缓存读写两部分，直接写会把缓存算两遍
      * input_cached_tokens 是 LangFuse 自己归一化 OpenAI 用量时产出的键名，跟着它才对得上模型定价
+     * 缓存写入只有上游报了才写，缺这个键表示未知，不是零
      * 第三处不设 captureContent 闸门的：token 数是计量口径，补上闸门等于关内容的同时把成本面板一起关了
      */
-    String usageDetails(int input, int output, int cached, int total) {
+    String usageDetails(int input, int output, int cached, Integer cacheWrite, int total) {
         int safeCached = Math.max(0, Math.min(cached, input));
+        int safeWrite = cacheWrite == null ? 0 : Math.max(0, Math.min(cacheWrite, input - safeCached));
         Map<String, Object> usage = new LinkedHashMap<>();
-        usage.put("input", input - safeCached);
+        usage.put("input", input - safeCached - safeWrite);
         usage.put("input_cached_tokens", safeCached);
+        if (cacheWrite != null) {
+            usage.put("cache_creation_input_tokens", safeWrite);
+        }
         usage.put("output", output);
         usage.put("total", total);
         return toJson(usage);
