@@ -73,32 +73,26 @@ public class VectorSearchChannel implements SearchChannel {
     @Override
     public SearchChannelResult search(SearchContext context) {
         long startTime = System.currentTimeMillis();
-
-        try {
-            RetrievalScope scope = context.getRetrievalScope();
-            List<RetrievedChunk> chunks;
-            Map<String, Object> metadata;
-            if (scope.directed()) {
-                chunks = retrieveDirected(context, scope);
-                metadata = Map.of("scope", "directed", "topScore", scope.topScore());
-            } else {
-                chunks = retrieveGlobal(context, scope);
-                metadata = Map.of("scope", "global", "topScore", scope.topScore());
-            }
-
-            long latency = System.currentTimeMillis() - startTime;
-            return SearchChannelResult.builder()
-                    .channelType(SearchChannelType.VECTOR)
-                    .channelName(getName())
-                    .chunks(chunks)
-                    .latencyMs(latency)
-                    .metadata(metadata)
-                    .build();
-
-        } catch (Exception e) {
-            log.error("向量检索失败", e);
-            return emptyResult(System.currentTimeMillis() - startTime);
+        // 异常不在通道内吞：交给 MultiChannelRetrievalEngine 统一降级，channel 阶段 span 才能标成失败
+        RetrievalScope scope = context.getRetrievalScope();
+        List<RetrievedChunk> chunks;
+        Map<String, Object> metadata;
+        if (scope.directed()) {
+            chunks = retrieveDirected(context, scope);
+            metadata = Map.of("scope", "directed", "topScore", scope.topScore());
+        } else {
+            chunks = retrieveGlobal(context, scope);
+            metadata = Map.of("scope", "global", "topScore", scope.topScore());
         }
+
+        long latency = System.currentTimeMillis() - startTime;
+        return SearchChannelResult.builder()
+                .channelType(SearchChannelType.VECTOR)
+                .channelName(getName())
+                .chunks(chunks)
+                .latencyMs(latency)
+                .metadata(metadata)
+                .build();
     }
 
     @Override

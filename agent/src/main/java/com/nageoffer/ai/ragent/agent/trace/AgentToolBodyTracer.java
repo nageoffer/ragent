@@ -29,6 +29,7 @@ import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.context.Context;
+import io.opentelemetry.context.Scope;
 import reactor.core.publisher.Mono;
 import reactor.util.context.ContextView;
 
@@ -87,7 +88,12 @@ public final class AgentToolBodyTracer {
             long startedAt = facts.markStarted(toolCallId);
             Span span = openSpan(ctxView, tool, facts, toolCallId, startedAt, runtimeContext, param);
             AtomicBoolean ended = new AtomicBoolean();
-            return body.get()
+            // 组装执行体时工具 span 是当前上下文，工具可借此把自己内部的分阶段 span 挂上来
+            Mono<ToolResultBlock> execution;
+            try (Scope ignored = span == null ? Scope.noop() : Context.current().with(span).makeCurrent()) {
+                execution = body.get();
+            }
+            return execution
                     .doOnSuccess(result -> {
                         if (ended.compareAndSet(false, true)) {
                             settleFinished(span, facts, toolCallId, result, null);

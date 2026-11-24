@@ -29,6 +29,7 @@ import com.nageoffer.ai.ragent.infra.util.LLMResponseCleaner;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentNode;
 import com.nageoffer.ai.ragent.rag.core.intent.NodeScore;
 import com.nageoffer.ai.ragent.rag.core.prompt.PromptTemplateLoader;
+import com.nageoffer.ai.ragent.rag.trace.KnowledgeSearchSpans;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -96,6 +97,7 @@ public class AmbiguityLLMChecker {
             return false;
         } catch (Exception e) {
             log.warn("歧义确认 LLM 调用失败, 降级为跳过澄清, question={}", question, e);
+            KnowledgeSearchSpans.markFailed(e);
             return false;
         }
     }

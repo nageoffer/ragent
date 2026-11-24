@@ -17,6 +17,7 @@
 
 package com.nageoffer.ai.ragent.agent.tool;
 
+import com.nageoffer.ai.ragent.agent.trace.CollectingSpanExporter;
 import com.nageoffer.ai.ragent.rag.service.KnowledgeSearchFacade;
 import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.message.TextBlock;
@@ -25,11 +26,22 @@ import io.agentscope.core.message.ToolResultState;
 import io.agentscope.core.message.ToolUseBlock;
 import io.agentscope.core.tool.ToolCallParam;
 import io.agentscope.core.tool.Toolkit;
+import io.opentelemetry.api.GlobalOpenTelemetry;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.context.Scope;
+import io.opentelemetry.sdk.OpenTelemetrySdk;
+import io.opentelemetry.sdk.trace.SdkTracerProvider;
+import io.opentelemetry.sdk.trace.data.SpanData;
+import io.opentelemetry.sdk.trace.export.SimpleSpanProcessor;
 import org.junit.jupiter.api.Test;
 
+import java.time.Clock;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -200,4 +212,49 @@ class KnowledgeSearchToolTest {
                 .isEqualTo("知识库检索异常，请稍后重试");
     }
 
+    /**
+     * 检索各阶段的 span 要挂在工具 span 下，facade 在 boundedElastic 线程上读到的当前 span 必须就是它
+     */
+    @Test
+    void shouldExposeToolSpanToFacadeOnWorkerThread() {
+        GlobalOpenTelemetry.resetForTest();
+        List<SpanData> exported = Collections.synchronizedList(new ArrayList<>());
+        SdkTracerProvider tracerProvider = SdkTracerProvider.builder()
+                .addSpanProcessor(SimpleSpanProcessor.create(new CollectingSpanExporter(exported)))
+                .build();
+        GlobalOpenTelemetry.set(OpenTelemetrySdk.builder().setTracerProvider(tracerProvider).build());
+        try {
+            AtomicReference<String> seenSpanId = new AtomicReference<>();
+            KnowledgeSearchFacade knowledgeSearchFacade = mock(KnowledgeSearchFacade.class);
+            when(knowledgeSearchFacade.search("AirPods Pro 左耳没声音")).thenAnswer(invocation -> {
+                seenSpanId.set(Span.current().getSpanContext().getSpanId());
+                return "先清洁左耳滤网";
+            });
+            KnowledgeSearchTool tool = new KnowledgeSearchTool("检索企业知识库", knowledgeSearchFacade);
+            RuntimeContext runtimeContext = RuntimeContext.builder().userId("user-1").sessionId("conversation-1").build();
+            runtimeContext.put(AgentToolExecutionFacts.RUNTIME_CONTEXT_KEY,
+                    new AgentToolExecutionFacts("run-1", Clock.systemUTC()));
+            ToolCallParam param = ToolCallParam.builder()
+                    .toolUseBlock(ToolUseBlock.builder().id("call-1").name(KnowledgeSearchTool.TOOL_NAME).build())
+                    .input(Map.of("query", "AirPods Pro 左耳没声音"))
+                    .runtimeContext(runtimeContext)
+                    .build();
+
+            Span batch = tracerProvider.get("test").spanBuilder("tool_batch").startSpan();
+            try (Scope ignored = batch.makeCurrent()) {
+                tool.callAsync(param).block();
+            } finally {
+                batch.end();
+            }
+
+            SpanData toolSpan = exported.stream()
+                    .filter(data -> ("execute_tool " + KnowledgeSearchTool.TOOL_NAME).equals(data.getName()))
+                    .findFirst()
+                    .orElseThrow();
+            assertThat(seenSpanId.get()).isEqualTo(toolSpan.getSpanId());
+        } finally {
+            tracerProvider.close();
+            GlobalOpenTelemetry.resetForTest();
+        }
+    }
 }

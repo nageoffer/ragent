@@ -26,6 +26,7 @@ import com.nageoffer.ai.ragent.rag.config.SearchChannelProperties;
 import com.nageoffer.ai.ragent.rag.core.retrieval.channel.SearchChannelResult;
 import com.nageoffer.ai.ragent.rag.core.retrieval.channel.SearchChannelType;
 import com.nageoffer.ai.ragent.rag.core.retrieval.channel.SearchContext;
+import com.nageoffer.ai.ragent.rag.trace.KnowledgeSearchSpans;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -99,7 +100,12 @@ public class RerankPostProcessor implements SearchResultPostProcessor {
             input.add(scored);
         }
 
-        List<RetrievedChunk> reranked = rerankService.rerank(question, input, topN);
+        List<RetrievedChunk> reranked = KnowledgeSearchSpans.trace("rerank", () -> {
+            KnowledgeSearchSpans.count(KnowledgeSearchSpans.INPUT_COUNT, input.size());
+            List<RetrievedChunk> hits = rerankService.rerank(question, input, topN);
+            KnowledgeSearchSpans.count(KnowledgeSearchSpans.CHUNK_COUNT, hits.size());
+            return hits;
+        });
         List<RetrievedChunk> result = new ArrayList<>(reranked.size());
         for (RetrievedChunk hit : reranked) {
             result.add(originalByKey.get(RetrievedChunkKey.of(hit)).toBuilder()

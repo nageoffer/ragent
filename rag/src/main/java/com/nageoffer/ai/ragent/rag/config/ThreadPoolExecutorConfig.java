@@ -19,6 +19,7 @@ package com.nageoffer.ai.ragent.rag.config;
 
 import cn.hutool.core.thread.ThreadFactoryBuilder;
 import com.alibaba.ttl.threadpool.TtlExecutors;
+import io.opentelemetry.context.Context;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -31,6 +32,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 /**
  * 线程池执行器配置类
  * 为系统中不同的业务场景配置独立的线程池，提高并发处理能力
+ * 知识检索链路上的池另套 Context.taskWrapping：OTel 上下文不走 TTL，不带过去分阶段 span 就挂不到工具 span 下
  */
 @Configuration
 public class ThreadPoolExecutorConfig {
@@ -56,7 +58,7 @@ public class ThreadPoolExecutorConfig {
                         .build(),
                 new ThreadPoolExecutor.CallerRunsPolicy()
         );
-        return TtlExecutors.getTtlExecutor(executor);
+        return TtlExecutors.getTtlExecutor(Context.taskWrapping(executor));
     }
 
     /**
@@ -75,7 +77,7 @@ public class ThreadPoolExecutorConfig {
                         .build(),
                 new ThreadPoolExecutor.CallerRunsPolicy()
         );
-        return TtlExecutors.getTtlExecutor(executor);
+        return TtlExecutors.getTtlExecutor(Context.taskWrapping(executor));
     }
 
     /**
@@ -94,7 +96,7 @@ public class ThreadPoolExecutorConfig {
                         .build(),
                 new ThreadPoolExecutor.CallerRunsPolicy()
         );
-        return TtlExecutors.getTtlExecutor(executor);
+        return TtlExecutors.getTtlExecutor(Context.taskWrapping(executor));
     }
 
     /**
@@ -113,7 +115,7 @@ public class ThreadPoolExecutorConfig {
                         .build(),
                 new ThreadPoolExecutor.CallerRunsPolicy()
         );
-        return TtlExecutors.getTtlExecutor(executor);
+        return TtlExecutors.getTtlExecutor(Context.taskWrapping(executor));
     }
 
     /**

@@ -21,6 +21,8 @@ import com.nageoffer.ai.ragent.framework.errorcode.BaseErrorCode;
 import com.nageoffer.ai.ragent.framework.cancellation.TaskCancellation;
 import com.nageoffer.ai.ragent.framework.exception.RemoteException;
 import com.nageoffer.ai.ragent.infra.enums.ModelCapability;
+import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.api.trace.Span;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -36,6 +38,17 @@ import java.util.function.Function;
 @Component
 @RequiredArgsConstructor
 public class ModelRoutingExecutor {
+
+    private static final AttributeKey<String> MODEL_ID = AttributeKey.stringKey("ragent.model.id");
+
+    private static final AttributeKey<Boolean> MODEL_FALLBACK = AttributeKey.booleanKey("ragent.model.fallback");
+
+    private static final AttributeKey<String> MODEL_FAILED = AttributeKey.stringKey("ragent.model.failed");
+
+    /**
+     * 降级成功不算失败，标 WARNING 让它在 LangFuse 里显眼，又不和 ERROR 混在一起
+     */
+    private static final AttributeKey<String> LANGFUSE_LEVEL = AttributeKey.stringKey("langfuse.observation.level");
 
     private final ModelHealthStore healthStore;
 
@@ -64,6 +77,7 @@ public class ModelRoutingExecutor {
             try {
                 T response = caller.call(client, target);
                 healthStore.markSuccess(target.id());
+                recordServedModel(target, targets);
                 return response;
             } catch (Exception e) {
                 if (TaskCancellation.isCancellation(e)) {
@@ -73,6 +87,7 @@ public class ModelRoutingExecutor {
                 }
                 last = e;
                 healthStore.markFailure(target.id());
+                Span.current().setAttribute(MODEL_FAILED, target.id() + ": " + e.getMessage());
                 log.warn("{} model failed, fallback to next. modelId={}, provider={}", label, target.id(), target.candidate().getProvider(), e);
             }
         }
@@ -82,5 +97,18 @@ public class ModelRoutingExecutor {
                 last,
                 BaseErrorCode.REMOTE_ERROR
         );
+    }
+
+    /**
+     * 写到调用方当前的阶段 span 上，没装 OTel SDK 或不在追踪链路里时是空操作
+     * 只认本次候选列表的首位：已熔断的模型在 ModelSelector 里就被剔除，换到备选也不标降级，只能从 model.id 看出
+     */
+    private static void recordServedModel(ModelTarget served, List<ModelTarget> targets) {
+        Span span = Span.current();
+        span.setAttribute(MODEL_ID, served.id());
+        if (served != targets.get(0)) {
+            span.setAttribute(MODEL_FALLBACK, true);
+            span.setAttribute(LANGFUSE_LEVEL, "WARNING");
+        }
     }
 }

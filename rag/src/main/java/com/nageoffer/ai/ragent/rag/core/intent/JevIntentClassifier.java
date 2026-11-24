@@ -25,6 +25,7 @@ import com.nageoffer.ai.ragent.infra.jev.JevNoulQuestion;
 import com.nageoffer.ai.ragent.infra.jev.JevRequest;
 import com.nageoffer.ai.ragent.infra.jev.JevTarget;
 import com.nageoffer.ai.ragent.rag.config.IntentProperties;
+import com.nageoffer.ai.ragent.rag.trace.KnowledgeSearchSpans;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Primary;
@@ -104,6 +105,7 @@ public class JevIntentClassifier implements IntentClassifier {
             String reason = e instanceof ModelClientException ex ? String.valueOf(ex.getErrorType()) : "UNEXPECTED";
             log.warn("Jev 意图识别降级为空意图, 原因={}, 候选数={}, 耗时={}ms",
                     reason, candidates.size(), System.currentTimeMillis() - startAt, e);
+            KnowledgeSearchSpans.markFailed(e);
             return List.of();
         }
 

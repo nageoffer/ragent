@@ -31,6 +31,7 @@ import com.nageoffer.ai.ragent.framework.trace.RagTraceNode;
 import com.nageoffer.ai.ragent.infra.chat.LLMService;
 import com.nageoffer.ai.ragent.infra.enums.Tier;
 import com.nageoffer.ai.ragent.rag.core.prompt.PromptTemplateLoader;
+import com.nageoffer.ai.ragent.rag.trace.KnowledgeSearchSpans;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -102,6 +103,7 @@ public class MultiQuestionRewriteService implements QueryRewriteService {
             result = parsed != null ? parsed : fallback;
         } catch (Exception e) {
             log.warn("查询改写 LLM 调用失败，使用归一化问题兜底", e);
+            KnowledgeSearchSpans.markFailed(e);
             result = fallback;
         }
 

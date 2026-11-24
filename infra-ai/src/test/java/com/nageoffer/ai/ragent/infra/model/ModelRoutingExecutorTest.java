@@ -21,10 +21,22 @@ import com.nageoffer.ai.ragent.infra.config.AIModelProperties;
 import com.nageoffer.ai.ragent.infra.enums.ModelCapability;
 import com.nageoffer.ai.ragent.infra.http.ModelClientErrorType;
 import com.nageoffer.ai.ragent.infra.http.ModelClientException;
+import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.StatusCode;
+import io.opentelemetry.context.Scope;
+import io.opentelemetry.sdk.common.CompletableResultCode;
+import io.opentelemetry.sdk.trace.SdkTracerProvider;
+import io.opentelemetry.sdk.trace.data.SpanData;
+import io.opentelemetry.sdk.trace.export.SimpleSpanProcessor;
+import io.opentelemetry.sdk.trace.export.SpanExporter;
 import org.junit.jupiter.api.Test;
 
 import java.io.InterruptedIOException;
 import java.lang.reflect.UndeclaredThrowableException;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -148,6 +160,65 @@ class ModelRoutingExecutorTest {
         assertThat(result).isEqualTo("ok");
         verify(healthStore).markFailure(primary.id());
         verify(healthStore).markSuccess(fallback.id());
+    }
+
+    /**
+     * 首选失败、次选成功时阶段 span 仍是成功，但要能看出换了模型、首选为什么失败
+     */
+    @Test
+    void shouldMarkFallbackOnCurrentSpan() {
+        List<SpanData> exported = new ArrayList<>();
+        SdkTracerProvider tracerProvider = SdkTracerProvider.builder()
+                .addSpanProcessor(SimpleSpanProcessor.create(new SpanExporter() {
+                    @Override
+                    public CompletableResultCode export(Collection<SpanData> spans) {
+                        exported.addAll(spans);
+                        return CompletableResultCode.ofSuccess();
+                    }
+
+                    @Override
+                    public CompletableResultCode flush() {
+                        return CompletableResultCode.ofSuccess();
+                    }
+
+                    @Override
+                    public CompletableResultCode shutdown() {
+                        return CompletableResultCode.ofSuccess();
+                    }
+                }))
+                .build();
+        ModelHealthStore healthStore = mock(ModelHealthStore.class);
+        ModelRoutingExecutor executor = new ModelRoutingExecutor(healthStore);
+        ModelTarget primary = target("qwen3-rerank", "bailian");
+        ModelTarget fallback = target("rerank-noop", "noop");
+        when(healthStore.allowCall(primary.id()))
+                .thenReturn(new ModelHealthStore.CallPermit(primary.id(), 0L));
+        when(healthStore.allowCall(fallback.id()))
+                .thenReturn(new ModelHealthStore.CallPermit(fallback.id(), 0L));
+
+        Span stage = tracerProvider.get("test").spanBuilder("rerank").startSpan();
+        try (Scope ignored = stage.makeCurrent()) {
+            executor.executeWithFallback(
+                    ModelCapability.RERANK,
+                    List.of(primary, fallback),
+                    ModelTarget::id,
+                    (client, target) -> {
+                        if (target == primary) {
+                            throw new IllegalStateException("Read timed out");
+                        }
+                        return "ok";
+                    });
+        } finally {
+            stage.end();
+            tracerProvider.close();
+        }
+
+        Attributes attributes = exported.get(0).getAttributes();
+        assertThat(attributes.get(AttributeKey.stringKey("ragent.model.id"))).isEqualTo("rerank-noop");
+        assertThat(attributes.get(AttributeKey.booleanKey("ragent.model.fallback"))).isTrue();
+        assertThat(attributes.get(AttributeKey.stringKey("ragent.model.failed"))).isEqualTo("qwen3-rerank: Read timed out");
+        assertThat(attributes.get(AttributeKey.stringKey("langfuse.observation.level"))).isEqualTo("WARNING");
+        assertThat(exported.get(0).getStatus().getStatusCode()).isEqualTo(StatusCode.UNSET);
     }
 
     private static ModelTarget target(String id, String provider) {

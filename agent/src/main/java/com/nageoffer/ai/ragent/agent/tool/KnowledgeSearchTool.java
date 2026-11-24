@@ -27,6 +27,7 @@ import io.agentscope.core.message.ToolResultState;
 import io.agentscope.core.message.ToolUseBlock;
 import io.agentscope.core.tool.AgentTool;
 import io.agentscope.core.tool.ToolCallParam;
+import io.opentelemetry.context.Context;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Mono;
@@ -83,8 +84,10 @@ public class KnowledgeSearchTool implements AgentTool {
 
     @Override
     public Mono<ToolResultBlock> callAsync(ToolCallParam param) {
-        return AgentToolBodyTracer.trace(this, param, () -> Mono.fromCallable(() -> execute(param))
-                .subscribeOn(Schedulers.boundedElastic()));
+        // 把工具 span 带到 boundedElastic 线程，检索各阶段的 span 才挂得到它下面
+        return AgentToolBodyTracer.trace(this, param, () ->
+                Mono.fromCallable(Context.current().wrap(() -> execute(param)))
+                        .subscribeOn(Schedulers.boundedElastic()));
     }
 
     private ToolResultBlock execute(ToolCallParam param) {

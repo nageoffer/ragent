@@ -29,6 +29,7 @@ import com.nageoffer.ai.ragent.rag.core.prompt.PromptTemplateLoader;
 import com.nageoffer.ai.ragent.rag.dto.KbResult;
 import com.nageoffer.ai.ragent.rag.dto.RetrievalContext;
 import com.nageoffer.ai.ragent.rag.dto.SubQuestionIntent;
+import com.nageoffer.ai.ragent.rag.trace.KnowledgeSearchSpans;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -41,6 +42,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
+import java.util.stream.IntStream;
 
 import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.CONTEXT_FORMAT_PATH;
 import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.MULTI_CHANNEL_KEY;
@@ -75,11 +77,16 @@ public class RetrievalEngine {
                 searchProperties.getFusion().getRerankCandidateLimit(),
                 contextTopK
         );
-        List<CompletableFuture<SubQuestionContext>> tasks = subIntents.stream()
-                .map(intent -> CompletableFuture.supplyAsync(
+        List<CompletableFuture<SubQuestionContext>> tasks = IntStream.range(0, subIntents.size())
+                .mapToObj(index -> CompletableFuture.supplyAsync(
                         () -> {
+                            SubQuestionIntent intent = subIntents.get(index);
                             try {
-                                return buildSubQuestionContext(intent, budget);
+                                return KnowledgeSearchSpans.trace("retrieve #" + (index + 1), () -> {
+                                    SubQuestionContext context = buildSubQuestionContext(intent, budget);
+                                    KnowledgeSearchSpans.count(KnowledgeSearchSpans.CHUNK_COUNT, context.contextChunks().size());
+                                    return context;
+                                });
                             } catch (Exception e) {
                                 log.error("子问题上下文构建失败，降级为空上下文，question：{}", intent.subQuestion(), e);
                                 return new SubQuestionContext(

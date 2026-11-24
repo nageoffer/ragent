@@ -34,6 +34,7 @@ import com.nageoffer.ai.ragent.framework.convention.ChatMessage;
 import com.nageoffer.ai.ragent.framework.convention.ChatRequest;
 import com.nageoffer.ai.ragent.infra.chat.LLMService;
 import com.nageoffer.ai.ragent.rag.core.prompt.PromptTemplateLoader;
+import com.nageoffer.ai.ragent.rag.trace.KnowledgeSearchSpans;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -189,6 +190,7 @@ public class DefaultIntentClassifier implements IntentClassifier, IntentNodeRegi
         } catch (Exception e) {
             log.warn("LLM 意图识别降级为空意图, 候选数={}, 耗时={}ms",
                     candidates.size(), System.currentTimeMillis() - startAt, e);
+            KnowledgeSearchSpans.markFailed(e);
             return List.of();
         }
         List<NodeScore> scores;
@@ -197,6 +199,7 @@ public class DefaultIntentClassifier implements IntentClassifier, IntentNodeRegi
         } catch (Exception e) {
             log.warn("LLM 意图识别降级为空意图, 原因=PARSE_ERROR, 候选数={}, 耗时={}ms, 原始响应: {}",
                     candidates.size(), System.currentTimeMillis() - startAt, LogSafe.preview(raw), e);
+            KnowledgeSearchSpans.markFailed(e);
             return List.of();
         }
         return scores;

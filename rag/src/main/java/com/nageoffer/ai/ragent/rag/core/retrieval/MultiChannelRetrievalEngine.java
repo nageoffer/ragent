@@ -30,6 +30,7 @@ import com.nageoffer.ai.ragent.rag.core.retrieval.channel.SearchChannelResult;
 import com.nageoffer.ai.ragent.rag.core.retrieval.channel.SearchContext;
 import com.nageoffer.ai.ragent.rag.core.retrieval.postprocessor.SearchResultPostProcessor;
 import com.nageoffer.ai.ragent.rag.dto.SubQuestionIntent;
+import com.nageoffer.ai.ragent.rag.trace.KnowledgeSearchSpans;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -38,6 +39,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -153,7 +155,12 @@ public class MultiChannelRetrievalEngine {
                             long startTime = System.currentTimeMillis();
                             try {
                                 log.info("执行检索通道：{}", channel.getName());
-                                return channel.search(context);
+                                return KnowledgeSearchSpans.trace(
+                                        "channel " + channel.getType().name().toLowerCase(Locale.ROOT), () -> {
+                                            SearchChannelResult result = channel.search(context);
+                                            KnowledgeSearchSpans.count(KnowledgeSearchSpans.CHUNK_COUNT, result.getChunks().size());
+                                            return result;
+                                        });
                             } catch (Exception e) {
                                 log.error("检索通道 {} 执行失败", channel.getName(), e);
                                 return channel.emptyResult(System.currentTimeMillis() - startTime);
