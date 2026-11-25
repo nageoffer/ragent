@@ -25,7 +25,6 @@ import com.nageoffer.ai.ragent.core.parser.registry.ParseProfile;
 import com.nageoffer.ai.ragent.framework.exception.ServiceException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.tika.Tika;
-import org.apache.tika.parser.pdf.PDFParserConfig;
 import org.springframework.stereotype.Component;
 
 import java.io.ByteArrayInputStream;
@@ -46,12 +45,6 @@ import java.util.Set;
 public class TikaDocumentParser implements DocumentParser {
 
     private static final Tika TIKA = new Tika();
-
-    static {
-        PDFParserConfig pdfConfig = new PDFParserConfig();
-        pdfConfig.setExtractInlineImages(false);
-        pdfConfig.setExtractUniqueInlineImagesOnly(true);
-    }
 
     @Override
     public String getParserType() {
