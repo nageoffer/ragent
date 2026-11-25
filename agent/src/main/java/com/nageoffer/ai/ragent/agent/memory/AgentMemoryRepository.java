@@ -33,7 +33,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -143,22 +142,22 @@ public class AgentMemoryRepository {
     }
 
     /**
-     * 理解本批发言所需的背景：各段对话分别取原文，去掉本批自己，再按消息先后合回一条
+     * 理解本批发言所需的背景：按会话保留原文顺序，去掉本批自己，不跨会话合并，以conversationId为key进行组织background消息
      * 背景不止于本批之前，本批发言之间的助手回复同样在内，但都不能当决策来源
      */
-    public List<AgentMessageDO> loadBackground(String userId, List<AgentMessageDO> batch) {
+    public Map<String, List<AgentMessageDO>> loadBackground(String userId, List<AgentMessageDO> batch) {
         Map<String, List<AgentMessageDO>> byConversation = new LinkedHashMap<>();
         for (AgentMessageDO message : batch) {
             byConversation.computeIfAbsent(message.getConversationId(), key -> new ArrayList<>()).add(message);
         }
-        List<AgentMessageDO> background = new ArrayList<>();
-        for (List<AgentMessageDO> messages : byConversation.values()) {
-            background.addAll(loadConversation(userId, messages));
-        }
         Set<String> batchIds = new HashSet<>();
         batch.forEach(message -> batchIds.add(message.getId()));
-        background.removeIf(message -> batchIds.contains(message.getId()));
-        background.sort(Comparator.comparing(AgentMessageDO::getId));
+        // 只收集conversationId对应的background消息
+        Map<String, List<AgentMessageDO>> background = new LinkedHashMap<>();
+        byConversation.forEach((conversationId, messages) -> background.put(conversationId,
+                loadConversation(userId, messages).stream()
+                        .filter(message -> !batchIds.contains(message.getId()))
+                        .toList()));
         return background;
     }
 

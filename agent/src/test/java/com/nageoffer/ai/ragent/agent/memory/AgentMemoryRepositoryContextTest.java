@@ -37,6 +37,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -69,7 +70,9 @@ class AgentMemoryRepositoryContextTest {
         when(messages.selectOne(any())).thenReturn(previous);
         when(messages.selectList(any())).thenReturn(dialogue);
 
-        assertThat(repository.loadBackground("u-1", List.of(dialogue.get(3), dialogue.get(6))))
+        Map<String, List<AgentMessageDO>> background = repository.loadBackground("u-1", List.of(dialogue.get(3), dialogue.get(6)));
+        assertThat(background).containsOnlyKeys("A");
+        assertThat(background.get("A"))
                 .containsExactly(dialogue.get(0), dialogue.get(1), dialogue.get(2), dialogue.get(4), dialogue.get(5));
 
         ArgumentCaptor<LambdaQueryWrapper<AgentMessageDO>> previousQuery = captor();
@@ -91,7 +94,7 @@ class AgentMemoryRepositoryContextTest {
         AgentMessageDO first = message("10", "A", "我一直戴眼镜");
         when(messages.selectList(any())).thenReturn(List.of(first));
 
-        assertThat(repository.loadBackground("u-1", List.of(first))).isEmpty();
+        assertThat(repository.loadBackground("u-1", List.of(first))).containsExactlyEntriesOf(Map.of("A", List.of()));
 
         ArgumentCaptor<LambdaQueryWrapper<AgentMessageDO>> query = captor();
         verify(messages).selectList(query.capture());
@@ -99,10 +102,10 @@ class AgentMemoryRepositoryContextTest {
     }
 
     /**
-     * A→B→A：A 只按 A1~A2 的区间读一次，B 单独读，合起来按消息先后排；三条本批发言都不进背景
+     * A→B→A：各会话只读一次，分别保留背景顺序，三条本批发言都不进背景
      */
     @Test
-    void shouldReadEachConversationOnceAndMergeInMessageOrder() {
+    void shouldReadEachConversationOnceAndKeepBackgroundGrouped() {
         AgentMessageDO a1 = message("1900000000000000010", "A", "我想换个手机");
         AgentMessageDO aReply = message("1900000000000000011", "A", "喜欢大一点还是小一点？");
         AgentMessageDO b0 = message("1900000000000000015", "B", "之前看过的平板");
@@ -113,14 +116,21 @@ class AgentMemoryRepositoryContextTest {
         when(messages.selectOne(any())).thenReturn(null);
         when(messages.selectList(any())).thenReturn(List.of(a1, aReply, aReply2, a2), List.of(b0, bReply, b1));
 
-        // A 的 aReply2 晚于 B 的两条，按 id 合并才排得对
-        assertThat(repository.loadBackground("u-1", List.of(a1, b1, a2)))
-                .containsExactly(aReply, b0, bReply, aReply2);
+        Map<String, List<AgentMessageDO>> background = repository.loadBackground("u-1", List.of(a1, b1, a2));
+        assertThat(background.keySet()).containsExactly("A", "B");
+        assertThat(background.get("A")).containsExactly(aReply, aReply2);
+        assertThat(background.get("B")).containsExactly(b0, bReply);
 
         ArgumentCaptor<LambdaQueryWrapper<AgentMessageDO>> queries = captor();
         verify(messages, times(2)).selectList(queries.capture());
         assertThat(sql(queries.getAllValues().get(0))).contains("conversation_id = 'A'", "id <= '1900000000000000030'");
         assertThat(sql(queries.getAllValues().get(1))).contains("conversation_id = 'B'", "id <= '1900000000000000020'");
+    }
+
+    @Test
+    void emptyBatchShouldNotQueryMessages() {
+        assertThat(repository.loadBackground("u-1", List.of())).isEmpty();
+        verifyNoInteractions(messages);
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
