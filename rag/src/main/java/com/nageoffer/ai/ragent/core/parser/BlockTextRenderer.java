@@ -84,13 +84,21 @@ public final class BlockTextRenderer {
             } else if (b instanceof ListBlock l) {
                 if (l.items() != null) {
                     for (int idx = 0; idx < l.items().size(); idx++) {
-                        sb.append(l.ordered() ? (idx + 1) + ". " : "- ")
-                                .append(l.items().get(idx)).append('\n');
+                        sb.append(renderListItem(l.ordered(), idx + 1, l.items().get(idx))).append('\n');
                     }
                     sb.append('\n');
                 }
             }
         }
         return sb.toString().trim();
+    }
+
+    /**
+     * 渲染一个列表项，续行按编号或符号宽度缩进，保留内部代码块的列表归属。
+     */
+    public static String renderListItem(boolean ordered, int number, String item) {
+        String marker = ordered ? number + ". " : "- ";
+        String continuation = " ".repeat(marker.length());
+        return marker + item.replace("\n", "\n" + continuation);
     }
 }

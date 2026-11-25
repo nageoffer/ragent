@@ -19,6 +19,7 @@ package com.nageoffer.ai.ragent.core.chunk.blockaware;
 
 import com.nageoffer.ai.ragent.core.chunk.model.ChunkDraft;
 import com.nageoffer.ai.ragent.core.chunk.model.ChunkMetadata;
+import com.nageoffer.ai.ragent.core.parser.BlockTextRenderer;
 import com.nageoffer.ai.ragent.core.parser.model.ListBlock;
 import org.springframework.stereotype.Component;
 
@@ -102,6 +103,6 @@ public class ListChunker implements BlockChunker<ListBlock> {
      * 单项渲染，同时用作预算切分的体量度量
      */
     private static String renderItem(ListBlock block, int number, String item) {
-        return block.ordered() ? number + ". " + item : "- " + item;
+        return BlockTextRenderer.renderListItem(block.ordered(), number, item);
     }
 }
