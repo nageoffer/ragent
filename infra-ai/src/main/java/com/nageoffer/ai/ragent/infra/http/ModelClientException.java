@@ -62,4 +62,8 @@ public class ModelClientException extends RuntimeException {
         this.errorType = errorType;
         this.statusCode = statusCode;
     }
+
+    public static boolean isContentRejected(Throwable e) {
+        return e instanceof ModelClientException ex && ex.errorType == ModelClientErrorType.CONTENT_REJECTED;
+    }
 }

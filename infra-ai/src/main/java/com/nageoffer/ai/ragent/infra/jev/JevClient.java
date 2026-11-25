@@ -28,6 +28,7 @@ import com.nageoffer.ai.ragent.infra.http.HttpResponseHelper;
 import com.nageoffer.ai.ragent.infra.http.ModelClientErrorType;
 import com.nageoffer.ai.ragent.infra.http.ModelClientException;
 import com.nageoffer.ai.ragent.infra.http.ModelUrlResolver;
+import com.nageoffer.ai.ragent.infra.http.UpstreamError;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
@@ -96,12 +97,8 @@ public class JevClient {
         JsonObject respJson;
         try (Response response = httpClient.newCall(httpRequest).execute()) {
             if (!response.isSuccessful()) {
-                String body = HttpResponseHelper.readBody(response.body());
-                throw new ModelClientException(
-                        LABEL + " 请求失败: HTTP " + response.code() + ", body=" + body,
-                        ModelClientErrorType.fromHttpStatus(response.code()),
-                        response.code()
-                );
+                UpstreamError error = UpstreamError.read(response);
+                throw new ModelClientException(LABEL + " 请求失败: " + error, error.errorType(), response.code());
             }
             respJson = HttpResponseHelper.parseJson(response.body(), LABEL);
         } catch (IOException e) {

@@ -163,6 +163,38 @@ class ModelRoutingExecutorTest {
     }
 
     /**
+     * 审查拒收由请求内容触发，计入熔断的话同一类输入连发两次就能让候选停用
+     */
+    @Test
+    void shouldTryNextCandidateWithoutMarkingFailureWhenContentRejected() {
+        ModelHealthStore healthStore = mock(ModelHealthStore.class);
+        ModelRoutingExecutor executor = new ModelRoutingExecutor(healthStore);
+        ModelTarget primary = target("qwen-flash", "bailian");
+        ModelTarget fallback = target("qwen3-local", "ollama");
+        ModelHealthStore.CallPermit probe = new ModelHealthStore.CallPermit(primary.id(), 7L);
+        when(healthStore.allowCall(primary.id())).thenReturn(probe);
+        when(healthStore.allowCall(fallback.id()))
+                .thenReturn(new ModelHealthStore.CallPermit(fallback.id(), 0L));
+
+        String result = executor.executeWithFallback(
+                ModelCapability.CHAT,
+                List.of(primary, fallback),
+                ModelTarget::id,
+                (client, target) -> {
+                    if (target == primary) {
+                        throw new ModelClientException("bailian 同步请求失败: HTTP 400 code=data_inspection_failed",
+                                ModelClientErrorType.CONTENT_REJECTED, 400);
+                    }
+                    return "ok";
+                });
+
+        assertThat(result).isEqualTo("ok");
+        verify(healthStore, never()).markFailure(primary.id());
+        verify(healthStore).releaseHalfOpenPermit(probe);
+        verify(healthStore).markSuccess(fallback.id());
+    }
+
+    /**
      * 首选失败、次选成功时阶段 span 仍是成功，但要能看出换了模型、首选为什么失败
      */
     @Test

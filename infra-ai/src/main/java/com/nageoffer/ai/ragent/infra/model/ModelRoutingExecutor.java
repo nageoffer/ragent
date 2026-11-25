@@ -21,6 +21,7 @@ import com.nageoffer.ai.ragent.framework.errorcode.BaseErrorCode;
 import com.nageoffer.ai.ragent.framework.cancellation.TaskCancellation;
 import com.nageoffer.ai.ragent.framework.exception.RemoteException;
 import com.nageoffer.ai.ragent.infra.enums.ModelCapability;
+import com.nageoffer.ai.ragent.infra.http.ModelClientException;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.trace.Span;
 import lombok.RequiredArgsConstructor;
@@ -86,8 +87,14 @@ public class ModelRoutingExecutor {
                     throw TaskCancellation.asCancellation(e);
                 }
                 last = e;
-                healthStore.markFailure(target.id());
                 Span.current().setAttribute(MODEL_FAILED, target.id() + ": " + e.getMessage());
+                if (ModelClientException.isContentRejected(e)) {
+                    // 审查拒收说明供应商在线，计入熔断会让一类输入拖垮整个候选；下一个候选可能不做同样的审查
+                    healthStore.releaseHalfOpenPermit(permit);
+                    log.warn("{} 内容被拒绝，请尝试下一步。modelId={}, provider={}, cause={}", label, target.id(), target.candidate().getProvider(), e.getMessage());
+                    continue;
+                }
+                healthStore.markFailure(target.id());
                 log.warn("{} model failed, fallback to next. modelId={}, provider={}", label, target.id(), target.candidate().getProvider(), e);
             }
         }

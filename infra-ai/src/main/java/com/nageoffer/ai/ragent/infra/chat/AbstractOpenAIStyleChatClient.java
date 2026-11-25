@@ -32,6 +32,7 @@ import com.nageoffer.ai.ragent.infra.http.HttpResponseHelper;
 import com.nageoffer.ai.ragent.infra.http.ModelClientErrorType;
 import com.nageoffer.ai.ragent.infra.http.ModelClientException;
 import com.nageoffer.ai.ragent.infra.http.ModelUrlResolver;
+import com.nageoffer.ai.ragent.infra.http.UpstreamError;
 import com.nageoffer.ai.ragent.infra.model.ModelTarget;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.Call;
@@ -128,13 +129,8 @@ public abstract class AbstractOpenAIStyleChatClient implements ChatClient {
         JsonObject respJson;
         try (Response response = httpCall.execute()) {
             if (!response.isSuccessful()) {
-                String body = HttpResponseHelper.readBody(response.body());
-                log.warn("{} 同步请求失败: status={}, body={}", provider(), response.code(), body);
-                throw new ModelClientException(
-                        provider() + " 同步请求失败: HTTP " + response.code(),
-                        ModelClientErrorType.fromHttpStatus(response.code()),
-                        response.code()
-                );
+                UpstreamError error = UpstreamError.read(response);
+                throw new ModelClientException(provider() + " 同步请求失败: " + error, error.errorType(), response.code());
             }
             respJson = HttpResponseHelper.parseJson(response.body(), provider());
         } catch (IOException e) {
@@ -206,12 +202,8 @@ public abstract class AbstractOpenAIStyleChatClient implements ChatClient {
     private void doStream(Call call, StreamCallback callback, AtomicBoolean cancelled, boolean reasoningEnabled) {
         try (Response response = call.execute()) {
             if (!response.isSuccessful()) {
-                String body = HttpResponseHelper.readBody(response.body());
-                throw new ModelClientException(
-                        provider() + " 流式请求失败: HTTP " + response.code() + " - " + body,
-                        ModelClientErrorType.fromHttpStatus(response.code()),
-                        response.code()
-                );
+                UpstreamError error = UpstreamError.read(response);
+                throw new ModelClientException(provider() + " 流式请求失败: " + error, error.errorType(), response.code());
             }
             ResponseBody body = response.body();
             BufferedSource source = body.source();

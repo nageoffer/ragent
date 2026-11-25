@@ -28,6 +28,7 @@ import com.nageoffer.ai.ragent.infra.http.HttpResponseHelper;
 import com.nageoffer.ai.ragent.infra.http.ModelClientErrorType;
 import com.nageoffer.ai.ragent.infra.http.ModelClientException;
 import com.nageoffer.ai.ragent.infra.http.ModelUrlResolver;
+import com.nageoffer.ai.ragent.infra.http.UpstreamError;
 import com.nageoffer.ai.ragent.infra.model.ModelTarget;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.OkHttpClient;
@@ -147,14 +148,10 @@ public abstract class AbstractOpenAIStyleEmbeddingClient implements EmbeddingCli
         JsonObject json;
         try (Response response = httpClient.newCall(request).execute()) {
             if (!response.isSuccessful()) {
-                String errBody = HttpResponseHelper.readBody(response.body());
-                log.warn("{} embedding 请求失败 - 模型：{}，条数：{}，耗时：{}ms，status={}, body={}",
-                        provider(), model, texts.size(), System.currentTimeMillis() - startTime, response.code(), errBody);
-                throw new ModelClientException(
-                        provider() + " embedding 请求失败: HTTP " + response.code(),
-                        ModelClientErrorType.fromHttpStatus(response.code()),
-                        response.code()
-                );
+                UpstreamError error = UpstreamError.read(response);
+                log.warn("{} embedding 请求失败 - 模型：{}，条数：{}，耗时：{}ms，{}",
+                        provider(), model, texts.size(), System.currentTimeMillis() - startTime, error);
+                throw new ModelClientException(provider() + " embedding 请求失败: " + error, error.errorType(), response.code());
             }
             json = HttpResponseHelper.parseJson(response.body(), provider());
         } catch (IOException e) {

@@ -58,7 +58,12 @@ public enum ModelClientErrorType {
     /**
      * 供应商错误 - 模型提供商服务错误
      */
-    PROVIDER_ERROR;
+    PROVIDER_ERROR,
+
+    /**
+     * 内容拒收 - 供应商的内容审查拒绝了这次请求，模型本身是健康的，不计入熔断
+     */
+    CONTENT_REJECTED;
 
     /**
      * 根据 HTTP 状态码推断错误类型

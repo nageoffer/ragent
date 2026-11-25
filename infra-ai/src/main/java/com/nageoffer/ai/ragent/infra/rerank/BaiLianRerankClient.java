@@ -30,6 +30,7 @@ import com.nageoffer.ai.ragent.infra.http.HttpResponseHelper;
 import com.nageoffer.ai.ragent.infra.http.ModelClientErrorType;
 import com.nageoffer.ai.ragent.infra.http.ModelClientException;
 import com.nageoffer.ai.ragent.infra.http.ModelUrlResolver;
+import com.nageoffer.ai.ragent.infra.http.UpstreamError;
 import com.nageoffer.ai.ragent.infra.model.ModelTarget;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -117,13 +118,8 @@ public class BaiLianRerankClient implements RerankClient {
         JsonObject respJson;
         try (Response response = httpClient.newCall(request).execute()) {
             if (!response.isSuccessful()) {
-                String body = HttpResponseHelper.readBody(response.body());
-                log.warn("{} rerank 请求失败: status={}, body={}", provider(), response.code(), body);
-                throw new ModelClientException(
-                        provider() + " rerank 请求失败: HTTP " + response.code(),
-                        ModelClientErrorType.fromHttpStatus(response.code()),
-                        response.code()
-                );
+                UpstreamError error = UpstreamError.read(response);
+                throw new ModelClientException(provider() + " rerank 请求失败: " + error, error.errorType(), response.code());
             }
             respJson = HttpResponseHelper.parseJson(response.body(), provider());
         } catch (IOException e) {

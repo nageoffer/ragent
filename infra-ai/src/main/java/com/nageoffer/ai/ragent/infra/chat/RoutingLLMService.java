@@ -23,6 +23,7 @@ import com.nageoffer.ai.ragent.framework.errorcode.BaseErrorCode;
 import com.nageoffer.ai.ragent.framework.exception.RemoteException;
 import com.nageoffer.ai.ragent.framework.trace.RagTraceNode;
 import com.nageoffer.ai.ragent.infra.enums.ModelCapability;
+import com.nageoffer.ai.ragent.infra.http.ModelClientException;
 import com.nageoffer.ai.ragent.infra.enums.Tier;
 import com.nageoffer.ai.ragent.infra.model.ModelHealthStore;
 import com.nageoffer.ai.ragent.infra.model.ModelRoutingExecutor;
@@ -159,8 +160,12 @@ public class RoutingLLMService implements LLMService {
                 return handle;
             }
 
-            // 失败处理
-            healthStore.markFailure(target.id());
+            // 失败处理：审查拒收不计入熔断，口径同 ModelRoutingExecutor
+            if (ModelClientException.isContentRejected(result.getError())) {
+                healthStore.releaseHalfOpenPermit(permit);
+            } else {
+                healthStore.markFailure(target.id());
+            }
             handle.cancel();
 
             lastError = buildLastErrorAndLog(result, target, label);

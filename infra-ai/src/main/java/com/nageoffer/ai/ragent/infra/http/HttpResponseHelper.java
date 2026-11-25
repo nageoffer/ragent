@@ -25,7 +25,6 @@ import lombok.NoArgsConstructor;
 import okhttp3.ResponseBody;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 
 /**
  * HTTP 响应处理工具类
@@ -35,16 +34,6 @@ import java.nio.charset.StandardCharsets;
 public final class HttpResponseHelper {
 
     private static final Gson GSON = new Gson();
-
-    /**
-     * 读取响应体原始字符串
-     */
-    public static String readBody(ResponseBody body) throws IOException {
-        if (body == null) {
-            return "";
-        }
-        return new String(body.bytes(), StandardCharsets.UTF_8);
-    }
 
     /**
      * 将响应体解析为 JsonObject
