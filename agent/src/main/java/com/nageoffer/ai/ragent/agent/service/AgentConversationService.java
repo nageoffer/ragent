@@ -22,8 +22,10 @@ import com.nageoffer.ai.ragent.agent.controller.vo.AgentMessageVO;
 import com.nageoffer.ai.ragent.agent.dto.AgentBlock;
 import com.nageoffer.ai.ragent.agent.dto.AgentConfirmSettlement;
 import com.nageoffer.ai.ragent.agent.enums.AgentMessageStatus;
+import com.nageoffer.ai.ragent.rag.core.guard.PreviousTurn;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Agent 会话管理：建会话、消息读写、确认卡片结算、删除
@@ -67,6 +69,11 @@ public interface AgentConversationService {
      * 校验当前用户的会话存在，并查询是否有待确认的操作；不存在或已删除时抛出异常
      */
     boolean hasPendingConfirm(String conversationId, String userId);
+
+    /**
+     * 紧挨本轮的上一轮：最新一条用户消息，加上回复它的全部助手正文；不看消息状态，会话还没有提问时为空
+     */
+    Optional<PreviousTurn> findPreviousTurn(String conversationId, String userId);
 
     /**
      * 查询用户的会话列表

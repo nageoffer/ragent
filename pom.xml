@@ -21,6 +21,7 @@
         <mybatis-plus.version>3.5.17</mybatis-plus.version>
         <s3.version>2.40.2</s3.version>
         <aliyun-oss.version>3.18.5</aliyun-oss.version>
+        <aliyun-green.version>3.6.10</aliyun-green.version>
         <sa-token.version>1.45.0</sa-token.version>
         <transmittable-thread-local.version>2.14.5</transmittable-thread-local.version>
         <redisson.version>4.6.1</redisson.version>
@@ -126,6 +127,19 @@
                 <groupId>com.aliyun.oss</groupId>
                 <artifactId>aliyun-sdk-oss</artifactId>
                 <version>${aliyun-oss.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.aliyun</groupId>
+                <artifactId>green20220302</artifactId>
+                <version>${aliyun-green.version}</version>
+                <exclusions>
+                    <!-- credentials-java 把 jacoco agent 声明成了 compile 依赖 -->
+                    <exclusion>
+                        <groupId>org.jacoco</groupId>
+                        <artifactId>org.jacoco.agent</artifactId>
+                    </exclusion>
+                </exclusions>
             </dependency>
 
             <dependency>

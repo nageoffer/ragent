@@ -28,6 +28,7 @@ import com.nageoffer.ai.ragent.agent.enums.AgentSSEEventType;
 import com.nageoffer.ai.ragent.agent.memory.AgentMemoryLearner;
 import com.nageoffer.ai.ragent.agent.service.AgentChatService;
 import com.nageoffer.ai.ragent.agent.service.AgentConversationService;
+import com.nageoffer.ai.ragent.agent.service.handler.AgentInputGuard;
 import com.nageoffer.ai.ragent.agent.service.handler.AgentRunGate;
 import com.nageoffer.ai.ragent.agent.service.handler.AgentRunHandle;
 import com.nageoffer.ai.ragent.agent.service.handler.AgentStreamEventBridge;
@@ -77,6 +78,7 @@ public class AgentChatServiceImpl implements AgentChatService {
     private final StreamTaskManager taskManager;
     private final AgentRunGate runGate;
     private final AgentMemoryLearner memoryLearner;
+    private final AgentInputGuard inputGuard;
 
     @Override
     public void streamChat(String question, String conversationId, SseEmitter emitter) {
@@ -92,6 +94,8 @@ public class AgentChatServiceImpl implements AgentChatService {
                     && conversationService.hasPendingConfirm(actualConversationId, userId)) {
                 throw new ClientException("上一步操作还在等你确认，请先确认或取消");
             }
+            // 审核在所有写库之前：被拒的原文不能进消息表，后台记忆抽取不看消息状态
+            inputGuard.check(taskId, userId, conversationId, question);
             startRun(question, userId, actualConversationId, taskId, emitter, releaseGate);
         } catch (RuntimeException | Error e) {
             cleanupFailedStart(taskId, releaseGate);

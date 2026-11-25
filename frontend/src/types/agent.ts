@@ -109,6 +109,8 @@ export interface AgentMessage {
   thinking?: string;
   blocks?: AgentBlockUI[];
   status?: AgentMessageUiStatus;
+  // 服务端给出的失败原因 时间线优先展示它 不在服务端落库
+  errorText?: string;
   messageStatus?: AgentPersistedMessageStatus;
   createdAt?: string;
   // 服务端耗时 直播与回放同源

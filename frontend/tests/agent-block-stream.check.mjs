@@ -157,12 +157,14 @@ try {
   }
 
   for (const status of ["done", "failed"]) {
-    store.setState({ ...initial, currentSessionId: "conversation-1", messages: [confirmFixture()] }, true);
+    store.setState({ ...initial, currentSessionId: "conversation-1", messages: [confirmFixture()],
+      sessions: [{ id: "conversation-1", title: "确认", turns: 1 }] }, true);
     const result = status === "done" ? "真实提交结果" : "真实执行错误";
     respondWith([["meta", { conversationId: "conversation-1", taskId: "resume-2" }],
       tool("c1", "running"), tool("c1", status, { result }), finish, done]);
     await store.getState().confirmPendingTool("confirm-1", 10003, true);
     assert.deepEqual(store.getState().messages[0].blocks.map(block => block.status), ["awaiting", "awaiting", "approved"]);
+    assert.equal(store.getState().sessions[0].turns, 1, "确认续跑收到 meta 也不是新的一轮");
     const live = visible();
     const saved = confirmFixture();
     saved.messageStatus = "NORMAL";

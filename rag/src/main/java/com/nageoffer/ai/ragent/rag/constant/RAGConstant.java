@@ -79,6 +79,12 @@ public class RAGConstant {
      */
     public static final String GUIDANCE_AMBIGUITY_CHECK_PROMPT_PATH = "prompt/guidance-ambiguity-check.st";
 
+    /**
+     * 用户输入审核规则，所有助手共用，不进提示词槽位
+     * 全文没有占位符：待审原文由代码序列化成 JSON 放进用户消息
+     */
+    public static final String INPUT_RISK_REVIEW_PROMPT_PATH = "prompt/input-risk-review.st";
+
 
     /**
      * 查询改写 + 多问句拆分提示词模板路径

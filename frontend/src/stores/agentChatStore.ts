@@ -24,7 +24,7 @@ import {
   stopAgentTask
 } from "@/services/agentService";
 import { buildQuery } from "@/utils/helpers";
-import { createAgentStreamResponse } from "@/hooks/useAgentStream";
+import { AgentServerError, createAgentStreamResponse } from "@/hooks/useAgentStream";
 import {
   applyConfirmStatus,
   applyTextBlockSeal,
@@ -302,9 +302,16 @@ export const useAgentChatStore = create<AgentChatState>((set, get) => {
 
   /**
    * 首问与确认续跑共用，返回是否收到过 meta（后端是否受理）
+   * countsTurn 只给普通提问：确认续跑不是新的一轮
    */
-  const runStream = async (params: { url: string; body?: unknown; assistantId: string; viewKey: string }) => {
-    const { url, body, assistantId } = params;
+  const runStream = async (params: {
+    url: string;
+    body?: unknown;
+    assistantId: string;
+    viewKey: string;
+    countsTurn?: boolean;
+  }) => {
+    const { url, body, assistantId, countsTurn } = params;
     let viewKey = params.viewKey;
     const { get, set } = bindView(() => viewKey);
     const token = storage.getToken();
@@ -337,10 +344,12 @@ export const useAgentChatStore = create<AgentChatState>((set, get) => {
           currentSessionId: nextId,
           isCreatingNew: false,
           streamTaskId: payload.taskId,
+          // meta 在用户消息落库之后才发，收到它这一轮才确实算数；不带 turns 键，避免 undefined 覆盖已有轮数
           sessions: upsertSession(state.sessions, {
             id: nextId,
             title: existing?.title || "新对话",
-            lastTime
+            lastTime,
+            ...(countsTurn ? { turns: (existing?.turns ?? 0) + 1 } : {})
           })
         }));
         // meta 前用户已点停止：此刻才拿到 taskId 补发停止指令
@@ -444,14 +453,11 @@ export const useAgentChatStore = create<AgentChatState>((set, get) => {
           const existingTitle =
             get().sessions.find((session) => session.id === currentId)?.title || "新对话";
           const nextTitle = payload.title || existingTitle;
-          // 本地即时更新轮数徽标 与服务端 user 消息计数同口径
-          const turns = get().messages.filter((message) => message.role === "user").length;
           set((state) => ({
             sessions: upsertSession(state.sessions, {
               id: currentId,
               title: nextTitle,
-              lastTime,
-              turns
+              lastTime
             })
           }));
         }
@@ -529,6 +535,7 @@ export const useAgentChatStore = create<AgentChatState>((set, get) => {
               ? {
                   ...message,
                   status: "error" as const,
+                  errorText: error instanceof AgentServerError ? error.message : undefined,
                   blocks: settleBlocks(message.blocks, "interrupted")
                 }
               : message
@@ -661,6 +668,11 @@ export const useAgentChatStore = create<AgentChatState>((set, get) => {
           };
         });
         setConversation({ messages: mapped });
+        // 服务端历史是轮数的基准，之后普通提问收到 meta 再加一；侧栏没有的会话不在这里补行
+        const turns = mapped.filter((message) => message.role === "user").length;
+        set((state) => ({
+          sessions: state.sessions.map((session) => (session.id === sessionId ? { ...session, turns } : session))
+        }));
       } catch (error) {
         if (epoch !== accountEpoch) return;
         // 回查失败要让调用方接住：那边正等着服务端表态，吞掉就只能一直「提交中」
@@ -780,7 +792,7 @@ export const useAgentChatStore = create<AgentChatState>((set, get) => {
       });
       const url = `${API_BASE_URL}/agent/v1/chat${query}`;
 
-      await runStream({ url, assistantId, viewKey });
+      await runStream({ url, assistantId, viewKey, countsTurn: true });
     },
     confirmPendingTool: async (messageId, blockId, approved) => {
       const epoch = accountEpoch;

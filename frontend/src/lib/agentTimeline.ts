@@ -460,7 +460,7 @@ export function buildTimelineRows(turn: AgentTurn): TraceRow[] {
         key: `err-${assistant.id}`,
         channel: "error",
         ts: "",
-        text: "生成失败，请稍后重试"
+        text: assistant.errorText || "生成失败，请稍后重试"
       });
     }
   }

@@ -7,6 +7,11 @@ import type {
   AgentMetaPayload
 } from "@/types/agent";
 
+/**
+ * 服务端明说了原因的业务错误；只说明服务端拒绝了，不说明它没写库
+ */
+export class AgentServerError extends Error {}
+
 export interface AgentStreamHandlers {
   onMeta?: (payload: AgentMetaPayload) => void;
   onMessage?: (payload: AgentMessageDelta) => void;
@@ -167,11 +172,12 @@ async function streamOnce(
     throw new Error(`SSE 请求失败（${response.status}）`);
   }
 
-  // @IdempotentSubmit 拦截时返回 200 + JSON 体而非事件流 文案取自 JSON 体
+  // 流建立前的拒绝（会话占用、待确认、输入审核）返回 200 + JSON 体而非事件流
   const contentType = response.headers.get("content-type") || "";
   if (!contentType.includes("text/event-stream")) {
     const errBody = (await response.json().catch(() => null)) as { message?: string } | null;
-    throw new Error(errBody?.message || "请求失败");
+    if (errBody?.message) throw new AgentServerError(errBody.message);
+    throw new Error("请求失败");
   }
 
   await readSseStream(response, handlers, signal);

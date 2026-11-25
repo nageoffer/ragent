@@ -31,6 +31,7 @@ import com.nageoffer.ai.ragent.agent.enums.AgentMessageStatus;
 import com.nageoffer.ai.ragent.agent.service.handler.AgentRunGate;
 import com.nageoffer.ai.ragent.agent.state.PgAgentStateStore;
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
+import com.nageoffer.ai.ragent.rag.core.guard.PreviousTurn;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -419,6 +420,61 @@ class AgentConversationServiceImplTest {
                 .replyToMessageId(replyTo)
                 .messageStatus(status.name())
                 .build();
+    }
+
+    @Test
+    void shouldHaveNoPreviousTurnBeforeFirstQuestion() {
+        when(messageMapper.selectOne(any())).thenReturn(null);
+
+        assertThat(service.findPreviousTurn(CONVERSATION_ID, USER_ID)).isEmpty();
+        verify(messageMapper, never()).selectList(any());
+    }
+
+    /**
+     * 上一轮按屏幕所见取：被停止、出错的回答也算，只读 answer 块，系统中断提示不带
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void shouldAssembleVisibleAnswerOfLatestQuestionScopedToOwner() {
+        when(messageMapper.selectOne(any())).thenReturn(AgentMessageDO.builder()
+                .id("m-10").role("user").content("这是同事老王的送检记录，我没有送检").build());
+        when(messageMapper.selectList(any())).thenReturn(List.of(
+                reply(AgentMessageStatus.NORMAL.name(), answer("先确认一下"), confirmCard()),
+                reply(AgentMessageStatus.INTERRUPTED.name(), answer("记录显示由老"), answer("王送检"),
+                        AgentBlock.builder().kind(AgentBlock.KIND_ERROR).text("回答中断了，可以重新提问").build())));
+
+        PreviousTurn turn = service.findPreviousTurn(CONVERSATION_ID, USER_ID).orElseThrow();
+
+        assertThat(turn.question()).isEqualTo("这是同事老王的送检记录，我没有送检");
+        assertThat(turn.answer()).isEqualTo("先确认一下\n\n记录显示由老王送检");
+        ArgumentCaptor<LambdaQueryWrapper<AgentMessageDO>> queries = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(messageMapper).selectOne(queries.capture());
+        verify(messageMapper).selectList(queries.capture());
+        assertThat(queries.getAllValues()).allSatisfy(query -> {
+            assertThat(query.getSqlSegment()).contains("conversation_id", "user_id");
+            assertThat(query.getParamNameValuePairs().values()).contains(CONVERSATION_ID, USER_ID);
+        });
+        assertThat(queries.getAllValues().get(1).getParamNameValuePairs().values()).contains("m-10");
+    }
+
+    @Test
+    void shouldKeepQuestionWhenNothingWasAnswered() {
+        when(messageMapper.selectOne(any())).thenReturn(AgentMessageDO.builder().id("m-10").role("user").content("在吗").build());
+        when(messageMapper.selectList(any())).thenReturn(List.of());
+
+        assertThat(service.findPreviousTurn(CONVERSATION_ID, USER_ID)).contains(new PreviousTurn("在吗", ""));
+    }
+
+    private static AgentMessageDO reply(String status, AgentBlock... blocks) {
+        return AgentMessageDO.builder().role("assistant").messageStatus(status).blocks(List.of(blocks)).build();
+    }
+
+    private static AgentBlock answer(String text) {
+        return AgentBlock.builder().kind(AgentBlock.KIND_ANSWER).text(text).build();
+    }
+
+    private static AgentBlock confirmCard() {
+        return AgentBlock.builder().kind(AgentBlock.KIND_CONFIRM).status("approved").build();
     }
 
     /**

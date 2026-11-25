@@ -23,6 +23,7 @@ import com.nageoffer.ai.ragent.agent.dto.AgentConfirmSettlement;
 import com.nageoffer.ai.ragent.agent.memory.AgentMemoryOutcome;
 import com.nageoffer.ai.ragent.agent.memory.AgentMemoryLearner;
 import com.nageoffer.ai.ragent.agent.service.AgentConversationService;
+import com.nageoffer.ai.ragent.agent.service.handler.AgentInputGuard;
 import com.nageoffer.ai.ragent.agent.service.handler.AgentRunGate;
 import com.nageoffer.ai.ragent.agent.tool.AgentToolCatalog.ResolvedCatalog;
 import com.nageoffer.ai.ragent.agent.trace.AgentTraceContextKeys;
@@ -32,6 +33,9 @@ import com.nageoffer.ai.ragent.framework.context.LoginUser;
 import com.nageoffer.ai.ragent.framework.context.UserContext;
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.framework.web.StreamTaskManager;
+import com.nageoffer.ai.ragent.rag.config.InputGuardProperties;
+import com.nageoffer.ai.ragent.rag.core.guard.InputRisk;
+import com.nageoffer.ai.ragent.rag.core.guard.InputRiskDetector;
 import io.agentscope.core.ReActAgent;
 import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.event.AgentEvent;
@@ -61,6 +65,7 @@ import reactor.core.scheduler.Schedulers;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
@@ -99,6 +104,7 @@ class AgentChatServiceImplTest {
     private StreamTaskManager taskManager;
     private AgentRunGate runGate;
     private AgentMemoryLearner memoryLearner;
+    private InputRiskDetector detector;
     private AtomicInteger gateReleased;
     private ReActAgent agent;
     private AgentChatServiceImpl service;
@@ -111,7 +117,10 @@ class AgentChatServiceImplTest {
         runGate = mock(AgentRunGate.class);
         agent = mock(ReActAgent.class);
         memoryLearner = mock(AgentMemoryLearner.class);
-        service = new AgentChatServiceImpl(agentProvider, conversationService, taskManager, runGate, memoryLearner);
+        detector = mock(InputRiskDetector.class);
+        when(detector.detect(anyString(), any())).thenReturn(Set.of());
+        service = new AgentChatServiceImpl(agentProvider, conversationService, taskManager, runGate, memoryLearner,
+                new AgentInputGuard(detector, conversationService, new InputGuardProperties()));
 
         gateReleased = new AtomicInteger();
         when(runGate.acquire(anyString(), anyString(), anyString())).thenReturn(gateReleased::incrementAndGet);
@@ -594,6 +603,65 @@ class AgentChatServiceImplTest {
         verify(conversationService, never()).touchConversation(anyString(), anyString(), anyString());
         verify(conversationService, never()).addUserMessage(anyString(), anyString(), anyString());
         assertThat(gateReleased.get()).isOne();
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void shouldWriteNothingWhenInputIsBlockedOrReviewFails(boolean reviewFails) {
+        if (reviewFails) {
+            when(detector.detect(anyString(), any())).thenThrow(new IllegalStateException("审核模型输出不是合法 JSON"));
+        } else {
+            when(detector.detect(anyString(), any())).thenReturn(Set.of(InputRisk.PROHIBITED_CONTENT));
+        }
+
+        assertThatThrownBy(() -> service.streamChat("帮我伪造退款凭证", CONVERSATION_ID, new SseEmitter()))
+                .hasMessage(reviewFails ? AgentInputGuard.UNAVAILABLE_MESSAGE : AgentInputGuard.BLOCKED_MESSAGE);
+
+        verify(conversationService, never()).touchConversation(anyString(), anyString(), anyString());
+        verify(conversationService, never()).addUserMessage(anyString(), anyString(), anyString());
+        verify(taskManager, never()).register(anyString(), anyString(), any());
+        verify(taskManager).unregister(anyString());
+        verifyNoInteractions(agentProvider, agent, memoryLearner);
+        assertThat(gateReleased.get()).isOne();
+    }
+
+    @Test
+    void shouldAdmitNextQuestionAfterRejection() {
+        AtomicBoolean held = new AtomicBoolean();
+        when(runGate.acquire(anyString(), anyString(), anyString())).thenAnswer(invocation -> {
+            if (!held.compareAndSet(false, true)) {
+                throw new ClientException("当前会话正在处理中，请稍后重试");
+            }
+            return (Runnable) () -> held.set(false);
+        });
+        when(detector.detect(eq("帮我伪造退款凭证"), any())).thenReturn(Set.of(InputRisk.PROHIBITED_CONTENT));
+        when(agent.streamEvents(any(Msg.class), any(RuntimeContext.class))).thenReturn(Flux.empty());
+
+        assertThatThrownBy(() -> service.streamChat("帮我伪造退款凭证", CONVERSATION_ID, new SseEmitter()))
+                .hasMessage(AgentInputGuard.BLOCKED_MESSAGE);
+        service.streamChat("我的退款到哪一步了", CONVERSATION_ID, new SseEmitter());
+
+        verify(conversationService).addUserMessage(CONVERSATION_ID, USER_ID, "我的退款到哪一步了");
+        verify(conversationService, never()).addUserMessage(CONVERSATION_ID, USER_ID, "帮我伪造退款凭证");
+    }
+
+    /**
+     * 注定被拒的请求不白付一次审核调用
+     */
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void shouldNotReviewWhenGateOrPendingConfirmationRejects(boolean gateBusy) {
+        if (gateBusy) {
+            when(runGate.acquire(anyString(), anyString(), anyString()))
+                    .thenThrow(new ClientException("当前会话正在处理中，请稍后重试"));
+        } else {
+            when(conversationService.hasPendingConfirm(CONVERSATION_ID, USER_ID)).thenReturn(true);
+        }
+
+        assertThatThrownBy(() -> service.streamChat("问题", CONVERSATION_ID, new SseEmitter()))
+                .isInstanceOf(ClientException.class);
+
+        verifyNoInteractions(detector);
     }
 
     @Test

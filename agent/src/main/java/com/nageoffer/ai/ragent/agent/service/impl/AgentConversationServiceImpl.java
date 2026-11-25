@@ -37,6 +37,7 @@ import com.nageoffer.ai.ragent.agent.service.AgentConversationService;
 import com.nageoffer.ai.ragent.agent.service.handler.AgentRunGate;
 import com.nageoffer.ai.ragent.agent.state.PgAgentStateStore;
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
+import com.nageoffer.ai.ragent.rag.core.guard.PreviousTurn;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -47,6 +48,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -242,6 +244,33 @@ public class AgentConversationServiceImpl implements AgentConversationService {
                 .filter(block -> CONFIRM_STATUS_PENDING.equals(block.getStatus()))
                 .findFirst()
                 .orElse(null);
+    }
+
+    @Override
+    public Optional<PreviousTurn> findPreviousTurn(String conversationId, String userId) {
+        AgentMessageDO question = messageMapper.selectOne(Wrappers.lambdaQuery(AgentMessageDO.class)
+                .eq(AgentMessageDO::getConversationId, conversationId)
+                .eq(AgentMessageDO::getUserId, userId)
+                .eq(AgentMessageDO::getRole, ROLE_USER)
+                .orderByDesc(AgentMessageDO::getId)
+                .last("LIMIT 1"));
+        if (question == null) {
+            return Optional.empty();
+        }
+        // 确认卡前后各落一条助手消息，都回复同一个提问；只读 answer 块，content 里拼着系统中断提示
+        String answer = messageMapper.selectList(Wrappers.lambdaQuery(AgentMessageDO.class)
+                        .eq(AgentMessageDO::getConversationId, conversationId)
+                        .eq(AgentMessageDO::getUserId, userId)
+                        .eq(AgentMessageDO::getReplyToMessageId, question.getId())
+                        .orderByAsc(AgentMessageDO::getId))
+                .stream()
+                .map(reply -> CollUtil.emptyIfNull(reply.getBlocks()).stream()
+                        .filter(block -> AgentBlock.KIND_ANSWER.equals(block.getKind()))
+                        .map(block -> StrUtil.emptyIfNull(block.getText()))
+                        .collect(Collectors.joining()))
+                .filter(StrUtil::isNotBlank)
+                .collect(Collectors.joining("\n\n"));
+        return Optional.of(new PreviousTurn(question.getContent(), answer));
     }
 
     @Override
