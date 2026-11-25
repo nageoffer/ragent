@@ -84,6 +84,11 @@ public final class RagentAttributes {
     public static final AttributeKey<String> CONFIRM_MESSAGE_ID = AttributeKey.stringKey("ragent.confirm.message_id");
 
     /**
+     * 入口审核方式，取值同 ragent.input-guard.type 的写法
+     */
+    public static final AttributeKey<String> INPUT_GUARD_TYPE = AttributeKey.stringKey("ragent.input_guard.type");
+
+    /**
      * 遮蔽生效之后模型真能看见的工具名单，能直接看出技能遮蔽有没有在干活
      */
     public static final AttributeKey<String> TOOLS_VISIBLE = AttributeKey.stringKey("ragent.tools.visible");

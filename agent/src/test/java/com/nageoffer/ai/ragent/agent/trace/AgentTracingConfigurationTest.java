@@ -17,6 +17,7 @@
 
 package com.nageoffer.ai.ragent.agent.trace;
 
+import com.nageoffer.ai.ragent.rag.config.InputGuardProperties;
 import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.sdk.OpenTelemetrySdk;
@@ -141,7 +142,7 @@ class AgentTracingConfigurationTest {
         Files.writeString(buildInfo, "build.version=9.9.9-audit\n");
         new ApplicationContextRunner()
                 .withConfiguration(AutoConfigurations.of(ProjectInfoAutoConfiguration.class))
-                .withUserConfiguration(AgentTraceProperties.class, AgentTracingConfiguration.class)
+                .withUserConfiguration(AgentTraceProperties.class, InputGuardProperties.class, AgentTracingConfiguration.class)
                 .withPropertyValues(
                         "ragent.engine.type=agent",
                         "agent.trace.enabled=true",

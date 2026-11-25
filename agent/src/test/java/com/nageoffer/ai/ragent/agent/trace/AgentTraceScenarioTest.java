@@ -21,6 +21,7 @@ import com.nageoffer.ai.ragent.agent.enums.AgentToolStatus;
 import com.nageoffer.ai.ragent.agent.tool.AgentToolBatchMiddleware;
 import com.nageoffer.ai.ragent.agent.tool.AgentToolExecutionFacts;
 import com.nageoffer.ai.ragent.agent.tool.AgentToolExecutionFacts.ToolFact;
+import com.nageoffer.ai.ragent.rag.config.InputGuardProperties;
 import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.event.AgentEvent;
 import io.agentscope.core.event.AllToolsDeniedEvent;
@@ -148,7 +149,7 @@ class AgentTraceScenarioTest {
      */
     private void captureContent(boolean enabled) {
         AgentTraceSerializer serializer = new AgentTraceSerializer(4096, 16_384, enabled);
-        enrichment = new AgentTraceEnrichmentMiddleware(tracerProvider.get("test"), serializer);
+        enrichment = new AgentTraceEnrichmentMiddleware(tracerProvider.get("test"), serializer, InputGuardProperties.Type.LLM);
         AgentToolBodyTracer.configure(serializer);
     }
 

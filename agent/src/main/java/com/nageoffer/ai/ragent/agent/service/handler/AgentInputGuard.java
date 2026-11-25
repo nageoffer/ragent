@@ -20,6 +20,7 @@ package com.nageoffer.ai.ragent.agent.service.handler;
 import cn.hutool.core.util.StrUtil;
 import com.nageoffer.ai.ragent.agent.config.ConditionalOnAgentEngine;
 import com.nageoffer.ai.ragent.agent.service.AgentConversationService;
+import com.nageoffer.ai.ragent.agent.trace.AgentInputReviewContext;
 import com.nageoffer.ai.ragent.framework.errorcode.BaseErrorCode;
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.framework.exception.ServiceException;
@@ -31,6 +32,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
@@ -61,31 +64,33 @@ public class AgentInputGuard {
         Supplier<Optional<PreviousTurn>> previousTurn = StrUtil.isBlank(conversationId)
                 ? Optional::empty
                 : () -> conversationService.findPreviousTurn(conversationId, userId);
-        long startNanos = System.nanoTime();
+        Instant startedAt = Instant.now();
         Set<InputRisk> risks;
         try {
             risks = detector.detect(question, previousTurn);
         } catch (RuntimeException e) {
-            record("审核失败", "未判定", startNanos, taskId, userId, conversationId);
+            record("审核失败", "未判定", startedAt, Instant.now(), taskId, userId, conversationId);
             throw new ServiceException(UNAVAILABLE_MESSAGE, e, BaseErrorCode.SERVICE_ERROR);
         }
+        Instant endedAt = Instant.now();
         if (risks.isEmpty()) {
             String riskSummary = properties.getType() == InputGuardProperties.Type.NONE ? "未检测" : "无";
-            record("已放行", riskSummary, startNanos, taskId, userId, conversationId);
+            record("已放行", riskSummary, startedAt, endedAt, taskId, userId, conversationId);
+            AgentInputReviewContext.set(startedAt, endedAt);
             return;
         }
         String riskSummary = risks.stream()
                 .sorted()
                 .map(InputRisk::getDisplayName)
                 .collect(Collectors.joining("、"));
-        record("已被拦截", riskSummary, startNanos, taskId, userId, conversationId);
+        record("已被拦截", riskSummary, startedAt, endedAt, taskId, userId, conversationId);
         throw new ClientException(BLOCKED_MESSAGE);
     }
 
-    private void record(String verdict, String riskSummary, long startNanos,
+    private void record(String verdict, String riskSummary, Instant startedAt, Instant endedAt,
                         String taskId, String userId, String conversationId) {
         log.info("用户请求{}，风险：{}，审核方式：{}，耗时：{}ms，任务ID：{}，用户ID：{}，会话ID：{}",
-                verdict, riskSummary, properties.getType().getDisplayName(), (System.nanoTime() - startNanos) / 1_000_000,
+                verdict, riskSummary, properties.getType().getDisplayName(), Duration.between(startedAt, endedAt).toMillis(),
                 taskId, userId, StrUtil.blankToDefault(conversationId, "无"));
     }
 }

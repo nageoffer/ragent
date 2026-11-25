@@ -66,6 +66,7 @@ final class AgentTraceAttributes {
     static final String TYPE_AGENT = "agent";
     static final String TYPE_CHAIN = "chain";
     static final String TYPE_GENERATION = "generation";
+    static final String TYPE_GUARDRAIL = "guardrail";
     static final String TYPE_SPAN = "span";
     static final String TYPE_TOOL = "tool";
 

@@ -21,6 +21,7 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.nageoffer.ai.ragent.agent.service.AgentConversationService;
+import com.nageoffer.ai.ragent.agent.trace.AgentInputReviewContext;
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.framework.exception.ServiceException;
 import com.nageoffer.ai.ragent.infra.chat.LLMService;
@@ -65,6 +66,8 @@ class AgentInputGuardTest {
 
     @BeforeEach
     void setUp() {
+        // 同一测试线程上别的测试类放行后会留下审核记录
+        AgentInputReviewContext.take();
         logs.start();
         logger.addAppender(logs);
     }
@@ -85,6 +88,10 @@ class AgentInputGuardTest {
         }).check("t-1", USER_ID, conversationId, "你好");
 
         assertThat(seen.get()).isEmpty();
+        // 放行把起止时刻留给追踪补节点
+        AgentInputReviewContext.InputReview review = AgentInputReviewContext.take();
+        assertThat(review).isNotNull();
+        assertThat(review.endedAt()).isAfterOrEqualTo(review.startedAt());
         verify(conversationService, never()).findPreviousTurn(anyString(), anyString());
         assertThat(auditLine()).startsWith("用户请求已放行").contains("风险：无", "审核方式：大模型", "会话ID：无");
     }
@@ -127,6 +134,7 @@ class AgentInputGuardTest {
                 .containsPattern("耗时：\\d+ms，任务ID：")
                 .endsWith("任务ID：t-1，用户ID：" + USER_ID + "，会话ID：" + CONVERSATION_ID)
                 .doesNotContain(QUESTION);
+        assertThat(AgentInputReviewContext.take()).as("被拒不进 trace").isNull();
     }
 
     @Test
@@ -141,6 +149,7 @@ class AgentInputGuardTest {
                 .isInstanceOf(ServiceException.class).hasMessage(AgentInputGuard.UNAVAILABLE_MESSAGE).hasCause(failure);
 
         assertThat(auditLine()).startsWith("用户请求审核失败").contains("风险：未判定", "审核方式：阿里云安全护栏").doesNotContain(QUESTION);
+        assertThat(AgentInputReviewContext.take()).as("故障不进 trace").isNull();
     }
 
     private AgentInputGuard guard(InputRiskDetector detector) {

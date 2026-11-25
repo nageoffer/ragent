@@ -19,6 +19,7 @@ package com.nageoffer.ai.ragent.agent.trace;
 
 import cn.hutool.core.util.StrUtil;
 import com.nageoffer.ai.ragent.agent.config.ConditionalOnAgentEngine;
+import com.nageoffer.ai.ragent.rag.config.InputGuardProperties;
 import io.agentscope.core.tracing.OtelTracingMiddleware;
 import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.api.common.AttributeKey;
@@ -148,12 +149,14 @@ public class AgentTracingConfiguration {
      * 两处必须同源：字段上限与内容开关各配一套的话，同一次调用在批与执行体上会读出两种口径
      */
     @Bean
-    public AgentTraceEnrichmentMiddleware agentTraceEnrichmentMiddleware(OpenTelemetrySdk sdk) {
+    public AgentTraceEnrichmentMiddleware agentTraceEnrichmentMiddleware(OpenTelemetrySdk sdk,
+                                                                         InputGuardProperties inputGuardProperties) {
         AgentTraceSerializer serializer = new AgentTraceSerializer(traceProperties.getMaxFieldChars(),
                 traceProperties.getMaxAttributeChars(),
                 traceProperties.isCaptureContent());
         AgentToolBodyTracer.configure(serializer);
-        return new AgentTraceEnrichmentMiddleware(sdk.getTracer(INSTRUMENTATION_SCOPE), serializer);
+        return new AgentTraceEnrichmentMiddleware(sdk.getTracer(INSTRUMENTATION_SCOPE), serializer,
+                inputGuardProperties.getType());
     }
 
     /**

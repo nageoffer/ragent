@@ -19,6 +19,7 @@ package com.nageoffer.ai.ragent.agent.trace;
 
 import com.nageoffer.ai.ragent.agent.tool.AgentToolBatchMiddleware;
 import com.nageoffer.ai.ragent.agent.tool.AgentToolExecutionFacts;
+import com.nageoffer.ai.ragent.rag.config.InputGuardProperties;
 import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.event.AgentEvent;
 import io.agentscope.core.event.AgentResultEvent;
@@ -100,7 +101,7 @@ class LangfuseReadbackProbe {
         Tracer tracer = provider.get("probe");
         AgentTraceSerializer serializer = new AgentTraceSerializer(32768, 131072, true);
         AgentToolBodyTracer.configure(serializer);
-        AgentTraceEnrichmentMiddleware enrichment = new AgentTraceEnrichmentMiddleware(tracer, serializer);
+        AgentTraceEnrichmentMiddleware enrichment = new AgentTraceEnrichmentMiddleware(tracer, serializer, InputGuardProperties.Type.LLM);
         RagentOtelTracingMiddleware tracing = new RagentOtelTracingMiddleware(tracer);
         AgentToolBatchMiddleware batching = new AgentToolBatchMiddleware();
 

@@ -24,6 +24,7 @@ import com.nageoffer.ai.ragent.agent.enums.AgentToolStatus;
 import com.nageoffer.ai.ragent.agent.model.AnthropicMessagesChatModel;
 import com.nageoffer.ai.ragent.agent.tool.AgentToolBatchMiddleware;
 import com.nageoffer.ai.ragent.agent.tool.AgentToolExecutionFacts;
+import com.nageoffer.ai.ragent.rag.config.InputGuardProperties;
 import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.event.AgentEvent;
 import io.agentscope.core.event.AgentResultEvent;
@@ -75,12 +76,14 @@ import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Flux;
 
 import java.time.Clock;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -138,6 +141,8 @@ class AgentTraceEnrichmentMiddlewareTest {
 
     @BeforeEach
     void setUp() {
+        // 同一测试线程上别的测试类放行后会留下审核记录
+        AgentInputReviewContext.take();
         exported = Collections.synchronizedList(new ArrayList<>());
         tracerProvider = SdkTracerProvider.builder()
                 .addSpanProcessor(SimpleSpanProcessor.builder(new CollectingExporter(exported)).build())
@@ -146,7 +151,7 @@ class AgentTraceEnrichmentMiddlewareTest {
         facts = new AgentToolExecutionFacts(TASK_ID, Clock.systemUTC());
         tracingMiddleware = new RagentOtelTracingMiddleware(tracer);
         batchMiddleware = new AgentToolBatchMiddleware();
-        middleware = new AgentTraceEnrichmentMiddleware(tracer, serializer(true));
+        middleware = new AgentTraceEnrichmentMiddleware(tracer, serializer(true), InputGuardProperties.Type.JEV);
     }
 
     @AfterEach
@@ -349,6 +354,36 @@ class AgentTraceEnrichmentMiddlewareTest {
     }
 
     /**
+     * 审核跑在 Agent 启动之前：按它真实的起止时刻挂在根下，类型取注入的审核方式，身份照其它节点写
+     */
+    @Test
+    void shouldAttachInputGuardUnderRootWithReviewWindow() {
+        RuntimeContext ctx = askContext();
+        Instant startedAt = Instant.parse("2026-11-25T08:00:00.100Z");
+        Instant endedAt = Instant.parse("2026-11-25T08:00:00.950Z");
+        AgentInputReviewContext.set(startedAt, endedAt);
+
+        driveTwoRounds(ctx);
+
+        SpanData guard = span("input_guard");
+        assertThat(guard.getParentSpanId()).isEqualTo(span(ROOT_SPAN).getSpanId());
+        assertThat(guard.getStartEpochNanos()).isEqualTo(TimeUnit.MILLISECONDS.toNanos(startedAt.toEpochMilli()));
+        assertThat(guard.getEndEpochNanos()).isEqualTo(TimeUnit.MILLISECONDS.toNanos(endedAt.toEpochMilli()));
+        assertThat(guard.getAttributes().get(AgentTraceAttributes.OBSERVATION_TYPE)).isEqualTo("guardrail");
+        assertThat(guard.getAttributes().get(RagentAttributes.INPUT_GUARD_TYPE)).isEqualTo("jev");
+        assertThat(guard.getAttributes().get(AgentTraceAttributes.SESSION_ID)).isEqualTo(CONVERSATION_ID);
+        assertThat(guard.getAttributes().get(RagentAttributes.TASK_ID)).isEqualTo(TASK_ID);
+        assertThat(AgentInputReviewContext.take()).as("用过即清").isNull();
+    }
+
+    @Test
+    void shouldNotAttachInputGuardWithoutReview() {
+        driveTwoRounds(askContext());
+
+        assertThat(spanNames()).doesNotContain("input_guard");
+    }
+
+    /**
      * 权限暂停：停在 ASKING 的工具块与终止原因都得留在根 output 上，只取正文会把「在等哪个工具」整段丢掉
      */
     @Test
@@ -423,6 +458,8 @@ class AgentTraceEnrichmentMiddlewareTest {
     void shouldMarkConfirmResumeRunAndCarryConfirmMessageId() {
         RuntimeContext ctx = askContext();
         ctx.put(AgentTraceContextKeys.CONFIRM_MESSAGE_ID, CONFIRM_MESSAGE_ID);
+        // 模拟同一线程上一次审核放行后没走到 Agent 留下的记录
+        AgentInputReviewContext.set(Instant.EPOCH, Instant.EPOCH);
         ToolUseBlock approved = leaveSubmit().withState(ToolCallState.ALLOWED);
         // 确认续跑由一条带确认结果元数据的空正文消息驱动
         Msg resume = UserMessage.builder().metadata(Map.of(Msg.METADATA_CONFIRM_RESULTS, List.of())).build();
@@ -445,6 +482,9 @@ class AgentTraceEnrichmentMiddlewareTest {
         assertThat(rootData.getAttributes().get(RagentAttributes.RUN_KIND))
                 .isEqualTo(RagentAttributes.RUN_KIND_CONFIRM_RESUME);
         assertThat(rootData.getAttributes().get(RagentAttributes.CONFIRM_MESSAGE_ID)).isEqualTo(CONFIRM_MESSAGE_ID);
+        // 续跑不经审核：线程上此前残留的审核记录被取走丢弃，不补节点
+        assertThat(spanNames()).doesNotContain("input_guard");
+        assertThat(AgentInputReviewContext.take()).isNull();
         // 续跑那条消息正文为空，退回结构化输出才看得见确认结果
         assertThat(rootData.getAttributes().get(AgentTraceAttributes.OBSERVATION_INPUT))
                 .contains(Msg.METADATA_CONFIRM_RESULTS);
@@ -875,7 +915,7 @@ class AgentTraceEnrichmentMiddlewareTest {
      */
     @Test
     void shouldWriteNoContentAttributeAnywhereWhenCaptureDisabled() {
-        middleware = new AgentTraceEnrichmentMiddleware(tracer, serializer(false));
+        middleware = new AgentTraceEnrichmentMiddleware(tracer, serializer(false), InputGuardProperties.Type.JEV);
         RuntimeContext ctx = askContext();
 
         driveTwoRounds(ctx);
