@@ -97,13 +97,13 @@ public class GraphSyncingVectorStoreService implements VectorStoreService {
     }
 
     /**
-     * best-effort 执行图谱同步，失败仅告警，不影响向量主链路
+     * best-effort 执行图谱同步，失败记 error（异常信息带远程 doc_id 与响应状态），不影响向量主链路
      */
     private void syncGraph(String docId, Runnable action) {
         try {
             action.run();
         } catch (Exception e) {
-            log.warn("图谱同步失败，已跳过 docId={}", docId, e);
+            log.error("图谱同步失败，图谱数据可能缺失或陈旧，需重新分块修复 docId={}: {}", docId, e.getMessage(), e);
         }
     }
 }

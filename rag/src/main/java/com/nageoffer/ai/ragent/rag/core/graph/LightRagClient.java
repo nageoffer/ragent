@@ -45,7 +45,8 @@ import java.util.function.Predicate;
  * LightRAG 微服务 HTTP 客户端
  * <p>
  * 封装对 LightRAG server（默认 :9621）的调用：检索取上下文、文档写入
- * 仅当 rag.graph.type=lightrag 时注册；任何调用失败都降级（检索返回空、写入记 warn），绝不阻断主链路
+ * 仅当 rag.graph.type=lightrag 时注册；检索 / 可视化失败降级为空结果；
+ * 写入与删除失败抛 {@link IllegalStateException}，由调用方决定是否降级（向量同步装饰器只记日志，不阻断主链路）
  * <p>
  * 重要：LightRAG /query 无 per-request workspace 参数——workspace 为实例级（由服务端 env 固定）
  * 故单实例即单图，KB 归属只能在结果侧按 file_path 判定（见 retrieveByScope）；真正的子图隔离需多实例，属后续阶段
@@ -187,6 +188,9 @@ public class LightRagClient {
      * 写入 / 更新一篇文档到图谱
      * <p>
      * file_source 编码来源标识（如 docId），供检索时按 file_path 回溯文档归属
+     * <p>
+     * 删除在后台进行时（destructive_busy）LightRAG 以 409 拒绝写入，此时等删除完成后重试；
+     * 其余 409（如同名文档仍在）、非 2xx 或业务状态 failure 均抛异常，不再静默当作成功
      *
      * @param text       文档全文
      * @param fileSource 来源标识（建议传 docId）
@@ -195,15 +199,30 @@ public class LightRagClient {
         if (StrUtil.isBlank(text)) {
             return;
         }
-        try {
-            ObjectNode body = objectMapper.createObjectNode();
-            body.put("text", text);
-            if (StrUtil.isNotBlank(fileSource)) {
-                body.put("file_source", fileSource);
+        ObjectNode body = objectMapper.createObjectNode();
+        body.put("text", text);
+        if (StrUtil.isNotBlank(fileSource)) {
+            body.put("file_source", fileSource);
+        }
+        String logKey = "file_source=" + fileSource;
+        long deadline = syncDeadline();
+        while (true) {
+            HttpResult result = call(jsonRequest("/documents/text", "POST", body), "/documents/text");
+            if (result.code() == 409 && isDestructiveBusy(logKey)) {
+                log.info("LightRAG 删除进行中，写入被拒，等待删除完成后重试 {}", logKey);
+                waitUntilDestructiveIdle(deadline, logKey);
+                continue;
             }
-            post("/documents/text", body);
-        } catch (Exception e) {
-            log.warn("LightRAG 文档写入失败 file_source={}: {}", fileSource, e.getMessage());
+            if (!result.successful()) {
+                throw new IllegalStateException(String.format("LightRAG 文档写入失败 %s, code=%d, body=%s",
+                        logKey, result.code(), result.raw()));
+            }
+            String status = result.body() != null ? result.body().path("status").asText("") : "";
+            if (!"success".equals(status) && !"partial_success".equals(status)) {
+                throw new IllegalStateException(String.format("LightRAG 文档写入未成功 %s, status=%s, body=%s",
+                        logKey, status, result.raw()));
+            }
+            return;
         }
     }
 
@@ -236,42 +255,103 @@ public class LightRagClient {
     }
 
     /**
-     * 列举文档、按 file_path 谓词匹配出 LightRAG doc_id 后批量删除
+     * 列举文档、按 file_path 谓词匹配出 LightRAG doc_id 后批量删除，并等后台删除真正完成才返回
      * <p>
      * LightRAG 删除按其内部 doc_id（内容派生），故先 GET /documents 反查、再 DELETE /documents/delete_document；
-     * 全量列举后在内存匹配，语料很大时可改用 /documents/paginated 过滤。best-effort，任一步异常只记 warn
+     * 全量列举后在内存匹配，语料很大时可改用 /documents/paginated 过滤
+     * <p>
+     * 删除接口返回 deletion_started 只表示后台任务已启动、并已占住 destructive_busy，删除期间的写入会被 409 拒绝，
+     * 故轮询 /documents/pipeline_status 直到 destructive_busy 释放；返回 busy 表示管线被其它任务占用、什么都没做，
+     * 在等待上限内重试。任一步失败或超时抛 {@link IllegalStateException}，日志带本地标识、远程 doc_id 与响应状态
      */
     private void deleteMatching(Predicate<String> filePathMatch, String logKey) {
-        try {
-            JsonNode docs = get("/documents");
-            if (docs == null) {
-                return;
-            }
-            List<String> docIds = new ArrayList<>();
-            JsonNode statuses = docs.path("statuses");
-            if (statuses.isObject()) {
-                statuses.forEach(group -> {
-                    if (group.isArray()) {
-                        for (JsonNode d : group) {
-                            String filePath = d.path("file_path").asText("");
-                            if (StrUtil.isNotBlank(filePath) && filePathMatch.test(filePath)) {
-                                String id = d.path("id").asText("");
-                                if (StrUtil.isNotBlank(id)) {
-                                    docIds.add(id);
-                                }
+        HttpResult listed = call(auth(new Request.Builder().url(url("/documents")).get()), "/documents");
+        if (!listed.successful() || listed.body() == null) {
+            throw new IllegalStateException(String.format("LightRAG 文档列举失败 %s, code=%d, body=%s",
+                    logKey, listed.code(), listed.raw()));
+        }
+        JsonNode docs = listed.body();
+        List<String> docIds = new ArrayList<>();
+        JsonNode statuses = docs.path("statuses");
+        if (statuses.isObject()) {
+            statuses.forEach(group -> {
+                if (group.isArray()) {
+                    for (JsonNode d : group) {
+                        String filePath = d.path("file_path").asText("");
+                        if (StrUtil.isNotBlank(filePath) && filePathMatch.test(filePath)) {
+                            String id = d.path("id").asText("");
+                            if (StrUtil.isNotBlank(id)) {
+                                docIds.add(id);
                             }
                         }
                     }
-                });
+                }
+            });
+        }
+        if (docIds.isEmpty()) {
+            return;
+        }
+        ObjectNode body = objectMapper.createObjectNode();
+        body.set("doc_ids", objectMapper.valueToTree(docIds));
+        String deleteKey = logKey + ", doc_ids=" + docIds;
+        long deadline = syncDeadline();
+        while (true) {
+            HttpResult result = call(jsonRequest("/documents/delete_document", "DELETE", body),
+                    "/documents/delete_document");
+            if (!result.successful() || result.body() == null) {
+                throw new IllegalStateException(String.format("LightRAG 文档删除请求失败 %s, code=%d, body=%s",
+                        deleteKey, result.code(), result.raw()));
             }
-            if (docIds.isEmpty()) {
+            String status = result.body().path("status").asText("");
+            if ("deletion_started".equals(status)) {
+                waitUntilDestructiveIdle(deadline, deleteKey);
+                log.info("LightRAG 文档删除完成 {}", deleteKey);
                 return;
             }
-            ObjectNode body = objectMapper.createObjectNode();
-            body.set("doc_ids", objectMapper.valueToTree(docIds));
-            delete("/documents/delete_document", body);
-        } catch (Exception e) {
-            log.warn("LightRAG 文档删除失败 {}: {}", logKey, e.getMessage());
+            if ("busy".equals(status) && System.currentTimeMillis() < deadline) {
+                log.info("LightRAG 管线忙，稍后重试删除 {}, message={}", deleteKey,
+                        result.body().path("message").asText(""));
+                pause();
+                continue;
+            }
+            throw new IllegalStateException(String.format("LightRAG 文档删除未执行 %s, status=%s, body=%s",
+                    deleteKey, status, result.raw()));
+        }
+    }
+
+    /**
+     * 轮询 pipeline_status 直到 destructive_busy 释放（删除完成），超过等待上限抛异常
+     */
+    private void waitUntilDestructiveIdle(long deadline, String logKey) {
+        while (isDestructiveBusy(logKey)) {
+            if (System.currentTimeMillis() >= deadline) {
+                throw new IllegalStateException(String.format(
+                        "LightRAG 后台删除在 %dms 内未完成 %s", properties.getLightrag().getSyncWaitTimeoutMs(), logKey));
+            }
+            pause();
+        }
+    }
+
+    private boolean isDestructiveBusy(String logKey) {
+        HttpResult status = call(auth(new Request.Builder().url(url("/documents/pipeline_status")).get()),
+                "/documents/pipeline_status");
+        if (!status.successful() || status.body() == null) {
+            throw new IllegalStateException(String.format("LightRAG 管线状态查询失败 %s, code=%d, body=%s",
+                    logKey, status.code(), status.raw()));
+        }
+        return status.body().path("destructive_busy").asBoolean(false);
+    }
+
+    private long syncDeadline() {
+        return System.currentTimeMillis() + Math.max(0, properties.getLightrag().getSyncWaitTimeoutMs());
+    }
+
+    private void pause() {
+        try {
+            Thread.sleep(Math.max(1, properties.getLightrag().getSyncPollIntervalMs()));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("LightRAG 同步等待被中断", e);
         }
     }
 
@@ -289,18 +369,13 @@ public class LightRagClient {
                 .post(RequestBody.create(objectMapper.writeValueAsString(body), JSON))), "/query", client);
     }
 
-    private JsonNode post(String path, JsonNode body) throws Exception {
-        return execute(auth(new Request.Builder().url(url(path))
-                .post(RequestBody.create(objectMapper.writeValueAsString(body), JSON))), path);
-    }
-
-    private JsonNode get(String path) throws Exception {
-        return execute(auth(new Request.Builder().url(url(path)).get()), path);
-    }
-
-    private JsonNode delete(String path, JsonNode body) throws Exception {
-        return execute(auth(new Request.Builder().url(url(path))
-                .delete(RequestBody.create(objectMapper.writeValueAsString(body), JSON))), path);
+    private Request.Builder jsonRequest(String path, String method, JsonNode body) {
+        try {
+            return auth(new Request.Builder().url(url(path))
+                    .method(method, RequestBody.create(objectMapper.writeValueAsString(body), JSON)));
+        } catch (Exception e) {
+            throw new IllegalStateException("LightRAG 请求体序列化失败 path=" + path, e);
+        }
     }
 
     private String url(String path) {
@@ -333,6 +408,33 @@ public class LightRagClient {
             }
             String bodyStr = response.body() != null ? response.body().string() : "";
             return StrUtil.isNotBlank(bodyStr) ? objectMapper.readTree(bodyStr) : null;
+        }
+    }
+
+    /**
+     * 写入 / 删除专用：保留状态码与原始响应体交调用方判定，网络异常转为 {@link IllegalStateException}
+     */
+    private HttpResult call(Request.Builder builder, String path) {
+        try (Response response = httpClient.newCall(builder.build()).execute()) {
+            String raw = response.body() != null ? response.body().string() : "";
+            JsonNode body = null;
+            if (StrUtil.isNotBlank(raw)) {
+                try {
+                    body = objectMapper.readTree(raw);
+                } catch (Exception ignored) {
+                    // 非 JSON 响应体（如网关错误页）只保留原文用于日志
+                }
+            }
+            return new HttpResult(response.code(), body, StrUtil.maxLength(raw, 500));
+        } catch (Exception e) {
+            throw new IllegalStateException("LightRAG 请求异常 path=" + path + ": " + e.getMessage(), e);
+        }
+    }
+
+    private record HttpResult(int code, JsonNode body, String raw) {
+
+        boolean successful() {
+            return code >= 200 && code < 300;
         }
     }
 
