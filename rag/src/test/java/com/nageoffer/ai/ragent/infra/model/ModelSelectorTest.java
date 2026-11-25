@@ -73,7 +73,7 @@ class ModelSelectorTest {
         AIModelProperties props = new AIModelProperties();
 
         Map<String, AIModelProperties.ProviderConfig> providers = new HashMap<>();
-        for (String p : List.of("bailian", "ollama", "siliconflow", "aihubmix")) {
+        for (String p : List.of("bailian", "ollama", "siliconflow", "aihubmix", "atlascloud")) {
             providers.put(p, new AIModelProperties.ProviderConfig());
         }
         props.setProviders(providers);
@@ -85,7 +85,9 @@ class ModelSelectorTest {
                 cand("qwen3-local", "ollama", "qwen3:8b", false),
                 cand("qwen3-max", "bailian", "qwen3-max", true),
                 cand("glm-4.7", "siliconflow", "GLM-4.7", true),
-                cand("gpt-5.4", "aihubmix", "gpt-5.4", false)
+                cand("gpt-5.4", "aihubmix", "gpt-5.4", false),
+                cand("atlas-deepseek-v4-pro", "atlascloud", "deepseek-ai/deepseek-v4-pro", false),
+                cand("atlas-qwen3.5-flash", "atlascloud", "qwen/qwen3.5-flash", false)
         ));
         Map<String, AIModelProperties.TierConfig> tiers = new HashMap<>();
         tiers.put("fast", tier(List.of("qwen-flash", "qwen-plus", "qwen3-local"), 5000L));
@@ -160,5 +162,12 @@ class ModelSelectorTest {
         when(healthStore.isUnavailable("qwen-plus")).thenReturn(true);
         List<ModelTarget> targets = selector.selectChatCandidates(false);
         assertEquals(List.of("qwen3-local", "gpt-5.4"), ids(targets));
+    }
+
+    @Test
+    void atlasCloud模型可作为preferred候选() {
+        List<ModelTarget> targets = selector.selectChatCandidates(false, Tier.STANDARD, "atlas-deepseek-v4-pro");
+        assertEquals(List.of("atlas-deepseek-v4-pro", "qwen-plus", "qwen3-local", "gpt-5.4"), ids(targets));
+        assertEquals("atlascloud", targets.get(0).candidate().getProvider());
     }
 }
