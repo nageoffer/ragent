@@ -49,6 +49,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Deque;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -127,6 +128,8 @@ public class IntentTreeServiceImpl implements IntentTreeService {
             throw new ClientException("意图标识已存在: " + requestParam.getIntentCode());
         }
 
+        validateParentAssignment(requestParam.getIntentCode(), requestParam.getParentCode());
+
         int kind = requestParam.getKind() == null ? IntentKind.KB.getCode() : requestParam.getKind();
         if (Objects.equals(kind, IntentKind.MCP.getCode())) {
             requireUniqueMcpToolId(StrUtil.trim(requestParam.getMcpToolId()), null);
@@ -203,6 +206,7 @@ public class IntentTreeServiceImpl implements IntentTreeService {
             node.setLevel(req.getLevel());
         }
         if (req.getParentCode() != null) {
+            validateParentAssignment(node.getIntentCode(), req.getParentCode());
             node.setParentCode(req.getParentCode());
         }
         if (req.getDescription() != null) {
@@ -407,6 +411,42 @@ public class IntentTreeServiceImpl implements IntentTreeService {
         intentNodeMapper.deleteByIds(targetIdSet);
         intentTreeCacheManager.clearIntentTreeCache();
         bizChangeLogContext.put("BATCH", before, null);
+    }
+
+    /**
+     * 新建和改挂父节点共用校验：目标的祖先链必须存在、无环，且不能经过当前节点。
+     * 新建根节点时 parentCode 为 null，无需检查父节点。
+     */
+    private void validateParentAssignment(String intentCode, String parentCode) {
+        if (parentCode == null) {
+            return;
+        }
+        if (StrUtil.isBlank(parentCode)) {
+            throw new ClientException("父节点标识不能为空");
+        }
+        if (Objects.equals(intentCode, parentCode)) {
+            throw new ClientException("父节点不能是当前节点自身");
+        }
+
+        Map<String, IntentNodeDO> nodesByCode = intentNodeMapper.selectList(new LambdaQueryWrapper<IntentNodeDO>()
+                        .eq(IntentNodeDO::getDeleted, 0))
+                .stream().collect(Collectors.toMap(IntentNodeDO::getIntentCode, node -> node));
+
+        Set<String> visited = new HashSet<>();
+        String ancestorCode = parentCode;
+        while (ancestorCode != null) {
+            if (Objects.equals(intentCode, ancestorCode)) {
+                throw new ClientException("父节点不能是当前节点的子孙节点");
+            }
+            if (!visited.add(ancestorCode)) {
+                throw new ClientException("父节点的祖先链存在循环引用，请先修复该关系");
+            }
+            IntentNodeDO ancestor = nodesByCode.get(ancestorCode);
+            if (ancestor == null) {
+                throw new ClientException("父节点或其祖先不存在或已删除: " + ancestorCode);
+            }
+            ancestorCode = ancestor.getParentCode();
+        }
     }
 
     /**
