@@ -85,6 +85,11 @@ public class RAGConstant {
      */
     public static final String INPUT_RISK_REVIEW_PROMPT_PATH = "prompt/input-risk-review.st";
 
+    /**
+     * Jev 输入审核的 Noul 命题，每个风险类别三段 section：-instructions / -true / -false
+     */
+    public static final String INPUT_RISK_JEV_PROMPT_PATH = "prompt/input-risk-jev.st";
+
 
     /**
      * 查询改写 + 多问句拆分提示词模板路径

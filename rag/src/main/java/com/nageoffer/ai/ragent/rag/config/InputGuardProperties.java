@@ -41,7 +41,7 @@ public class InputGuardProperties {
     @Getter
     @RequiredArgsConstructor
     public enum Type {
-        LLM("大模型"), ALIYUN("阿里云安全护栏"), NONE("未启用");
+        LLM("大模型"), ALIYUN("阿里云安全护栏"), JEV("Jev"), NONE("未启用");
 
         private final String displayName;
     }

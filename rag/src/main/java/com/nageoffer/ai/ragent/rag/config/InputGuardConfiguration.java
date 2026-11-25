@@ -21,8 +21,10 @@ import cn.hutool.core.util.StrUtil;
 import com.aliyun.green20220302.Client;
 import com.aliyun.teaopenapi.models.Config;
 import com.nageoffer.ai.ragent.infra.chat.LLMService;
+import com.nageoffer.ai.ragent.infra.jev.JevClient;
 import com.nageoffer.ai.ragent.rag.core.guard.AliyunInputRiskDetector;
 import com.nageoffer.ai.ragent.rag.core.guard.InputRiskDetector;
+import com.nageoffer.ai.ragent.rag.core.guard.JevInputRiskDetector;
 import com.nageoffer.ai.ragent.rag.core.guard.LlmInputRiskDetector;
 import com.nageoffer.ai.ragent.rag.core.prompt.PromptTemplateLoader;
 import lombok.extern.slf4j.Slf4j;
@@ -48,11 +50,13 @@ public class InputGuardConfiguration {
     @Bean
     public InputRiskDetector inputRiskDetector(InputGuardProperties properties,
                                                LLMService llmService,
-                                               PromptTemplateLoader promptTemplateLoader) {
+                                               PromptTemplateLoader promptTemplateLoader,
+                                               JevClient jevClient) {
         log.info("用户提问审核方式：{}", properties.getType().getDisplayName());
         return switch (properties.getType()) {
             case LLM -> new LlmInputRiskDetector(llmService, promptTemplateLoader);
             case ALIYUN -> new AliyunInputRiskDetector(aliyunClient(properties.getAliyun()));
+            case JEV -> new JevInputRiskDetector(jevClient, promptTemplateLoader);
             case NONE -> {
                 log.warn("用户提问审核未启用，所有提问直接放行");
                 yield (question, previousTurn) -> Set.of();

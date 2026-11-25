@@ -24,6 +24,7 @@ import com.nageoffer.ai.ragent.agent.service.AgentConversationService;
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.framework.exception.ServiceException;
 import com.nageoffer.ai.ragent.infra.chat.LLMService;
+import com.nageoffer.ai.ragent.infra.jev.JevClient;
 import com.nageoffer.ai.ragent.rag.config.InputGuardConfiguration;
 import com.nageoffer.ai.ragent.rag.config.InputGuardProperties;
 import com.nageoffer.ai.ragent.rag.core.guard.InputRisk;
@@ -106,7 +107,7 @@ class AgentInputGuardTest {
     void shouldNotLookUpHistoryWhenDetectorDoesNotAsk() {
         properties.setType(InputGuardProperties.Type.NONE);
         InputRiskDetector none = new InputGuardConfiguration()
-                .inputRiskDetector(properties, mock(LLMService.class), mock(PromptTemplateLoader.class));
+                .inputRiskDetector(properties, mock(LLMService.class), mock(PromptTemplateLoader.class), mock(JevClient.class));
 
         guard(none).check("t-1", USER_ID, CONVERSATION_ID, QUESTION);
 

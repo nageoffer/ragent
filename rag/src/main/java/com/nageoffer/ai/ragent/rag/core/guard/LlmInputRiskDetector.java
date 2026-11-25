@@ -17,8 +17,6 @@
 
 package com.nageoffer.ai.ragent.rag.core.guard;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -40,9 +38,7 @@ import java.util.function.Supplier;
 import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.INPUT_RISK_REVIEW_PROMPT_PATH;
 
 /**
- * 大模型输入审核：规则作系统消息，本轮与上一轮由 Jackson 序列化进用户消息
- * <p>
- * 原文只当 JSON 字符串值传，不经模板替换，用户写的标签或引号改不了数据的边界
+ * 大模型输入审核：规则作系统消息，待审数据（{@link InputRiskPayload}）作用户消息
  */
 @RequiredArgsConstructor
 public class LlmInputRiskDetector implements InputRiskDetector {
@@ -62,7 +58,7 @@ public class LlmInputRiskDetector implements InputRiskDetector {
         ChatRequest request = ChatRequest.builder()
                 .messages(List.of(
                         ChatMessage.system(promptTemplateLoader.load(INPUT_RISK_REVIEW_PROMPT_PATH)),
-                        ChatMessage.user(toJson(new ReviewInput(previousTurn.get().map(Turn::of).orElse(null), question)))))
+                        ChatMessage.user(InputRiskPayload.render(question, previousTurn.get().orElse(null)))))
                 .temperature(0D)
                 .maxTokens(MAX_TOKENS)
                 .thinking(false)
@@ -91,23 +87,4 @@ public class LlmInputRiskDetector implements InputRiskDetector {
         return result;
     }
 
-    private static String toJson(ReviewInput input) {
-        try {
-            return MAPPER.writeValueAsString(input);
-        } catch (JsonProcessingException e) {
-            throw new IllegalStateException("审核输入序列化失败", e);
-        }
-    }
-
-    @JsonInclude(JsonInclude.Include.NON_NULL)
-    private record ReviewInput(@JsonProperty("previous_turn") Turn previousTurn,
-                               @JsonProperty("current_request") String currentRequest) {
-    }
-
-    private record Turn(String user, String assistant) {
-
-        static Turn of(PreviousTurn turn) {
-            return new Turn(turn.question(), turn.answer());
-        }
-    }
 }

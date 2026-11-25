@@ -26,7 +26,9 @@ import com.nageoffer.ai.ragent.infra.chat.StreamCallback;
 import com.nageoffer.ai.ragent.infra.chat.StreamCancellationHandle;
 import com.nageoffer.ai.ragent.infra.config.AIModelProperties;
 import com.nageoffer.ai.ragent.infra.enums.Tier;
+import com.nageoffer.ai.ragent.infra.jev.JevClient;
 import com.nageoffer.ai.ragent.infra.model.ModelTarget;
+import com.nageoffer.ai.ragent.rag.config.HttpClientConfig;
 import com.nageoffer.ai.ragent.rag.core.prompt.PromptTemplateLoader;
 import okhttp3.OkHttpClient;
 import org.junit.jupiter.api.Test;
@@ -36,7 +38,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.io.InputStream;
 import java.util.ArrayList;
-import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -45,26 +47,33 @@ import java.util.Set;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * 实网回放：百炼 qwen-flash（fast 档首选）逐条跑 replay-cases.json，没有 BAILIAN_API_KEY 时跳过
+ * 实网回放：逐条跑 replay-cases.json，命中的类别必须与 expected 完全一致，多报漏报都算错
  * <p>
- * expected 为空表示必须放行；非空表示必须命中其中每一类，多命中不算错
+ * LLM 直连百炼 qwen-flash（fast 档首选），Jev 直连 ZenMux；各自缺密钥时跳过
  */
-@EnabledIfEnvironmentVariable(named = "BAILIAN_API_KEY", matches = ".+")
-class LlmInputRiskDetectorReplayTest {
+class InputRiskDetectorReplayTest {
 
     private record Case(String name, Map<String, String> previous, String question, Set<InputRisk> expected) {
     }
 
     @Test
-    void shouldMatchEveryReplayCase() throws Exception {
+    @EnabledIfEnvironmentVariable(named = "BAILIAN_API_KEY", matches = ".+")
+    void llmShouldMatchEveryReplayCase() throws Exception {
+        replay("llm", new LlmInputRiskDetector(bailianFlash(), new PromptTemplateLoader(new DefaultResourceLoader())));
+    }
+
+    @Test
+    @EnabledIfEnvironmentVariable(named = "ZENMUX_API_KEY", matches = ".+")
+    void jevShouldMatchEveryReplayCase() throws Exception {
+        replay("jev", new JevInputRiskDetector(zenmuxJev(), new PromptTemplateLoader(new DefaultResourceLoader())));
+    }
+
+    private void replay(String label, InputRiskDetector detector) throws Exception {
         List<Case> cases;
         try (InputStream in = getClass().getResourceAsStream("/input-guard/replay-cases.json")) {
             cases = new ObjectMapper().readValue(in, new TypeReference<>() {
             });
         }
-        LlmInputRiskDetector detector = new LlmInputRiskDetector(
-                bailianFlash(), new PromptTemplateLoader(new DefaultResourceLoader()));
-
         List<String> mismatches = new ArrayList<>();
         List<Long> costs = new ArrayList<>();
         for (Case c : cases) {
@@ -76,7 +85,7 @@ class LlmInputRiskDetectorReplayTest {
             try {
                 Set<InputRisk> risks = detector.detect(c.question(), () -> previous);
                 actual = risks.isEmpty() ? "PASS" : risks.toString();
-                matched = c.expected().isEmpty() ? risks.isEmpty() : risks.containsAll(c.expected());
+                matched = risks.equals(c.expected());
             } catch (RuntimeException e) {
                 actual = "FAILED " + e.getMessage();
                 matched = false;
@@ -84,15 +93,15 @@ class LlmInputRiskDetectorReplayTest {
             long cost = (System.nanoTime() - start) / 1_000_000;
             costs.add(cost);
             String expected = c.expected().isEmpty() ? "PASS" : c.expected().toString();
-            System.out.printf("[replay] %s %-24s expected=%-22s actual=%-22s cost=%dms%n",
-                    matched ? "ok  " : "MISS", c.name(), expected, actual, cost);
+            System.out.printf("[replay:%s] %s %-24s expected=%-40s actual=%-40s cost=%dms%n",
+                    label, matched ? "ok  " : "MISS", c.name(), expected, actual, cost);
             if (!matched) {
                 mismatches.add(c.name());
             }
         }
         List<Long> sorted = costs.stream().sorted().toList();
-        System.out.printf("[replay] cases=%d miss=%d p50=%dms max=%dms%n",
-                cases.size(), mismatches.size(), sorted.get(sorted.size() / 2), sorted.get(sorted.size() - 1));
+        System.out.printf("[replay:%s] cases=%d miss=%d p50=%dms max=%dms%n",
+                label, cases.size(), mismatches.size(), sorted.get(sorted.size() / 2), sorted.get(sorted.size() - 1));
         assertThat(mismatches).isEmpty();
     }
 
@@ -132,5 +141,24 @@ class LlmInputRiskDetectorReplayTest {
                 throw new UnsupportedOperationException();
             }
         };
+    }
+
+    /**
+     * 模型取值同 application.yaml 的 ai.jev，HTTP 客户端直接用生产的 jevHttpClient
+     */
+    private static JevClient zenmuxJev() {
+        AIModelProperties.ProviderConfig provider = new AIModelProperties.ProviderConfig();
+        provider.setUrl("https://zenmux.ai");
+        provider.setApiKey(System.getenv("ZENMUX_API_KEY"));
+        provider.setEndpoints(new HashMap<>(Map.of("jev", "/api/v1/systemone")));
+        AIModelProperties.ModelCandidate candidate = new AIModelProperties.ModelCandidate();
+        candidate.setId("jev-stable");
+        candidate.setProvider("zenmux");
+        candidate.setModel("typesafe/jev-1.14");
+        AIModelProperties properties = new AIModelProperties();
+        properties.setProviders(new HashMap<>(Map.of("zenmux", provider)));
+        properties.getJev().setDefaultModel("jev-stable");
+        properties.getJev().setCandidates(new ArrayList<>(List.of(candidate)));
+        return new JevClient(properties, new HttpClientConfig().jevHttpClient());
     }
 }

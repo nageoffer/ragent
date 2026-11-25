@@ -217,6 +217,24 @@ class JevClientTest {
                 })).evaluate(new JevRequest("问题", List.of()), target()));
     }
 
+    @Test
+    @DisplayName("默认候选停用时启动即失败")
+    void rejectsDisabledDefaultCandidate() {
+        IllegalStateException error = assertThrows(IllegalStateException.class, () -> clientWith(properties(p ->
+                p.getJev().getCandidates().get(0).setEnabled(false))).requireTarget());
+
+        assertTrue(error.getMessage().contains("「jev-stable」处于停用状态"));
+    }
+
+    @Test
+    @DisplayName("默认候选缺上游模型名时启动即失败")
+    void rejectsDefaultCandidateWithoutModel() {
+        IllegalStateException error = assertThrows(IllegalStateException.class, () -> clientWith(properties(p ->
+                p.getJev().getCandidates().get(0).setModel("  "))).requireTarget());
+
+        assertTrue(error.getMessage().contains("「jev-stable」没有填写上游的模型标识"));
+    }
+
     private ModelClientException callExpectingFailure(int status) throws IOException {
         requestCount.set(0);
         serve(status, "{\"error\":{\"code\":\"" + status + "\"}}");

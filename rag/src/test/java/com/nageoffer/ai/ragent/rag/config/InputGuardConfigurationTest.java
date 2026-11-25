@@ -18,7 +18,10 @@
 package com.nageoffer.ai.ragent.rag.config;
 
 import com.nageoffer.ai.ragent.infra.chat.LLMService;
+import com.nageoffer.ai.ragent.infra.jev.JevClient;
+import com.nageoffer.ai.ragent.infra.jev.JevTarget;
 import com.nageoffer.ai.ragent.rag.core.guard.InputRiskDetector;
+import com.nageoffer.ai.ragent.rag.core.guard.JevInputRiskDetector;
 import com.nageoffer.ai.ragent.rag.core.guard.LlmInputRiskDetector;
 import com.nageoffer.ai.ragent.rag.core.prompt.PromptTemplateLoader;
 import org.junit.jupiter.api.Test;
@@ -31,6 +34,8 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 class InputGuardConfigurationTest {
 
@@ -39,15 +44,27 @@ class InputGuardConfigurationTest {
     @Test
     void shouldDefaultToLlm() {
         InputRiskDetector detector = configuration.inputRiskDetector(
-                bind(Map.of()), mock(LLMService.class), mock(PromptTemplateLoader.class));
+                bind(Map.of()), mock(LLMService.class), mock(PromptTemplateLoader.class), mock(JevClient.class));
 
         assertThat(detector).isInstanceOf(LlmInputRiskDetector.class);
     }
 
     @Test
+    void shouldAssembleJevWithResolvedTarget() {
+        JevClient jevClient = mock(JevClient.class);
+        when(jevClient.requireTarget()).thenReturn(new JevTarget("http://jev", "key", "typesafe/jev-1.14"));
+
+        InputRiskDetector detector = configuration.inputRiskDetector(
+                bind(Map.of("ragent.input-guard.type", "jev")), mock(LLMService.class), mock(PromptTemplateLoader.class), jevClient);
+
+        assertThat(detector).isInstanceOf(JevInputRiskDetector.class);
+        verify(jevClient).requireTarget();
+    }
+
+    @Test
     void shouldRequireCredentialsOnlyWhenAliyunSelected() {
         assertThatThrownBy(() -> configuration.inputRiskDetector(
-                bind(Map.of("ragent.input-guard.type", "aliyun")), mock(LLMService.class), mock(PromptTemplateLoader.class)))
+                bind(Map.of("ragent.input-guard.type", "aliyun")), mock(LLMService.class), mock(PromptTemplateLoader.class), mock(JevClient.class)))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("access-key-id");
     }
@@ -73,7 +90,8 @@ class InputGuardConfigurationTest {
                 .withUserConfiguration(InputGuardConfiguration.class)
                 .withBean(InputGuardProperties.class, () -> bind(Map.of("ragent.input-guard.type", "aliyun")))
                 .withBean(LLMService.class, () -> mock(LLMService.class))
-                .withBean(PromptTemplateLoader.class, () -> mock(PromptTemplateLoader.class));
+                .withBean(PromptTemplateLoader.class, () -> mock(PromptTemplateLoader.class))
+                .withBean(JevClient.class, () -> mock(JevClient.class));
     }
 
     private static InputGuardProperties bind(Map<String, String> properties) {

@@ -39,7 +39,7 @@ ragent:
   eval:
     enabled: true
   input-guard:
-    type: llm  # 用户输入审核：llm（百炼 fast 档）/ aliyun（AI 安全护栏，控制台只开内容合规与提示词攻击）/ none（不审）
+    type: llm  # 用户输入审核：llm（百炼 fast 档）/ aliyun（AI 安全护栏，控制台只开内容合规与提示词攻击）/ jev（ZenMux Jev，模型取 ai.jev）/ none（不审）
     aliyun:
       endpoint: green-cip.cn-shanghai.aliyuncs.com
       region-id: cn-shanghai

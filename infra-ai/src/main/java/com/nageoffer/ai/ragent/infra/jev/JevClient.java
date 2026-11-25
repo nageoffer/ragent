@@ -62,7 +62,7 @@ public class JevClient {
     /**
      * 取出 Jev 调用目标，由选用 Jev 的一方在启动期调一次
      * <p>
-     * 配置完整性已由启动期的 Jev 配置校验器兜住，这里只做解析，不重复报错
+     * 意图识别另有启动期校验器；只给输入审核选 Jev 时没有它，默认候选停用或缺模型名在这里报
      */
     public JevTarget requireTarget() {
         AIModelProperties.Jev jev = properties.getJev();
@@ -70,6 +70,12 @@ public class JevClient {
                 .filter(each -> each.getId().equals(jev.getDefaultModel()))
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException("没有可用的 Jev 模型配置"));
+        if (Boolean.FALSE.equals(candidate.getEnabled())) {
+            throw new IllegalStateException("Jev 模型「" + candidate.getId() + "」处于停用状态");
+        }
+        if (StrUtil.isBlank(candidate.getModel())) {
+            throw new IllegalStateException("Jev 模型「" + candidate.getId() + "」没有填写上游的模型标识");
+        }
         AIModelProperties.ProviderConfig provider = properties.getProviders().get(candidate.getProvider());
         return new JevTarget(
                 ModelUrlResolver.resolveUrl(provider, candidate, ModelCapability.JEV),
