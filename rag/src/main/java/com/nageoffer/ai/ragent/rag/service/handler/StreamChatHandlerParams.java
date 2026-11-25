@@ -21,6 +21,7 @@ import com.nageoffer.ai.ragent.framework.web.StreamTaskManager;
 import com.nageoffer.ai.ragent.infra.config.AIModelProperties;
 import com.nageoffer.ai.ragent.rag.core.memory.ConversationMemoryService;
 import com.nageoffer.ai.ragent.rag.service.ConversationGroupService;
+import com.nageoffer.ai.ragent.rag.service.impl.ConversationTitleTaskRegistry;
 import lombok.Builder;
 import lombok.Getter;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -67,4 +68,9 @@ public class StreamChatHandlerParams {
      * 任务管理器
      */
     private final StreamTaskManager taskManager;
+
+    /**
+     * 会话标题异步任务登记表（可为空，为空则不等待标题）
+     */
+    private final ConversationTitleTaskRegistry titleTaskRegistry;
 }
