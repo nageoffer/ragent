@@ -178,6 +178,29 @@ public class ThreadPoolExecutorConfig {
     }
 
     /**
+     * SSE 排队拒绝回调线程池
+     * <p>
+     * 拒绝回调不持有 permit，若与业务任务共用 {@link #chatEntryExecutor}，池满时回调会被二次拒绝并丢弃，
+     * 前端收不到任何响应。独立线程池隔离后，队列满时退回调用线程执行，保证回调不被丢弃
+     */
+    @Bean
+    public Executor chatRejectExecutor() {
+        int size = Math.max(2, CPU_COUNT >> 1);
+        ThreadPoolExecutor executor = new ThreadPoolExecutor(
+                size,
+                size,
+                60,
+                TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>(200),
+                ThreadFactoryBuilder.create()
+                        .setNamePrefix("chat_reject_executor_")
+                        .build(),
+                new ThreadPoolExecutor.CallerRunsPolicy()
+        );
+        return TtlExecutors.getTtlExecutor(executor);
+    }
+
+    /**
      * 知识库文档分块线程池
      */
     @Bean

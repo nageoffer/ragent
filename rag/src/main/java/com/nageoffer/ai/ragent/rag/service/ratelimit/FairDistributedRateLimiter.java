@@ -188,7 +188,7 @@ public final class FairDistributedRateLimiter {
         }
 
         /**
-         * 排队超时：CAS 抢占终态后 cleanup + 在 caller executor 上跑 onTimeout
+         * 排队超时：CAS 抢占终态后 cleanup + 在超时回调执行器上跑 onTimeout
          */
         void timeout() {
             if (!state.compareAndSet(State.PENDING, State.TIMED_OUT)) {
@@ -289,7 +289,7 @@ public final class FairDistributedRateLimiter {
 
         private void submitSafely(Runnable r, String label) {
             try {
-                req.onAcquiredExecutor().execute(r);
+                req.onTimeoutExecutor().execute(r);
             } catch (Exception ex) {
                 log.warn("[{}] {} 提交失败，回调被丢弃", name, label, ex);
             }
@@ -468,17 +468,22 @@ public final class FairDistributedRateLimiter {
 
     /**
      * 抢占请求参数
+     *
+     * @param onTimeoutExecutor 超时/拒绝回调的执行器，必须与 {@code onAcquiredExecutor} 隔离：
+     *                          业务任务占满后者的线程池时，回调仍需有线程可执行
      */
     @Builder
     public record AcquireRequest(long maxWaitMillis,
                                  Runnable onAcquired,
                                  Runnable onTimeout,
                                  Executor onAcquiredExecutor,
+                                 Executor onTimeoutExecutor,
                                  Consumer<Runnable> cancelBinder) {
         public AcquireRequest {
             Objects.requireNonNull(onAcquired);
             Objects.requireNonNull(onTimeout);
             Objects.requireNonNull(onAcquiredExecutor);
+            Objects.requireNonNull(onTimeoutExecutor);
             if (maxWaitMillis <= 0) {
                 throw new IllegalArgumentException("maxWaitMillis must be > 0");
             }

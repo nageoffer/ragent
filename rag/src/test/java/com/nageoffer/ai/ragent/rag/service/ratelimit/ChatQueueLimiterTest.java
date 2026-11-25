@@ -42,11 +42,14 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.lang.reflect.Field;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
@@ -117,6 +120,7 @@ class ChatQueueLimiterTest {
         chatQueueLimiter = new ChatQueueLimiter(
                 rateLimiter,
                 Runnable::run,
+                Runnable::run,
                 rateLimitProperties,
                 memoryService,
                 conversationGroupService,
@@ -173,6 +177,54 @@ class ChatQueueLimiterTest {
 
         assertTrue(memoryWritten.await(3, TimeUnit.SECONDS));
         verify(memoryService, times(2)).append(anyString(), eq(USER_ID), any());
+    }
+
+    @Test
+    void shouldRejectThroughIsolatedExecutorWhenChatEntryPoolIsSaturated() throws Exception {
+        when(semaphore.availablePermits()).thenReturn(0, 1);
+        when(semaphore.tryAcquire(anyLong(), anyLong(), any())).thenReturn("permit-1");
+        when(redissonClient.getScript(eq(StringCodec.INSTANCE))).thenReturn(script);
+        doReturn(List.of(1L, 1L)).when(script).eval(
+                eq(RScript.Mode.READ_WRITE),
+                anyString(),
+                eq(RScript.ReturnType.LIST),
+                anyList(),
+                any(),
+                any(),
+                any());
+
+        CountDownLatch memoryWritten = new CountDownLatch(2);
+        doAnswer(invocation -> {
+            memoryWritten.countDown();
+            return "message-1";
+        }).when(memoryService).append(anyString(), eq(USER_ID), any());
+
+        RAGRateLimitProperties rateLimitProperties = new RAGRateLimitProperties();
+        rateLimitProperties.setGlobalEnabled(true);
+        rateLimitProperties.setGlobalMaxWaitSeconds(1);
+
+        MemoryProperties memoryProperties = new MemoryProperties();
+        memoryProperties.setTitleMaxLength(30);
+
+        AtomicBoolean acquired = new AtomicBoolean();
+        ChatQueueLimiter saturatedLimiter = new ChatQueueLimiter(
+                rateLimiter,
+                command -> {
+                    throw new RejectedExecutionException("chatEntryExecutor 已满");
+                },
+                Runnable::run,
+                rateLimitProperties,
+                memoryService,
+                conversationGroupService,
+                memoryProperties);
+
+        setUserContext();
+        saturatedLimiter.enqueue("排队问题", null, new SseEmitter(), () -> acquired.set(true));
+        UserContext.clear();
+
+        assertTrue(memoryWritten.await(3, TimeUnit.SECONDS));
+        assertFalse(acquired.get());
+        verify(semaphore).release("permit-1");
     }
 
     private static void setUserContext() {
