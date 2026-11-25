@@ -536,8 +536,11 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
                 try {
                     CronScheduleHelper.nextRunTime(newScheduleCron, new Date());
                     // 验证 cron 周期不能太短（与 upsertSchedule 保持一致）
-                    if (CronScheduleHelper.isIntervalLessThan(newScheduleCron, new Date(), 60)) {
-                        throw new ClientException("定时周期不能小于 60 秒");
+                    // 阈值必须取自配置而非字面量：上传与调度侧都读 rag.knowledge.schedule.min-interval-seconds，
+                    // 这里写死 60 会让该配置对编辑入口失效——收紧时编辑可绕过，放宽时编辑反而误拒
+                    long minIntervalSeconds = scheduleProperties.getMinIntervalSeconds();
+                    if (CronScheduleHelper.isIntervalLessThan(newScheduleCron, new Date(), minIntervalSeconds)) {
+                        throw new ClientException("定时周期不能小于 " + minIntervalSeconds + " 秒");
                     }
                 } catch (IllegalArgumentException e) {
                     throw new ClientException("定时表达式不合法: " + e.getMessage());
