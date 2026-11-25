@@ -24,6 +24,7 @@ import cn.hutool.core.util.StrUtil;
 import com.nageoffer.ai.ragent.framework.convention.Result;
 import com.nageoffer.ai.ragent.framework.errorcode.BaseErrorCode;
 import com.nageoffer.ai.ragent.framework.exception.AbstractException;
+import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.SneakyThrows;
@@ -100,7 +101,12 @@ public class GlobalExceptionHandler {
                                                          HttpServletResponse response,
                                                          AbstractException ex) {
         if (ex.getCause() != null) {
-            log.error("[{}] {} [ex] {}", request.getMethod(), request.getRequestURL().toString(), ex, ex.getCause());
+            log.error("[{}] {} [ex] {}", request.getMethod(), getUrl(request), ex, ex.getCause());
+            return jsonError(response, Results.failure(ex));
+        }
+        // 客户端错误是预期内的拒绝，一行够用，堆栈只会淹没真正的故障
+        if (ex instanceof ClientException) {
+            log.warn("[{}] {} [client] code={} msg={}", request.getMethod(), getUrl(request), ex.getErrorCode(), ex.getErrorMessage());
             return jsonError(response, Results.failure(ex));
         }
         StringBuilder stackTraceBuilder = new StringBuilder();
@@ -109,7 +115,7 @@ public class GlobalExceptionHandler {
         for (int i = 0; i < Math.min(5, stackTrace.length); i++) {
             stackTraceBuilder.append("\tat ").append(stackTrace[i]).append("\n");
         }
-        log.error("[{}] {} [ex] {} \n\n{}", request.getMethod(), request.getRequestURL().toString(), ex, stackTraceBuilder);
+        log.error("[{}] {} [ex] {} \n\n{}", request.getMethod(), getUrl(request), ex, stackTraceBuilder);
         return jsonError(response, Results.failure(ex));
     }
 
@@ -175,10 +181,10 @@ public class GlobalExceptionHandler {
         return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(result);
     }
 
+    /**
+     * 不带查询串：GET 提问接口把用户原文放在 question 参数里
+     */
     private String getUrl(HttpServletRequest request) {
-        if (StrUtil.isBlank(request.getQueryString())) {
-            return request.getRequestURL().toString();
-        }
-        return request.getRequestURL().toString() + "?" + request.getQueryString();
+        return request.getRequestURL().toString();
     }
 }
